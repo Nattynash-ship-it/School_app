@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.158-phoenix-theme-20260723">
+<meta name="app-build" content="v18.159-error-banner-fix-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -207850,7 +207850,23 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     }catch(e){}
   }
   var lastErrAt=0;
-  window.addEventListener('error', function(ev){ var now=Date.now(); if(now-lastErrAt<2000) return; lastErrAt=now; try{ showErr((ev.message||'unknown')+' (line '+(ev.lineno||'?')+')'); }catch(e){} });
+  window.addEventListener('error', function(ev){
+    try{
+      // Ignore opaque cross-origin / resource-load errors from third-party CDN
+      // scripts (Google Fonts, jsPDF, pdf.js, Supabase). The browser masks these
+      // as "Script error." with no line, no stack, and ev.error === null, so they
+      // are NOT actionable app bugs — log them to the console instead of alarming
+      // the user with a scary banner. Genuine in-app errors carry ev.error and a
+      // real message/line, and still surface below.
+      var m = (ev && ev.message) ? String(ev.message) : '';
+      if (!ev.error && (m === '' || m === 'Script error.' || m === 'Script error')){
+        if(window.console&&console.warn) console.warn('[ignored cross-origin/resource error]', (ev&&ev.filename)||'', (ev&&ev.lineno)||0);
+        return;
+      }
+    }catch(e){}
+    var now=Date.now(); if(now-lastErrAt<2000) return; lastErrAt=now;
+    try{ showErr((ev.message||'unknown')+' (line '+(ev.lineno||'?')+')'); }catch(e){}
+  });
   window.__errBeacon=showErr;
 } catch(e){ if(window.console&&console.warn) console.warn('sanitizer failed:', e); } })();
 
