@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.139-c959-hard-boost-20260723">
+<meta name="app-build" content="v18.140-hard-drill-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -208928,6 +208928,60 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   var m=POOL[0]&&POOL[0].id;
   [oaK,paK].forEach(function(key){ if(!SAMPLE_QUESTIONS[key].some(function(q){return q&&q.id===m;})) SAMPLE_QUESTIONS[key]=SAMPLE_QUESTIONS[key].concat(POOL); });
  } catch(e){ if(window.console&&console.warn) console.warn('c959 hard boost failed:', e); } })();
+
+
+
+// ==================== HARD DRILL: hard-only practice chapter ====================
+(function hardDrill(){ try {
+  var COURSES_HD = ['D286','C959','D197','D684'];
+  // 1) getQuestions wrapper: for key courseId/hard_drill/sim, return that course's hard questions.
+  if (typeof getQuestions === 'function' && !getQuestions.__hardDrillWrapped) {
+    var _prev = getQuestions;
+    function shufHD(a){ for (var x=a.length-1;x>0;x--){ var y=Math.floor(Math.random()*(x+1)); var t=a[x]; a[x]=a[y]; a[y]=t; } return a; }
+    getQuestions = function(courseId, chId, secId){
+      try {
+        if (chId === 'hard_drill') {
+          var out = [];
+          var prefix = courseId + '/';
+          for (var key in SAMPLE_QUESTIONS) {
+            if (key.indexOf(prefix) !== 0) continue;
+            if (key.indexOf('/hard_drill/') !== -1) continue;
+            var arr = SAMPLE_QUESTIONS[key];
+            if (!Array.isArray(arr)) continue;
+            for (var i=0;i<arr.length;i++){
+              var q = arr[i];
+              if (q && q.id) { try { if (getQuestionDifficulty(q) === 'hard') out.push(q); } catch(e){} }
+            }
+          }
+          out = dedupeQuestions(out.filter(Boolean));
+          return shufHD(out).slice(0, 25);
+        }
+      } catch(e){}
+      return _prev.apply(this, arguments);
+    };
+    getQuestions.__hardDrillWrapped = true;
+  }
+  // 2) splice a "Hard Drill" chapter into each course + a sim lesson.
+  if (typeof COURSES !== 'undefined') {
+    COURSES_HD.forEach(function(cid){
+      try {
+        var c = COURSES[cid];
+        if (!c || !Array.isArray(c.chapters)) return;
+        if (!c.chapters.some(function(x){ return x.id === 'hard_drill'; })) {
+          var at = -1;
+          for (var i=0;i<c.chapters.length;i++){ var id=c.chapters[i].id; if (id==='pa_sim'||id==='oa_sim'||id==='oa'||id==='cheat'){ at=i; break; } }
+          if (at < 0) at = c.chapters.length;
+          c.chapters.splice(at, 0, { id:'hard_drill', title:'🔥 Hard Drill — toughest questions only',
+            sections:[{ id:'sim', title:'Hard-only practice (up to 25 questions)' }] });
+        }
+        if (typeof SAMPLE_LESSON !== 'undefined') {
+          var lk = cid + '/hard_drill/sim';
+          if (!SAMPLE_LESSON[lk]) SAMPLE_LESSON[lk] = { body: '<h2>🔥 Hard Drill</h2><p>A shuffled set of this course’s <strong>hardest</strong> questions only — predict-the-output, multi-step scenarios, and compute/trace items at OA difficulty. Use it to stress-test the topics that trip you up. Miss one? The explanation names the exact rule tested, and it’s auto-added to your flashcards.</p>' };
+        }
+      } catch(e){ if(window.console&&console.warn) console.warn('hard drill splice failed for '+cid+':', e); }
+    });
+  }
+} catch(e){ if(window.console&&console.warn) console.warn('hard drill failed:', e); } })();
 
 </script>
 </body>
