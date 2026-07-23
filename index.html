@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.157-header-phoenix-20260723">
+<meta name="app-build" content="v18.158-phoenix-theme-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -64,6 +64,45 @@
  --radius-sm: 10px;
  }
  /* SAKURA — soft pink + lavender, cherry blossom vibes */
+ /* Phoenix — bold, courageous fire on deep ember-purple (matches the Risen phoenix mark) */
+ [data-theme="phoenix"] {
+ --bg: #150a1f;
+ --bg-2: #1e0c33;
+ --surface: #241241;
+ --surface-2: #2e1850;
+ --surface-3: #3b2064;
+ --surface-glass: rgba(36, 18, 65, 0.72);
+ --border: rgba(255, 144, 32, 0.12);
+ --border-strong: rgba(255, 144, 32, 0.34);
+ --text: #fff4e8;
+ --text-2: #ffdcc0;
+ --text-3: #f0b492;
+ --text-4: #cf9277;
+ --text-5: #9d6e5f;
+ --accent: #ff8a1e;
+ --accent-2: #ffd23f;
+ --accent-bg: rgba(255, 138, 30, 0.16);
+ --accent-text: #fff6cf;
+ --accent-grad: linear-gradient(135deg, #ffd53f 0%, #ff9020 42%, #ff3d3d 74%, #e51e8c 100%);
+ --secondary: #e51e8c;
+ --secondary-2: #ff3d3d;
+ --secondary-bg: rgba(229, 30, 140, 0.18);
+ --secondary-grad: linear-gradient(135deg, #ff3d3d 0%, #e51e8c 100%);
+ --warning: #ffb020;
+ --warning-bg: rgba(255, 176, 32, 0.16);
+ --danger: #ff5470;
+ --danger-bg: rgba(255, 84, 112, 0.16);
+ --success: #3ad07f;
+ --success-bg: rgba(58, 208, 127, 0.16);
+ --code-bg: #0e0518;
+ --code-text: #ffe6c7;
+ --highlight: #ff90204d;
+ --note-bg: rgba(255, 144, 32, 0.12);
+ --note-border: #ff9020;
+ --shadow: 0 4px 20px rgba(255, 90, 30, 0.28);
+ --shadow-strong: 0 16px 48px rgba(255, 61, 61, 0.30), 0 2px 10px rgba(229, 30, 140, 0.20);
+ --shadow-card: 0 1px 2px rgba(229, 30, 140, 0.10), 0 6px 16px rgba(255, 144, 32, 0.14);
+ }
  [data-theme="sakura"] {
  --bg: #fff5f9;
  --bg-2: #ffeaf3;
@@ -668,6 +707,15 @@
  --avatar-bg-1: rgba(109,40,217,0.14);
  --avatar-bg-2: rgba(13,148,136,0.10);
  }
+ [data-theme="phoenix"] {
+ --avatar-body-top: #ffd23f;
+ --avatar-body-bot: #ff3d3d;
+ --avatar-belly-top: #fff6cf;
+ --avatar-belly-bot: #ffb020;
+ --avatar-beak: #e51e8c;
+ --avatar-bg-1: rgba(255, 144, 32, 0.24);
+ --avatar-bg-2: rgba(229, 30, 140, 0.16);
+ }
  [data-theme="cosmic"] {
  --avatar-body-top: #d8b4fe;
  --avatar-body-bot: #7e22ce;
@@ -1051,6 +1099,7 @@
  .theme-preview.theme-dark { background: linear-gradient(135deg, #08091a 0%, #1c2042 50%, #5eead4 100%); }
  .theme-preview.theme-light { background: linear-gradient(135deg, #f4f6ff 0%, #eef0fc 50%, #0d9488 100%); }
  .theme-preview.theme-sakura { background: linear-gradient(135deg, #fff5f9 0%, #fce7f3 50%, #ec4899 100%); }
+ .theme-preview.theme-phoenix { background: linear-gradient(135deg, #1c0836 0%, #ff9020 52%, #ff3d3d 78%, #e51e8c 100%); }
  .theme-preview.theme-butterfly { background: linear-gradient(135deg, #fefaf3 0%, #fef3c7 35%, #f59e0b 65%, #84cc16 100%); }
  .theme-preview.theme-winter { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #6366f1 100%); }
  .theme-preview.theme-cosmic { background: linear-gradient(135deg, #0a0420 0%, #251756 45%, #c084fc 100%); position: relative; overflow: hidden; }
@@ -184978,6 +185027,7 @@ const THEMES = [
  { id: 'dark', name: 'Midnight Aurora', desc: 'Deep teal & violet · sparkle particles' },
  { id: 'light', name: 'Soft Light', desc: 'Calm & clean · no particles' },
  { id: 'plain', name: 'Plain', desc: 'Clean white · neutral · no particles' },
+ { id: 'phoenix', name: 'Phoenix', desc: 'Bold fire on ember-purple · rise & conquer' },
  { id: 'sakura', name: 'Sakura', desc: 'Pink blossoms · falling petals' },
  { id: 'butterfly', name: 'Butterfly Garden', desc: 'Warm peach & sage · butterflies' },
  { id: 'winter', name: 'Winter', desc: 'Cool blues · gentle snow' },
