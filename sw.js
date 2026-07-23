@@ -1,4 +1,4 @@
-// Study Hub service worker — v188
+// Study Hub service worker — v210
 // GOAL: an installed iOS PWA (Add to Home Screen) must ALWAYS pick up new deploys.
 //
 // Two subtle traps this version fixes:
@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v302';
+const CACHE = 'study-hub-v328';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
