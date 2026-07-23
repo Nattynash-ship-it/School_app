@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.144-scratch-reset-20260723">
+<meta name="app-build" content="v18.145-reset-score-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -188412,6 +188412,30 @@ function renderSection(courseId, chId, secId) {
  screen.appendChild(recallBlock);
  }
  }
+
+ // Per-test score reset: if this section/test has recorded attempts, offer to
+ // clear them so it shows as never taken (lessons & other tests are untouched).
+ try {
+   const _hasHist = Array.isArray(store.quizHistory) && store.quizHistory.some(h => h && h.courseId === courseId && h.chId === chId && h.secId === secId);
+   const _actions = wrap.querySelector('.lesson-actions');
+   if (_hasHist && _actions) {
+     const _rb = document.createElement('button');
+     _rb.className = 'lesson-action-btn';
+     _rb.setAttribute('data-reset-score', '1');
+     _rb.innerHTML = '<div class="laction-title" style="color:var(--danger);">↺ Reset this test’s score</div><div class="laction-sub">Clear your saved attempts — shows as never taken</div>';
+     _actions.appendChild(_rb);
+     _rb.addEventListener('click', () => {
+       if (!confirm('Reset your saved score for this test?\n\nThis clears your recorded attempts for this section so it shows as never taken. Your lessons and other tests are untouched.')) return;
+       try {
+         store.quizHistory = (store.quizHistory || []).filter(h => !(h && h.courseId === courseId && h.chId === chId && h.secId === secId));
+         if (store.sectionRatings) delete store.sectionRatings[key(courseId, chId, secId)];
+         if (typeof saveStore === 'function') { saveStore(); if (saveStore.flushNow) saveStore.flushNow(); }
+         if (typeof toast === 'function') toast('Test score reset — shows as never taken');
+       } catch (e) {}
+       go({ name: 'section', courseId, chId, secId });
+     });
+   }
+ } catch (e) {}
 
  // (Per-lesson saved-stroke restoration removed — global annotation system
  // handles this now via the route key.)
