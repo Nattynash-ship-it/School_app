@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.142-extend-hard-20260723">
+<meta name="app-build" content="v18.143-perf-savestore-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -209009,6 +209009,36 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (typeof SAMPLE_LESSON!=='undefined'){ var lk=cid+'/hard_drill/sim'; if(!SAMPLE_LESSON[lk]) SAMPLE_LESSON[lk]={ body:'<h2>\uD83D\uDD25 Hard Drill</h2><p>A shuffled set of this course\u2019s <strong>hardest</strong> questions only. Miss one and the explanation names the exact rule tested.</p>' }; }
   } catch(e){} }); }
  } catch(e){ if(window.console&&console.warn) console.warn('extend hard failed:', e); } })();
+
+
+
+// ==================== PERF: non-blocking saveStore (v18.143) ====================
+// saveStore() serialized the whole store (incl. up to ~6000 quizHistory entries)
+// synchronously on every answer-submit / autosave, blocking the UI (~100ms+ on
+// tablets). This debounces the actual persist off the interaction path and flushes
+// on exit so nothing is lost, and trims an oversized history once to cut cost.
+(function perfSaveStore(){
+  try {
+    if (typeof saveStore !== 'function' || saveStore.__perfDebounced) return;
+    try {
+      if (typeof store !== 'undefined' && store && Array.isArray(store.quizHistory) && store.quizHistory.length > 3000) {
+        store.quizHistory = store.quizHistory.slice(-3000);
+      }
+    } catch (e) {}
+    var _orig = saveStore;
+    var dirty = false, timer = null;
+    function flush(){ timer = null; if (!dirty) return; dirty = false; try { _orig(); } catch (e) {} }
+    var debounced = function(){ dirty = true; if (timer) return; timer = setTimeout(flush, 600); };
+    debounced.__perfDebounced = true;
+    debounced.flushNow = flush;
+    saveStore = debounced;
+    try {
+      window.addEventListener('pagehide', flush);
+      window.addEventListener('beforeunload', flush);
+      document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flush(); });
+    } catch (e) {}
+  } catch (e) { if (window.console && console.warn) console.warn('perf saveStore failed:', e); }
+})();
 
 </script>
 </body>
