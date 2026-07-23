@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.156-personal-drills-20260723">
+<meta name="app-build" content="v18.157-header-phoenix-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -184458,29 +184458,18 @@ function updateBrandBarContents(bar) {
  // SLOW PATH: first time — build full DOM
  // Avatar: a cute owl illustration (study companion). Pure SVG, theme-aware.
  // Uses CSS classes that reference theme vars so colors adapt with theme.
+ // Colorful phoenix mark (matches the Risen launch splash / app icon).
  const avatarSvg = `
- <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
- <!-- Body (gradient via two stacked ellipses) -->
- <ellipse cx="24" cy="29" rx="16" ry="17" class="owl-body-bot" />
- <ellipse cx="24" cy="24" rx="15" ry="14" class="owl-body-top" />
- <!-- Belly -->
- <ellipse cx="24" cy="32" rx="10" ry="11" class="owl-belly" />
- <!-- Ear tufts -->
- <path d="M 11 16 L 14 9 L 17 18 Z" class="owl-body-bot" />
- <path d="M 37 16 L 34 9 L 31 18 Z" class="owl-body-bot" />
- <!-- Eye whites -->
- <circle cx="18" cy="24" r="6" fill="#ffffff" />
- <circle cx="30" cy="24" r="6" fill="#ffffff" />
- <!-- Pupils (slight downward = thoughtful/focused) -->
- <circle cx="18.5" cy="25.5" r="3" fill="#1a1410" />
- <circle cx="30.5" cy="25.5" r="3" fill="#1a1410" />
- <!-- Eye sparkles -->
- <circle cx="19.6" cy="24.2" r="1" fill="#ffffff" />
- <circle cx="31.6" cy="24.2" r="1" fill="#ffffff" />
- <!-- Beak -->
- <path d="M 22 29 L 26 29 L 24 32 Z" class="owl-beak" />
- <!-- Brow tuft -->
- <path d="M 18 17 Q 24 13 30 17" class="owl-brow" />
+ <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+ <defs><linearGradient id="brandFire" x1="0" y1="0" x2="0" y2="1">
+ <stop offset="0" stop-color="#fff6cf"/><stop offset=".24" stop-color="#ffd53f"/>
+ <stop offset=".5" stop-color="#ff9020"/><stop offset=".74" stop-color="#ff3d3d"/>
+ <stop offset="1" stop-color="#e51e8c"/></linearGradient></defs>
+ <g fill="url(#brandFire)">
+ <path d="M256 300C250 262 250 232 256 214C244 150 196 96 120 78C150 132 156 178 150 214C120 176 78 158 44 160C96 196 124 236 150 268C132 258 108 258 84 272C128 280 168 300 202 322C214 342 232 356 256 372C280 356 298 342 310 322C344 300 384 280 428 272C404 258 380 258 362 268C388 236 416 196 468 160C434 158 392 176 362 214C356 178 362 132 392 78C316 96 268 150 256 214C262 232 262 262 256 300Z"/>
+ <path d="M256 150C268 140 274 150 274 162C274 176 266 188 256 196C246 188 238 176 238 162C238 150 244 140 256 150Z"/>
+ <path d="M256 360C240 390 236 414 244 440C248 452 252 460 256 468C260 460 264 452 268 440C276 414 272 390 256 360Z"/>
+ </g>
  </svg>
  `;
 
@@ -184489,7 +184478,7 @@ function updateBrandBarContents(bar) {
  <div class="brand-logo" data-act="home" role="button" tabindex="0">
  <div class="brand-avatar">${avatarSvg}</div>
  <div class="brand-textstack">
- <div class="brand-name">Natasha's Study Hub</div>
+ <div class="brand-name">Risen Study</div>
  <div class="brand-greeting">${getGreetingText()}</div>
  </div>
  </div>
