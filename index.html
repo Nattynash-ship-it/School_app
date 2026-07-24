@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="v18.159-error-banner-fix-20260723">
+<meta name="app-build" content="v18.160-audit-dupfix-20260723">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -164655,7 +164655,7 @@ addopts = "-v --cov=src --cov-report=term-missing"
    { id: 'q12', kind: 'code', topic: 'LIMIT', text: 'Get only first 100 rows.', language: 'python', starter: '', solution: 'pd.read_sql("SELECT * FROM orders LIMIT 100", engine)', accept: [/pd\.read_sql\s*\(\s*['\"]SELECT\s+\*\s+FROM\s+orders\s+LIMIT\s+100['\"]\s*,\s*engine\s*\)/i], explain: "LIMIT in SQL. Don't pull entire table when you only need a sample." },
    { id: 'q13', kind: 'code', topic: 'ORDER BY', text: 'Get top 10 highest-amount orders.', language: 'python', starter: '', solution: 'pd.read_sql("SELECT * FROM orders ORDER BY amount DESC LIMIT 10", engine)', accept: [/pd\.read_sql\s*\(\s*['\"]SELECT\s+\*\s+FROM\s+orders\s+ORDER\s+BY\s+amount\s+DESC\s+LIMIT\s+10['\"]\s*,\s*engine\s*\)/i], explain: 'ORDER BY + LIMIT = top N pattern.' },
    { id: 'q14', kind: 'code', topic: 'Read in dtypes', text: 'Specify dtype for "amount" column on read.', language: 'python', starter: '', solution: 'pd.read_sql("SELECT * FROM orders", engine, dtype={"amount": float})', accept: [/pd\.read_sql\s*\(\s*['\"]SELECT\s+\*\s+FROM\s+orders['\"]\s*,\s*engine\s*,\s*dtype\s*=\s*\{\s*['\"]amount['\"]\s*:\s*float\s*\}\s*\)/i], explain: 'Override automatic type inference if needed.' },
-   { id: 'q15', topic: 'Where to filter', text: 'Filtering large datasets:', options: ['Always pandas', 'Push filtering, joining, aggregation into SQL when possible — DBs are optimized for this', 'Always pandas', 'Never SQL'], correct: 1, explain: "Don't pull 10M rows just to filter to 1k in pandas. SQL is way faster.", distractors: { 0: 'Inefficient.', 2: 'Inefficient.', 3: 'Wrong.' } }
+   { id: 'q15', topic: 'Where to filter', text: 'Filtering large datasets:', options: ['Always pandas', 'Push filtering, joining, aggregation into SQL when possible — DBs are optimized for this', 'Load the whole table into a DataFrame first, then filter in memory', 'Never SQL'], correct: 1, explain: "Don't pull 10M rows just to filter to 1k in pandas. SQL is way faster.", distractors: { 0: 'Inefficient.', 2: 'Inefficient.', 3: 'Wrong.' } }
   ],
  'DC-PYTHON/ch10/s3': [
    { id: 'q1', kind: 'code', topic: 'GET request', text: 'GET request to https://api.example.com/data.', language: 'python', starter: '', solution: 'import requests\nr = requests.get("https://api.example.com/data")', accept: [/import\s+requests[\s\S]*r\s*=\s*requests\.get\s*\(\s*['\"]https:\/\/api\.example\.com\/data['\"]\s*\)/i], explain: 'requests is the standard HTTP library for Python.' },
