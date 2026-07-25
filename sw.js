@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v377';
+const CACHE = 'study-hub-v378';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
