@@ -1,0 +1,10 @@
+# Netlify headers — keep the app shell always fresh.
+# The app is a single-file PWA; if the HTML or the service worker is cached by
+# the CDN/browser, installed home-screen apps get stuck on an old build. Tell
+# them to always revalidate (ETag still allows an efficient 304 when unchanged).
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
