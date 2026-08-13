@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Hub — proposed dashboard</title>
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#0e1428; --surface:#141b33; --surface2:#1a2340; --surface3:#222c4d;
+    --border:#26304f; --border2:#33406a;
+    --text:#eef1fb; --text2:#b9c2e0; --text3:#8590b5;
+    --accent:#7c6bf5; --accent2:#9d8dff; --accent-bg:#221d4d;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa; --pink:#f472b6;
+    --radius:16px;
+  }
+  html[data-t="light"]{
+    --bg:#f4f6fc; --bg2:#ffffff; --surface:#ffffff; --surface2:#f7f8fd; --surface3:#eef1fa;
+    --border:#e3e8f4; --border2:#d3daed;
+    --text:#141a2e; --text2:#4a5573; --text3:#7c87a6;
+    --accent:#4f46e5; --accent2:#6d5ef0; --accent-bg:#eceafd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+       font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{display:flex;min-height:100vh}
+
+  /* ---------- sidebar ---------- */
+  .side{width:236px;flex:0 0 236px;background:var(--bg2);border-right:1px solid var(--border);
+        padding:16px 12px 20px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:16px;padding:4px 8px 16px}
+  .brand .mk{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--pink));
+             display:grid;place-items:center;font-size:14px}
+  .sgroup{font-size:10px;letter-spacing:.12em;color:var(--text3);font-weight:700;padding:14px 10px 6px}
+  .snav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;color:var(--text2);
+        cursor:pointer;font-weight:500}
+  .snav:hover{background:var(--surface2);color:var(--text)}
+  .snav.on{background:var(--accent-bg);color:var(--accent2);font-weight:700}
+  .snav .ic{width:17px;text-align:center;opacity:.9}
+  .ccard{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:10px;cursor:pointer}
+  .ccard:hover{background:var(--surface2)}
+  .ccard .cc{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff}
+  .ccard .cn{flex:1;min-width:0;display:flex;flex-direction:column}
+  .ccard .code{display:block;font-size:11.5px;font-weight:700;line-height:1.2}
+  .ccard .cs{display:block;font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pct{font-size:10.5px;font-weight:700;color:var(--text3)}
+  .mini{height:3px;border-radius:2px;background:var(--surface3);margin-top:3px;overflow:hidden}
+  .mini i{display:block;height:100%;border-radius:2px}
+  .qcap{margin-top:16px;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px;
+        border-radius:12px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+
+  /* ---------- main ---------- */
+  .main{flex:1;min-width:0;padding:18px 22px 60px}
+  .top{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .top h1{font-size:19px;margin:0;font-weight:800}
+  .spacer{flex:1}
+  .tbtn{width:34px;height:34px;border-radius:10px;background:var(--surface);border:1px solid var(--border);
+        display:grid;place-items:center;cursor:pointer}
+  .avatar{display:flex;align-items:center;gap:9px;padding:4px 10px 4px 4px;border-radius:30px;background:var(--surface);
+          border:1px solid var(--border)}
+  .avatar .ab{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--blue));
+              display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff}
+
+  .hero{background:linear-gradient(115deg,var(--accent) 0%,#6d4bd8 48%,#8b3fb0 100%);
+        border-radius:20px;padding:20px 22px;display:flex;gap:18px;align-items:center;color:#fff;margin-bottom:16px}
+  .hero h2{margin:0 0 3px;font-size:22px;font-weight:800}
+  .hero p{margin:0;opacity:.85;font-size:13px}
+  .hquote{margin-left:auto;background:rgba(255,255,255,.14);border-radius:14px;padding:11px 15px;font-size:12px;
+          max-width:230px;line-height:1.5}
+
+  .grid{display:grid;gap:14px}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g2{grid-template-columns:1.55fr 1fr;align-items:start}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px}
+  .ch{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .ch h3{margin:0;font-size:14px;font-weight:700}
+  .ch .more{margin-left:auto;font-size:11.5px;color:var(--accent2);font-weight:600;cursor:pointer}
+  .lbl{font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.03em}
+
+  .stat .v{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:5px 0 1px}
+  .stat .sub{font-size:11px;color:var(--text3)}
+  .bar{height:5px;border-radius:3px;background:var(--surface3);margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:3px}
+
+  /* today's plan */
+  .task{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;background:var(--surface2);
+        margin-bottom:8px}
+  .cb{width:19px;height:19px;border-radius:6px;border:1.8px solid var(--border2);flex:0 0 19px;cursor:pointer}
+  .cb.done{background:var(--accent);border-color:var(--accent);position:relative}
+  .cb.done:after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+  .task .tt{flex:1;min-width:0;display:flex;flex-direction:column}
+  .task .t1{display:block;font-weight:600;font-size:13px}
+  .task .t2{display:block;font-size:11px;color:var(--text3)}
+  .task.done .t1{text-decoration:line-through;color:var(--text3)}
+  .time{font-size:11px;color:var(--text3);white-space:nowrap}
+  .chip{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .c-study{background:#2b3a7a;color:#a9baff} .c-review{background:#124a3a;color:#6ee7b7}
+  .c-drill{background:#5a3312;color:#fdba74} .c-exam{background:#5c1f2e;color:#fda4af}
+  html[data-t="light"] .c-study{background:#e0e7ff;color:#3730a3}
+  html[data-t="light"] .c-review{background:#d1fae5;color:#065f46}
+  html[data-t="light"] .c-drill{background:#ffedd5;color:#9a3412}
+  html[data-t="light"] .c-exam{background:#ffe4e6;color:#9f1239}
+  .addt{display:flex;align-items:center;gap:8px;padding:9px;color:var(--text3);font-size:12.5px;
+        border-top:1px dashed var(--border);margin-top:4px;cursor:pointer}
+
+  /* focus timer */
+  .timer{display:grid;place-items:center;padding:6px 0 12px}
+  .ring{position:relative;width:168px;height:168px}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .mid{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+  .ring .mid b{display:block;font-size:31px;font-weight:800;letter-spacing:-.02em}
+  .ring .mid span{font-size:11.5px;color:var(--text3)}
+  .trow{display:flex;gap:10px;justify-content:center;margin-top:14px}
+  .btn{padding:9px 18px;border-radius:11px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;
+       border:none;cursor:pointer;display:flex;align-items:center;gap:7px}
+  .btn.ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+  .btn.sm{padding:6px 12px;font-size:11.5px;border-radius:9px}
+
+  /* readiness */
+  .rr{padding:11px 0;border-bottom:1px solid var(--border)}
+  .rr:last-child{border-bottom:none}
+  .rr .r1{display:flex;align-items:center;gap:9px}
+  .rr .rname{display:block;font-weight:700;font-size:12.5px}
+  .rr .rsub{font-size:11px;color:var(--text3)}
+  .rr .rnum{margin-left:auto;text-align:right}
+  .rr .rnum b{font-size:15px;font-weight:800}
+  .weak{font-size:10.5px;color:var(--amber);font-weight:600}
+  .ract{display:flex;gap:7px;align-items:center;margin-top:7px}
+
+  /* course cards */
+  .cc-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
+  .cbox{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface2)}
+  .cbox .cap{height:56px;display:grid;place-items:center;font-size:22px}
+  .cbox .cbody{padding:10px 11px}
+  .cbox .ct{font-size:12.5px;font-weight:700;line-height:1.25;margin-bottom:2px}
+  .cbox .cs{font-size:10.5px;color:var(--text3)}
+
+  /* heatmap */
+  .heat{display:grid;grid-template-rows:repeat(7,12px);grid-auto-flow:column;grid-auto-columns:12px;
+        gap:3px;justify-content:space-between;overflow-x:auto}
+  .heat i{width:12px;height:12px;border-radius:3px;background:var(--surface3);display:block}
+  .lg{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text3);margin-top:9px}
+  .lg i{width:11px;height:11px;border-radius:3px;display:block}
+
+  /* misc lists */
+  .li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .li:last-child{border-bottom:none}
+  .li .ii{width:30px;height:30px;border-radius:9px;background:var(--surface2);display:grid;place-items:center;font-size:14px}
+  .li .lt{flex:1;min-width:0}
+  .li .l1{font-size:12.5px;font-weight:600}
+  .li .l2{font-size:11px;color:var(--text3)}
+  .li .l3{font-size:10.5px;color:var(--text3);white-space:nowrap}
+  .pri{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .pri:last-child{border-bottom:none}
+  .pn{width:22px;height:22px;border-radius:7px;background:var(--surface3);display:grid;place-items:center;
+      font-size:11px;font-weight:800;color:var(--text2)}
+  .tag{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:6px}
+  .t-hi{background:#5c1f2e;color:#fda4af} .t-md{background:#5a3312;color:#fdba74}
+  html[data-t="light"] .t-hi{background:#ffe4e6;color:#9f1239} html[data-t="light"] .t-md{background:#ffedd5;color:#9a3412}
+  .badge{display:grid;place-items:center;gap:5px;text-align:center}
+  .badge .bi{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:21px;
+             background:var(--surface2);border:1px solid var(--border)}
+  .badge .bt{font-size:10.5px;font-weight:700} .badge .bs{font-size:9.5px;color:var(--text3)}
+  .week{display:flex;gap:9px;align-items:center;justify-content:space-between;margin-top:10px}
+  .wd{text-align:center}
+  .wd .wc{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;
+          background:var(--surface3);color:var(--text3)}
+  .wd .wc.on{background:var(--green);color:#062b1e;font-weight:800}
+  .wd .wl{font-size:10px;color:var(--text3);margin-top:4px}
+  .sched{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--border);align-items:center}
+  .sched:last-child{border-bottom:none}
+  .sd{width:34px;text-align:center}
+  .sd b{display:block;font-size:14px;font-weight:800;line-height:1} .sd span{font-size:9.5px;color:var(--text3)}
+  .sbar{width:3px;height:30px;border-radius:2px}
+  .note{background:var(--accent-bg);border:1px dashed var(--accent);border-radius:12px;padding:11px 13px;
+        font-size:12px;color:var(--text2);margin-top:14px}
+  .note b{color:var(--accent2)}
+  @media(max-width:1100px){.g2{grid-template-columns:1fr}.g4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:820px){.side{display:none}.main{padding:14px}.hquote{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="side">
+    <div class="brand"><span class="mk">📘</span> Study Hub</div>
+
+    <div class="sgroup">LEARN</div>
+    <div class="snav on"><span class="ic">🏠</span> Today</div>
+    <div class="snav"><span class="ic">📚</span> Courses</div>
+    <div class="snav"><span class="ic">📅</span> Planner</div>
+    <div class="snav"><span class="ic">🃏</span> Flashcards</div>
+    <div class="snav"><span class="ic">📝</span> Notes</div>
+
+    <div class="sgroup">STUDY TOOLS</div>
+    <div class="snav"><span class="ic">🎯</span> Review missed</div>
+    <div class="snav"><span class="ic">⏱️</span> Focus timer</div>
+    <div class="snav"><span class="ic">🔍</span> Search <span style="margin-left:auto;font-size:10px;color:var(--text3)">⌘K</span></div>
+    <div class="snav"><span class="ic">📈</span> Progress</div>
+    <div class="snav"><span class="ic">✏️</span> Annotations</div>
+
+    <div class="sgroup">ACTIVE COURSES</div>
+    <div class="ccard"><span class="cc" style="background:#e0524a">🖥️</span><span class="cn">
+      <span class="code">D684</span><span class="cs">Intro to Computer Science</span>
+      <span class="mini"><i style="width:74%;background:#e0524a"></i></span></span><span class="pct">74%</span></div>
+    <div class="ccard"><span class="cc" style="background:#3f9d6d">➗</span><span class="cn">
+      <span class="code">C959</span><span class="cs">Discrete Math I</span>
+      <span class="mini"><i style="width:58%;background:#3f9d6d"></i></span></span><span class="pct">58%</span></div>
+    <div class="ccard"><span class="cc" style="background:#c9761f">☕</span><span class="cn">
+      <span class="code">D286</span><span class="cs">Java Fundamentals</span>
+      <span class="mini"><i style="width:31%;background:#c9761f"></i></span></span><span class="pct">31%</span></div>
+    <div class="ccard"><span class="cc" style="background:#5b6ee0">🌿</span><span class="cn">
+      <span class="code">D197</span><span class="cs">Version Control</span>
+      <span class="mini"><i style="width:42%;background:#5b6ee0"></i></span></span><span class="pct">42%</span></div>
+    <div class="ccard"><span class="cc" style="background:#9a4fd0">🔗</span><span class="cn">
+      <span class="code">C960</span><span class="cs">Discrete Math II</span>
+      <span class="mini"><i style="width:12%;background:#9a4fd0"></i></span></span><span class="pct">12%</span></div>
+    <div class="snav" style="margin-top:6px;font-size:12px">View all 56 courses →</div>
+
+    <div class="qcap">⚡ Quick capture</div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="top">
+      <h1>Today</h1>
+      <span class="lbl">Thursday, 13 August</span>
+      <span class="spacer"></span>
+      <span class="tbtn" onclick="tog()" title="Light / dark">🌓</span>
+      <span class="tbtn">🔔</span>
+      <span class="avatar"><span class="ab">N</span>
+        <span><span style="font-size:12px;font-weight:700;display:block;line-height:1.1">Natasha</span>
+        <span style="font-size:10px;color:var(--text3)">12-day streak</span></span></span>
+    </div>
+
+    <!-- hero -->
+    <div class="hero">
+      <div>
+        <h2>Good evening, Natasha 👋</h2>
+        <p>D684 is 74% ready. Two weak topics left before your retake.</p>
+      </div>
+      <div class="hquote">“The exam rewards the topics you avoid. Do those first.”</div>
+    </div>
+
+    <!-- stat tiles -->
+    <div class="grid g4" style="margin-bottom:14px">
+      <div class="card stat"><span class="lbl">STUDY TIME</span><div class="v">1h 20m</div>
+        <div class="sub">Daily goal: 3h</div><div class="bar"><i style="width:44%;background:var(--accent)"></i></div></div>
+      <div class="card stat"><span class="lbl">QUESTIONS</span><div class="v">18 <span style="font-size:15px;color:var(--text3)">/ 40</span></div>
+        <div class="sub">Daily goal: 40</div><div class="bar"><i style="width:45%;background:var(--green)"></i></div></div>
+      <div class="card stat"><span class="lbl">COURSES IN PROGRESS</span><div class="v">5</div>
+        <div class="sub">Overall: 42%</div><div class="bar"><i style="width:42%;background:var(--blue)"></i></div></div>
+      <div class="card stat"><span class="lbl">🔥 CURRENT STREAK</span><div class="v">12 <span style="font-size:15px;color:var(--text3)">days</span></div>
+        <div class="sub">Best: 21 days</div><div class="bar"><i style="width:57%;background:var(--amber)"></i></div></div>
+    </div>
+
+    <div class="grid g2" style="margin-bottom:14px">
+      <!-- LEFT COLUMN -->
+      <div class="grid" style="gap:14px">
+
+        <!-- today's plan -->
+        <div class="card">
+          <div class="ch"><h3>Today's Plan</h3><span class="more">⚙ Customize</span></div>
+          <div class="task done"><span class="cb done"></span><span class="tt">
+            <span class="t1">D684 — Boolean logic, gates &amp; De Morgan</span><span class="t2">Unit 4 · 32 questions</span></span>
+            <span class="time">9:00 – 10:00</span><span class="chip c-study">Study</span></div>
+          <div class="task"><span class="cb"></span><span class="tt">
+            <span class="t1">Review missed — D684 weak spots</span><span class="t2">14 cards due</span></span>
+            <span class="time">10:15 – 10:45</span><span class="chip c-review">Review</span></div>
+          <div class="task"><span class="cb"></span><span class="tt">
+            <span class="t1">D286 — Unit 5 arrays drill</span><span class="t2">Newly filled: 40 questions</span></span>
+            <span class="time">1:00 – 2:00</span><span class="chip c-drill">Drill</span></div>
+          <div class="task"><span class="cb"></span><span class="tt">
+            <span class="t1">D684 Timed Mock OA</span><span class="t2">60 questions · 90 min</span></span>
+            <span class="time">7:00 – 8:30</span><span class="chip c-exam">Exam</span></div>
+          <div class="addt">＋ Add task<span class="spacer"></span><span style="margin-left:auto">4 tasks</span></div>
+        </div>
+
+        <!-- exam readiness -->
+        <div class="card">
+          <div class="ch"><h3>Exam Readiness</h3><span class="more">🗓 Schedule exam</span></div>
+          <div class="rr"><div class="r1">
+            <span><span class="rname">D684 — Intro to Computer Science</span>
+            <span class="rsub" style="display:block">Retake booked · 9 days away</span></span>
+            <span class="rnum"><b style="color:var(--green)">74%</b><span class="weak" style="display:block">2 weak topics</span></span></div>
+            <div class="bar"><i style="width:74%;background:var(--green)"></i></div>
+            <div class="ract"><button class="btn sm ghost">⏱ Timed Mock OA</button><button class="btn sm">Study weak spots</button></div></div>
+          <div class="rr"><div class="r1">
+            <span><span class="rname">C959 — Discrete Math I</span><span class="rsub" style="display:block">2,279 questions · 60 figures</span></span>
+            <span class="rnum"><b style="color:var(--green)">58%</b><span class="weak" style="display:block">1 weak topic</span></span></div>
+            <div class="bar"><i style="width:58%;background:var(--green)"></i></div></div>
+          <div class="rr"><div class="r1">
+            <span><span class="rname">D286 — Java Fundamentals</span><span class="rsub" style="display:block">4,255 questions · 36 figures</span></span>
+            <span class="rnum"><b style="color:var(--amber)">31%</b><span class="weak" style="display:block">6 weak topics</span></span></div>
+            <div class="bar"><i style="width:31%;background:var(--amber)"></i></div></div>
+          <div class="rr"><div class="r1">
+            <span><span class="rname">D197 — Version Control</span><span class="rsub" style="display:block">Not yet scheduled</span></span>
+            <span class="rnum"><b style="color:var(--amber)">42%</b><span class="weak" style="display:block">3 weak topics</span></span></div>
+            <div class="bar"><i style="width:42%;background:var(--amber)"></i></div></div>
+        </div>
+
+        <!-- continue learning -->
+        <div class="card">
+          <div class="ch"><h3>Pick up where you left off</h3><span class="more">View all ›</span></div>
+          <div class="cc-row">
+            <div class="cbox"><div class="cap" style="background:linear-gradient(135deg,#e0524a,#a12f2a)">🖥️</div>
+              <div class="cbody"><div class="ct">D684 · Unit 4</div><div class="cs">Boolean logic</div>
+                <div class="mini" style="margin-top:6px"><i style="width:74%;background:#e0524a"></i></div>
+                <div class="cs" style="margin-top:4px">10 min left</div></div></div>
+            <div class="cbox"><div class="cap" style="background:linear-gradient(135deg,#3f9d6d,#1f6b47)">➗</div>
+              <div class="cbody"><div class="ct">C959 · Sets</div><div class="cs">Relations &amp; functions</div>
+                <div class="mini" style="margin-top:6px"><i style="width:58%;background:#3f9d6d"></i></div>
+                <div class="cs" style="margin-top:4px">15 min left</div></div></div>
+            <div class="cbox"><div class="cap" style="background:linear-gradient(135deg,#c9761f,#8a4c10)">☕</div>
+              <div class="cbody"><div class="ct">D286 · Unit 5</div><div class="cs">Arrays</div>
+                <div class="mini" style="margin-top:6px"><i style="width:31%;background:#c9761f"></i></div>
+                <div class="cs" style="margin-top:4px">20 min left</div></div></div>
+            <div class="cbox"><div class="cap" style="background:linear-gradient(135deg,#5b6ee0,#3448ad)">🌿</div>
+              <div class="cbody"><div class="ct">D197 · Branching</div><div class="cs">Merge vs rebase</div>
+                <div class="mini" style="margin-top:6px"><i style="width:42%;background:#5b6ee0"></i></div>
+                <div class="cs" style="margin-top:4px">8 min left</div></div></div>
+          </div>
+        </div>
+
+        <!-- streak heatmap -->
+        <div class="card">
+          <div class="ch"><h3>90-day study streak</h3><span class="more">12 days running</span></div>
+          <div class="heat" id="heat"></div>
+          <div class="lg">Less <i style="background:var(--surface3)"></i><i style="background:#3a2f6b"></i>
+            <i style="background:#5b46b8"></i><i style="background:#7c6bf5"></i><i style="background:#a996ff"></i> More
+            <span class="spacer" style="flex:1"></span><span>Today</span></div>
+        </div>
+
+        <!-- weekly schedule -->
+        <div class="card">
+          <div class="ch"><h3>This week</h3><span class="more">Open planner ›</span></div>
+          <div class="sched"><span class="sd"><b>13</b><span>THU</span></span><span class="sbar" style="background:#e0524a"></span>
+            <span class="lt"><div class="l1">D684 Boolean logic + mock OA</div><div class="l2">Study · 2h 30m planned</div></span>
+            <span class="l3">Today</span></div>
+          <div class="sched"><span class="sd"><b>14</b><span>FRI</span></span><span class="sbar" style="background:#c9761f"></span>
+            <span class="lt"><div class="l1">D286 Units 4–5 drill</div><div class="l2">Drill · 1h 30m planned</div></span>
+            <span class="l3">10:00</span></div>
+          <div class="sched"><span class="sd"><b>16</b><span>SUN</span></span><span class="sbar" style="background:#3f9d6d"></span>
+            <span class="lt"><div class="l1">C959 relations &amp; graphs</div><div class="l2">Study · 2h planned</div></span>
+            <span class="l3">14:00</span></div>
+          <div class="sched"><span class="sd"><b>22</b><span>FRI</span></span><span class="sbar" style="background:#f87171"></span>
+            <span class="lt"><div class="l1">D684 Objective Assessment</div><div class="l2">Exam day — retake</div></span>
+            <span class="l3">09:00</span></div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="grid" style="gap:14px">
+
+        <!-- focus timer -->
+        <div class="card">
+          <div class="ch"><h3>Focus Timer</h3><span class="more">⚙ Customize</span></div>
+          <div class="timer"><div class="ring">
+            <svg width="168" height="168"><circle cx="84" cy="84" r="72" fill="none" stroke="var(--surface3)" stroke-width="11"/>
+              <circle cx="84" cy="84" r="72" fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round"
+                      stroke-dasharray="452" stroke-dashoffset="130"/></svg>
+            <div class="mid"><div><b>25:00</b><span>Focus</span></div></div></div></div>
+          <div class="trow"><button class="btn">▶ Start</button><button class="btn ghost">↺</button></div>
+          <div style="display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <span class="lbl">Pomodoro · 25m + 5m</span><span class="lbl">Sessions today <b style="color:var(--text)">2 / 6</b></span></div>
+        </div>
+
+        <!-- top priorities -->
+        <div class="card">
+          <div class="ch"><h3>Top priorities</h3><span class="more">Edit</span></div>
+          <div class="pri"><span class="pn">1</span><span class="lt"><div class="l1">D684 weak spots: gates + recursion</div>
+            <div class="l2">Blocks your retake</div></span><span class="tag t-hi">HIGH</span></div>
+          <div class="pri"><span class="pn">2</span><span class="lt"><div class="l1">Finish D286 Unit 5</div>
+            <div class="l2">Due today</div></span><span class="tag t-hi">HIGH</span></div>
+          <div class="pri"><span class="pn">3</span><span class="lt"><div class="l1">C959 relations review</div>
+            <div class="l2">Due Aug 16</div></span><span class="tag t-md">MEDIUM</span></div>
+        </div>
+
+        <!-- quick tools -->
+        <div class="card">
+          <div class="ch"><h3>Quick tools</h3></div>
+          <div class="li"><span class="ii">🃏</span><span class="lt"><div class="l1">Flashcards</div><div class="l2">14 due today</div></span><span class="l3">›</span></div>
+          <div class="li"><span class="ii">🎯</span><span class="lt"><div class="l1">Review missed</div><div class="l2">38 in the pile</div></span><span class="l3">›</span></div>
+          <div class="li"><span class="ii">⏱️</span><span class="lt"><div class="l1">Timed mock OA</div><div class="l2">Any course</div></span><span class="l3">›</span></div>
+          <div class="li"><span class="ii">✏️</span><span class="lt"><div class="l1">My annotations</div><div class="l2">Pen &amp; highlighter</div></span><span class="l3">›</span></div>
+          <div class="li"><span class="ii">📊</span><span class="lt"><div class="l1">Progress hub</div><div class="l2">All 56 courses</div></span><span class="l3">›</span></div>
+        </div>
+
+        <!-- upcoming -->
+        <div class="card">
+          <div class="ch"><h3>Upcoming</h3><span class="more">🗓 Calendar</span></div>
+          <div class="li"><span class="ii">📝</span><span class="lt"><div class="l1">D684 Timed Mock OA</div>
+            <div class="l2">Tonight, 7:00 PM</div></span><button class="btn sm">Start</button></div>
+          <div class="li"><span class="ii">📚</span><span class="lt"><div class="l1">D286 Unit 5 quiz</div>
+            <div class="l2">Tomorrow, 10:00 AM</div></span><button class="btn sm ghost">Open</button></div>
+          <div class="li"><span class="ii">🎓</span><span class="lt"><div class="l1">D684 OA — retake</div>
+            <div class="l2">Fri Aug 22, 9:00 AM</div></span><span class="l3">9 days</span></div>
+        </div>
+
+        <!-- this week's streak -->
+        <div class="card">
+          <div class="ch"><h3>Current streak</h3></div>
+          <div style="display:flex;align-items:center;gap:13px">
+            <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#f59e0b,#ef4444);
+                        display:grid;place-items:center;font-size:19px;font-weight:800;color:#fff">12</div>
+            <div><div style="font-weight:800;font-size:15px">12 days in a row</div>
+              <div class="lbl">Keep it going ⚡ Best: 21</div></div></div>
+          <div class="week">
+            <span class="wd"><span class="wc on">✓</span><span class="wl">M</span></span>
+            <span class="wd"><span class="wc on">✓</span><span class="wl">T</span></span>
+            <span class="wd"><span class="wc on">✓</span><span class="wl">W</span></span>
+            <span class="wd"><span class="wc on">✓</span><span class="wl">T</span></span>
+            <span class="wd"><span class="wc on">✓</span><span class="wl">F</span></span>
+            <span class="wd"><span class="wc on">✓</span><span class="wl">S</span></span>
+            <span class="wd"><span class="wc">·</span><span class="wl">S</span></span>
+          </div>
+        </div>
+
+        <!-- achievements -->
+        <div class="card">
+          <div class="ch"><h3>Achievements</h3><span class="more">View all ›</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
+            <div class="badge"><span class="bi">🌟</span><span class="bt">First step</span><span class="bs">1 lesson</span></div>
+            <div class="badge"><span class="bi">🔥</span><span class="bt">Week warrior</span><span class="bs">7-day streak</span></div>
+            <div class="badge"><span class="bi">🏆</span><span class="bt">Quiz master</span><span class="bs">90%+ score</span></div>
+            <div class="badge" style="opacity:.4"><span class="bi">🎓</span><span class="bt">OA passed</span><span class="bs">locked</span></div>
+          </div>
+        </div>
+
+        <!-- recent activity -->
+        <div class="card">
+          <div class="ch"><h3>Recent activity</h3></div>
+          <div class="li"><span class="ii">✅</span><span class="lt"><div class="l1">Completed Unit 4 lesson</div>
+            <div class="l2">D684 · Boolean logic</div></span><span class="l3">2h ago</span></div>
+          <div class="li"><span class="ii">🎯</span><span class="lt"><div class="l1">Scored 92% on a quiz</div>
+            <div class="l2">C959 · Set operations</div></span><span class="l3">Yesterday</span></div>
+          <div class="li"><span class="ii">🔥</span><span class="lt"><div class="l1">Earned “Week warrior”</div>
+            <div class="l2">7-day streak</div></span><span class="l3">2 days ago</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Two things I changed on purpose.</b> The mock-ups show a <b>leaderboard</b> and a <b>community feed</b> — those need other
+      students, and your app is a single-user offline PWA, so I replaced that space with <b>Top priorities</b> and
+      <b>Personal bests</b> (your own streak record), which use the same real estate for something that actually works offline.
+      Everything else from both screens is here. On phone and iPad the sidebar collapses to the bottom tab bar you already have —
+      the two-column grid stacks into one.
+    </div>
+  </main>
+</div>
+
+<script>
+  function tog(){var h=document.documentElement;h.dataset.t = h.dataset.t==='light'?'dark':'light';}
+  // deterministic-looking heatmap: 13 weeks x 7 days, denser toward today
+  (function(){
+    var h=document.getElementById('heat'), cols=['var(--surface3)','#3a2f6b','#5b46b8','#7c6bf5','#a996ff'], s=7;
+    for(var i=0;i<91;i++){
+      s=(s*1103515245+12345)%2147483648;
+      var r=(s/2147483648), bias=i/91, lvl=0;
+      if(r < 0.28+bias*0.55) lvl=1+Math.floor(r*4*(0.4+bias));
+      if(i>=84) lvl=Math.max(lvl,3);            // the current 12-day streak
+      if(i>=79) lvl=Math.max(lvl,2);
+      lvl=Math.min(lvl,4);
+      var e=document.createElement('i'); e.style.background=cols[lvl]; h.appendChild(e);
+    }
+  })();
+</script>
+</body>
+</html>
