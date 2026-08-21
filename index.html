@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.450">
+<meta name="app-build" content="18.451">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -129367,14 +129367,11 @@ gannoUpdateLiveStroke = function(){
   var c = ganno.current;
   if (!c || (c.type !== 'pen' && c.type !== 'highlighter') || !ganno.svg) return _upd();
   try {
-    // First move of the stroke: let the original create the SVG live element
-    // (so pointer-up can finalize it in place, O(1)), then blank it - the
-    // canvas below is the only thing visible until the pen lifts.
-    if (!c.__pcInit) {
-      c.__pcInit = 1;
-      _upd();
-      if (ganno.liveEl) ganno.liveEl.setAttribute('d', '');
-    }
+    // NOTHING touches the SVG while the stroke is in progress - creating the
+    // live element at pen-down repainted the whole document-sized layer the
+    // instant the pen touched, which she felt as a sticky dead start on
+    // every stroke (391 strokes on the page = expensive repaint). The
+    // committed path is created at pen lift instead (see the UP wrapper).
     ensure();
     var dpr = window.devicePixelRatio || 1;
     var w = window.innerWidth, h = window.innerHeight;
@@ -129408,10 +129405,19 @@ gannoUpdateLiveStroke = function(){
       cx.strokeStyle = (typeof adaptColor === 'function') ? adaptColor(c.color) : (c.color || '#333');
       cx.globalAlpha = 1;
     }
-    // one path per redraw: no per-segment alpha stacking at the joints
+    // one path per redraw (no per-segment alpha stacking), smoothed through
+    // midpoint quadratics so the live line matches the committed ink instead
+    // of visibly changing shape at pen lift
     cx.beginPath();
     cx.moveTo(pts[0].x, pts[0].y);
-    for (var i = 1; i < pts.length; i++) cx.lineTo(pts[i].x, pts[i].y);
+    if (pts.length < 3) {
+      for (var i = 1; i < pts.length; i++) cx.lineTo(pts[i].x, pts[i].y);
+    } else {
+      for (var j = 1; j < pts.length - 1; j++) {
+        cx.quadraticCurveTo(pts[j].x, pts[j].y, (pts[j].x + pts[j + 1].x) / 2, (pts[j].y + pts[j + 1].y) / 2);
+      }
+      cx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    }
     cx.stroke();
     cx.globalAlpha = 1;
   } catch (e) {
@@ -129423,6 +129429,35 @@ gannoUpdateLiveStroke = function(){
 
 var _up = gannoPointerUp;
 gannoPointerUp = function(e){
+  // Create the committed SVG path NOW, at pen lift, so the original handler
+  // finalizes it in place (its O(1) path) - one document-layer paint per
+  // stroke, and it lands while the pen is up instead of at the start of the
+  // next stroke. Mirrors the original live-element styling exactly.
+  try {
+    var c = ganno.current;
+    if (c && (c.type === 'pen' || c.type === 'highlighter') && ganno.svg &&
+        (!ganno.liveEl || ganno.liveEl.parentNode !== ganno.svg)) {
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke', adaptColor(c.color));
+      var baseW = (c.width || 3) * ((ganno.hw && ganno.hw.widthScale) || 1);
+      path.setAttribute('stroke-width', c.type === 'highlighter' ? baseW * 5 : baseW);
+      if (c.type === 'highlighter') {
+        path.setAttribute('stroke', (typeof gannoNeonHL === 'function') ? gannoNeonHL(c.color) : c.color);
+        if ((typeof pageIsDark === 'function') && pageIsDark()) {
+          path.setAttribute('stroke-opacity', '0.34');
+          path.setAttribute('style', 'mix-blend-mode: screen;');
+        } else {
+          path.setAttribute('stroke-opacity', '0.38');
+          path.setAttribute('style', 'mix-blend-mode: multiply;');
+        }
+      }
+      ganno.svg.appendChild(path);
+      ganno.liveEl = path;
+    }
+  } catch (e3) {}
   try { return _up(e); }
   finally { try { hidePreview(); } catch (e2) {} }
 };
