@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.452">
+<meta name="app-build" content="18.453">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -36701,9 +36701,17 @@ function gannoEnsureSvg() {
  document.body.scrollWidth,
  window.innerWidth
  );
- svg.setAttribute('viewBox', `0 0 ${docW} ${docH}`);
- svg.style.width = docW + 'px';
- svg.style.height = docH + 'px';
+ // ONLY write when the value actually changes. Re-writing width/height or
+ // viewBox on this overlay invalidates the whole surface - which on her
+ // landscape iPad is 36 MEGAPIXELS (ovMP:36.1 in her diagnostics) - and
+ // forces the device to re-rasterize all of it. This runs on every lesson
+ // render via gannoSetActive, so the page was paying a full repaint of a
+ // 36MP layer just to re-assert numbers that had not changed.
+ var _vbWant = '0 0 ' + docW + ' ' + docH;
+ if (svg.getAttribute('viewBox') !== _vbWant) svg.setAttribute('viewBox', _vbWant);
+ var _wWant = docW + 'px', _hWant = docH + 'px';
+ if (svg.style.width !== _wWant) svg.style.width = _wWant;
+ if (svg.style.height !== _hWant) svg.style.height = _hWant;
  ganno.svg = svg;
  return svg;
 }
