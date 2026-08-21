@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.453">
+<meta name="app-build" content="18.454">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -23143,11 +23143,78 @@ const pomo = {
  sessionStartTs: null,
  open: false, // sheet open
  beep: null,
+ // --- durable focus tracking (see pomoSaveLive / pomoRestoreLive) ---
+ endsAt: null,        // wall-clock ms when the current phase ends
+ workAccruedSec: 0,   // focus seconds banked this session, not yet logged
+ accrueFrom: null,    // wall-clock ms the current accrual window opened
+ topic: null,         // what she was studying when the session started
 };
+// Focus time used to live ONLY in the object above, and was written to
+// history only on a manual stop or a completed 25-minute cycle. Any refresh
+// or crash in between threw the elapsed time away - which on this app meant
+// losing focus time constantly. Everything below makes it survive.
+const POMO_LIVE = 'pomo:live';
+function pomoTopicNow(){
+ try {
+  if (typeof view === 'undefined' || !view) return null;
+  if (!view.courseId) return null;
+  return { courseId: view.courseId, chId: view.chId || null, secId: view.secId || null };
+ } catch (e) { return null; }
+}
+// Move banked focus time up to 'now'. Only work phases count - breaks do not.
+function pomoAccrue(){
+ const now = Date.now();
+ if (pomo.running && !pomo.paused && pomo.mode === 'work' && pomo.accrueFrom) {
+  const d = (now - pomo.accrueFrom) / 1000;
+  if (d > 0 && d < 86400) pomo.workAccruedSec += d;
+ }
+ pomo.accrueFrom = now;
+}
+let _pomoLastSave = 0;
+function pomoSaveLive(force){
+ try {
+  if (!pomo.running) { localStorage.removeItem(POMO_LIVE); return; }
+  const now = Date.now();
+  if (!force && now - _pomoLastSave < 5000) return;  // checkpoint every 5s
+  _pomoLastSave = now;
+  localStorage.setItem(POMO_LIVE, JSON.stringify({
+   v: 1, paused: pomo.paused, mode: pomo.mode, cycleNum: pomo.cycleNum,
+   endsAt: pomo.endsAt, remaining: pomo.remaining,
+   sessionStartTs: pomo.sessionStartTs,
+   workAccruedSec: pomo.workAccruedSec,
+   topic: pomo.topic, savedAt: now
+  }));
+ } catch (e) {}
+}
+function pomoBank(reason){
+ pomoAccrue();
+ const sec = Math.round(pomo.workAccruedSec);
+ pomo.workAccruedSec = 0;
+ if (sec >= 30) {
+  const rec = { type: 'pomodoro', durationSec: sec };
+  if (pomo.topic) { rec.courseId = pomo.topic.courseId; rec.chId = pomo.topic.chId; rec.secId = pomo.topic.secId; }
+  logSession(rec);
+  return sec;
+ }
+ return 0;
+}
 function pomoSetMode(mode) {
  pomo.mode = mode;
  const cfg = store.pomodoro;
  pomo.remaining = (mode === 'work' ? cfg.workMin : mode === 'longBreak' ? cfg.longBreakMin : cfg.breakMin) * 60;
+ // Absolute deadline, so the countdown stays true across throttling,
+ // backgrounding and reloads instead of drifting one tick at a time.
+ pomo.endsAt = Date.now() + pomo.remaining * 1000;
+ pomo.accrueFrom = Date.now();
+}
+// Single clock-derived tick. Never decrements a counter, so a throttled or
+// suspended tab cannot make the timer lose (or invent) time.
+function pomoTick() {
+ pomoAccrue();
+ if (pomo.endsAt) pomo.remaining = Math.max(0, Math.round((pomo.endsAt - Date.now()) / 1000));
+ if (pomo.remaining <= 0) pomoNextPhase();
+ pomoSaveLive();
+ pomoUpdateUI();
 }
 function pomoStart() {
  if (pomo.running && !pomo.paused) return;
@@ -23155,45 +23222,44 @@ function pomoStart() {
  pomoSetMode('work');
  pomo.cycleNum = 1;
  pomo.sessionStartTs = Date.now();
+ pomo.workAccruedSec = 0;
+ pomo.topic = pomoTopicNow();
  }
  pomo.running = true;
  pomo.paused = false;
+ pomo.accrueFrom = Date.now();
  if (pomo.intervalId) clearInterval(pomo.intervalId);
- pomo.intervalId = setInterval(() => {
- pomo.remaining -= 1;
- if (pomo.remaining <= 0) {
- pomoNextPhase();
- }
- pomoUpdateUI();
- }, 1000);
+ pomo.intervalId = setInterval(pomoTick, 1000);
+ pomoSaveLive(true);
  pomoUpdateUI();
 }
 function pomoPause() {
+ pomoAccrue();
+ if (pomo.endsAt) pomo.remaining = Math.max(0, Math.round((pomo.endsAt - Date.now()) / 1000));
+ pomo.endsAt = null;
  pomo.paused = true;
  if (pomo.intervalId) { clearInterval(pomo.intervalId); pomo.intervalId = null; }
+ pomoSaveLive(true);
  pomoUpdateUI();
 }
 function pomoResume() {
  if (!pomo.running) return pomoStart();
  pomo.paused = false;
+ pomo.endsAt = Date.now() + (pomo.remaining || 0) * 1000;
+ pomo.accrueFrom = Date.now();
  if (pomo.intervalId) clearInterval(pomo.intervalId);
- pomo.intervalId = setInterval(() => {
- pomo.remaining -= 1;
- if (pomo.remaining <= 0) pomoNextPhase();
- pomoUpdateUI();
- }, 1000);
+ pomo.intervalId = setInterval(pomoTick, 1000);
+ pomoSaveLive(true);
  pomoUpdateUI();
 }
 function pomoStop(silent) {
  if (pomo.intervalId) { clearInterval(pomo.intervalId); pomo.intervalId = null; }
- if (pomo.running && !silent) {
- // log session if work was started
- const cfg = store.pomodoro;
- const elapsedSec = pomo.sessionStartTs ? Math.round((Date.now() - pomo.sessionStartTs) / 1000) : 0;
- if (elapsedSec >= 60) {
- logSession({ type: 'pomodoro', durationSec: elapsedSec });
- toast(`Logged ${Math.round(elapsedSec/60)} min focus session`);
- }
+ if (pomo.running) {
+ // Bank the focus time actually accrued. The old code logged the whole wall
+ // span since the session started - which counted break time as focus AND
+ // double-counted every cycle that pomoNextPhase had already logged.
+ const sec = pomoBank('stop');
+ if (!silent && sec >= 60) toast(`Logged ${Math.round(sec/60)} min focus session`);
  }
  pomo.running = false;
  pomo.paused = false;
@@ -23201,15 +23267,19 @@ function pomoStop(silent) {
  pomo.mode = 'work';
  pomo.cycleNum = 1;
  pomo.sessionStartTs = null;
+ pomo.endsAt = null;
+ pomo.accrueFrom = null;
+ pomo.workAccruedSec = 0;
+ pomo.topic = null;
+ pomoSaveLive(true);
  pomoUpdateUI();
 }
 function pomoNextPhase() {
  const cfg = store.pomodoro;
  pomoBeep();
  if (pomo.mode === 'work') {
- // Log work as session
- const dur = cfg.workMin * 60;
- logSession({ type: 'pomodoro', durationSec: dur });
+ // Bank what was really focused, not a nominal workMin figure.
+ pomoBank('cycle');
  toast(`Work cycle complete! Take a break 🎉`);
  if (pomo.cycleNum >= cfg.cycles) {
  pomoSetMode('longBreak');
@@ -23258,13 +23328,18 @@ function pomoUpdateUI() {
  // Update sheet if open
  if (pomo.open) renderPomoSheet();
 }
-function logSession({ type = 'free', durationSec = 0, cards = 0, qs = 0 } = {}) {
+function logSession({ type = 'free', durationSec = 0, cards = 0, qs = 0, courseId = null, chId = null, secId = null } = {}) {
  if (durationSec < 30 && cards === 0 && qs === 0) return;
- store.sessions.push({
+ const rec = {
  ts: Date.now(),
  dayStamp: todayStamp(),
  type, durationSec, cards, qs,
- });
+ };
+ // Carry what was being studied, so focus time is attributable to a topic
+ // instead of being an anonymous block of minutes. Older records simply
+ // lack these keys; every reader treats them as optional.
+ if (courseId) { rec.courseId = courseId; rec.chId = chId; rec.secId = secId; }
+ store.sessions.push(rec);
  // keep last 1000 sessions
  if (store.sessions.length > 1000) store.sessions = store.sessions.slice(-1000);
  saveStore();
@@ -129510,6 +129585,106 @@ if (_down) {
   };
 }
 } catch (e) { if (window.console) console.error('[penCanvas]', e); }
+})();
+
+
+(function pomoDurable(){
+/* RECOVERING FOCUS TIME ACROSS A REFRESH OR CRASH.
+ *
+ * Reported: "every time I set my focus time when the page refreshes I lose
+ * how much time I spent on a topic." The timer lived only in memory and only
+ * wrote to history on a manual stop or a completed cycle, so every reload
+ * threw the elapsed time away. On an app that reloads as often as this one
+ * has been, that meant losing focus time constantly.
+ *
+ * A live session is now checkpointed to localStorage every 5 seconds and at
+ * every state change. On boot we read that checkpoint back:
+ *   - paused when saved      -> restore it paused, nothing accrues while away
+ *   - still running, phase not finished, and the gap is short (<= 5 min, the
+ *     signature of a crash-and-reload) -> resume the SAME session, credit the
+ *     gap as focus, keep counting against the original deadline
+ *   - phase finished while away, or a long gap -> close the session out and
+ *     BANK the time instead of discarding it, so nothing is silently lost
+ */
+try {
+if (typeof pomo !== 'object' || !pomo || typeof pomoUpdateUI !== 'function') return;
+if (window.__pomoDurable) return; window.__pomoDurable = true;
+
+var GRACE_SEC = 300;   // a reload gap up to 5 minutes is treated as continuous study
+
+function restore(){
+  var raw = null;
+  try { raw = localStorage.getItem(POMO_LIVE); } catch (e) { return; }
+  if (!raw) return;
+  var st;
+  try { st = JSON.parse(raw); } catch (e) { try { localStorage.removeItem(POMO_LIVE); } catch (e2) {} return; }
+  if (!st || st.v !== 1 || !st.savedAt) { try { localStorage.removeItem(POMO_LIVE); } catch (e) {} return; }
+
+  var now = Date.now();
+  var awaySec = Math.max(0, (now - st.savedAt) / 1000);
+
+  pomo.mode = st.mode || 'work';
+  pomo.cycleNum = st.cycleNum || 1;
+  pomo.sessionStartTs = st.sessionStartTs || now;
+  pomo.workAccruedSec = st.workAccruedSec || 0;
+  pomo.topic = st.topic || null;
+
+  // Saved while paused: the clock was already stopped, so nothing accrued.
+  if (st.paused) {
+    pomo.running = true; pomo.paused = true;
+    pomo.remaining = st.remaining || 0; pomo.endsAt = null; pomo.accrueFrom = null;
+    pomoUpdateUI();
+    return;
+  }
+
+  var phaseLeftAtSave = st.endsAt ? (st.endsAt - st.savedAt) / 1000 : 0;
+  var stillRunning = st.endsAt && now < st.endsAt && awaySec <= GRACE_SEC;
+
+  if (stillRunning) {
+    // Same session continues. Credit the gap she was away as focus time,
+    // and keep the ORIGINAL deadline so the countdown stays honest.
+    if (pomo.mode === 'work') pomo.workAccruedSec += awaySec;
+    pomo.running = true; pomo.paused = false;
+    pomo.endsAt = st.endsAt;
+    pomo.remaining = Math.max(0, Math.round((st.endsAt - now) / 1000));
+    pomo.accrueFrom = now;
+    if (pomo.intervalId) clearInterval(pomo.intervalId);
+    pomo.intervalId = setInterval(pomoTick, 1000);
+    pomoSaveLive(true);
+    pomoUpdateUI();
+    try { if (typeof toast === 'function' && awaySec > 3) toast('Focus session recovered - still running'); } catch (e) {}
+    return;
+  }
+
+  // Otherwise the session is over. Bank the time rather than lose it: credit
+  // whichever is smaller, the gap or the focus time left in the phase.
+  if (pomo.mode === 'work') {
+    pomo.workAccruedSec += Math.max(0, Math.min(awaySec, phaseLeftAtSave));
+  }
+  pomo.running = true; pomo.paused = false; pomo.accrueFrom = null;   // let pomoBank read it
+  var sec = pomoBank('restore');
+  pomo.running = false;
+  pomo.remaining = 0; pomo.mode = 'work'; pomo.cycleNum = 1;
+  pomo.sessionStartTs = null; pomo.endsAt = null; pomo.workAccruedSec = 0; pomo.topic = null;
+  try { localStorage.removeItem(POMO_LIVE); } catch (e) {}
+  pomoUpdateUI();
+  if (sec >= 60) {
+    try { if (typeof toast === 'function') toast('Recovered ' + Math.round(sec / 60) + ' min of focus time'); } catch (e) {}
+  }
+}
+
+// Checkpoint immediately whenever the app is about to be backgrounded or torn
+// down - these fire on iOS where 'unload' does not.
+function flush(){
+  try { if (pomo.running && !pomo.paused) { pomoAccrue(); pomoSaveLive(true); } } catch (e) {}
+}
+window.addEventListener('pagehide', flush);
+window.addEventListener('blur', flush);
+document.addEventListener('visibilitychange', function(){ if (document.hidden) flush(); });
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore);
+else setTimeout(restore, 0);
+} catch (e) { if (window.console) console.error('[pomoDurable]', e); }
 })();
 
 </script>
