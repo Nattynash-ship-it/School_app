@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.454">
+<meta name="app-build" content="18.455">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -128154,6 +128154,7 @@ window.__diag = function(){
     out.device = { standalone: !!(window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
                    ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
                    mem: navigator.deviceMemory || null,
+                   persisted: (window.__storagePersisted !== undefined ? window.__storagePersisted : null),
                    longtask: (function(){ try { return PerformanceObserver.supportedEntryTypes.indexOf('longtask') !== -1; } catch (e) { return false; } })() };
   } catch (e) {}
   return JSON.stringify(out);
@@ -128276,7 +128277,8 @@ window.__report = function(){
     var ua = navigator.userAgent || '';
     out.device = { standalone: !!(window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
                    ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
-                   mem: navigator.deviceMemory || null };
+                   mem: navigator.deviceMemory || null,
+                   persisted: (window.__storagePersisted !== undefined ? window.__storagePersisted : null) };
   } catch (e) {}
   return JSON.stringify(out);
 };
@@ -129685,6 +129687,30 @@ document.addEventListener('visibilitychange', function(){ if (document.hidden) f
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore);
 else setTimeout(restore, 0);
 } catch (e) { if (window.console) console.error('[pomoDurable]', e); }
+})();
+
+
+(function storageGuard(){
+/* WHY HER NOTES VANISHED. Between two diagnostic reports the app's entire
+ * localStorage shrank from 73KB to 2KB - not just annotations: quiz history,
+ * sessions, settings, all of it. The app never called
+ * navigator.storage.persist(), so its data was "best effort": iOS is free to
+ * purge it under storage pressure, and did. persist() asks the OS to exempt
+ * this origin from eviction; installed home-screen apps are normally granted
+ * it. The outcome is surfaced as window.__storagePersisted and rides along
+ * in every diagnostic report, so a denial is visible instead of silent.
+ */
+try {
+  if (!(navigator.storage && navigator.storage.persist)) { window.__storagePersisted = 'unsupported'; return; }
+  navigator.storage.persisted().then(function(already){
+    if (already) { window.__storagePersisted = true; return null; }
+    return navigator.storage.persist().then(function(granted){
+      window.__storagePersisted = !!granted;
+      if (granted && window.console) console.log('[storageGuard] persistent storage granted');
+      if (!granted && window.console) console.warn('[storageGuard] persistent storage DENIED - data remains evictable');
+    });
+  }).catch(function(){ window.__storagePersisted = 'error'; });
+} catch (e) { window.__storagePersisted = 'error'; }
 })();
 
 </script>
