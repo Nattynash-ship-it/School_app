@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v621';
+const CACHE = 'study-hub-v622';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -16,6 +16,7 @@ self.addEventListener('install', (event) => {
       Promise.all([
         cache.add(new Request('/', { cache: 'reload' })).catch(() => null),
         cache.add(new Request('/index.html', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-pack.json', { cache: 'reload' })).catch(() => null),
       ])
     )
   );
@@ -88,6 +89,27 @@ self.addEventListener('fetch', (event) => {
             .then((c) => c || caches.match('/'))
             .then((c) => c || new Response('Offline', { status: 503 }))
         )
+    );
+    return;
+  }
+
+  // CONTENT PACK: the 12MB course-content file. Its URL carries the app build
+  // as a query (?v=18.xxx), so a new deploy is a new URL - cache-first is safe
+  // and avoids re-downloading 12MB on every launch. Old entries die with the
+  // old cache when CACHE bumps.
+  if (url.pathname.endsWith('/content-pack.json')) {
+    // ignoreSearch: the install step precaches the plain URL while the app
+    // requests ?v=<build>. Safe within one cache generation - every deploy
+    // bumps CACHE which deletes the old cache wholesale, so a stale pack can
+    // never survive into a new build.
+    event.respondWith(
+      caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req).then((resp) => {
+        if (resp && resp.ok) {
+          const copy = resp.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy).catch(() => {}));
+        }
+        return resp;
+      }).catch(() => new Response('Offline', { status: 503 })))
     );
     return;
   }
