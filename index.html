@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.461">
+<meta name="app-build" content="18.462">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -129493,9 +129493,16 @@ function hidePreview(){
   if (!cv) return;
   cv.style.display = 'none';
   cv.style.mixBlendMode = '';
-  // width=0 releases the backing buffer (~16MB at 2x dpr) between strokes;
-  // the next stroke re-sizes it, which is cheap.
-  try { cv.width = 0; cv.height = 0; } catch (e) {}
+  /* Do NOT zero the buffer here. This used to do cv.width = 0 to hand ~16MB
+   * back between strokes - and it runs at pen-lift AND pen-down, so every
+   * stroke freed and reallocated a 16MB graphics buffer, twice. Desktop
+   * shrugs; iOS Safari's canvas accounting lags behind such churn, and her
+   * reload log showed SEVEN iOS memory-kills in 17 minutes, all while
+   * writing, with no freezes - the signature of graphics memory pressure.
+   * (Her own guess pointed here: "when you fixed the pencil".) A single
+   * stable 16MB buffer for the whole session is far cheaper than 16MB
+   * alloc/free per stroke. */
+  try { if (cx) { cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cv.width, cv.height); } } catch (e) {}
 }
 window.__penCanvasHide = hidePreview;
 
