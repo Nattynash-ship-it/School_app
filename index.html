@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.457">
+<meta name="app-build" content="18.458">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -23912,6 +23912,7 @@ function showOverflowMenu() {
  <button class="pomo-btn" data-act="cloud-sync" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);">☁ Cloud sync — study on any device</button>
  <button class="pomo-btn" data-act="sync-help" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.1); border-color: rgba(94,234,212,0.3);">⇄ Sync across devices — how?</button>
  <button class="pomo-btn" data-act="force-update" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.35);">⟳ Update app to latest &nbsp;<span style="opacity:.6; font-size:11px;">(${(document.querySelector('meta[name=app-build]')?.content || 'v?').split('-')[0]})</span></button>
+ <button class="pomo-btn" data-act="find-notes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(255,206,64,0.14); border-color: rgba(255,206,64,0.4);">🔎 Find my notes</button>
  <button class="pomo-btn" data-act="export" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↓ Export backup (JSON)</button>
  <button class="pomo-btn" data-act="email-backup" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">✉ Email backup to myself</button>
  <button class="pomo-btn" data-act="import" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↑ Import backup (JSON)</button>
@@ -36264,7 +36265,7 @@ function gannoRender(strokes, currentStroke) {
  if (!s) return;
  // Ink drawn in the other orientation is hidden (not deleted) until you
  // rotate back. Legacy strokes without a tag render in both, as before.
- if (s.orient && s.orient !== currentOrient) return;
+ if (!window.__inkShowAllOrients && s.orient && s.orient !== currentOrient) return;
  s = gannoReanchor(s, currentAnchor);
  const sy = (s.anchorY !== undefined) ? (s.anchorY - currentAnchorY) : 0;
  // Table type: draws a grid of rows × cols within a rectangle bounded by start/end
@@ -129889,6 +129890,200 @@ fab.textContent = '✨';
 fab.addEventListener('click', open);
 document.body.appendChild(fab);
 } catch (e) { if (window.console) console.error('[aiHelper]', e); }
+})();
+
+
+(function inkRescue(){
+/* "I lost all of my notes."
+ *
+ * Her diagnostics said otherwise: ink:4, inkKB:52 - four annotated pages and
+ * 52KB of stroke data still in storage, with persisted:true and 51MB used of
+ * a 36GB allowance. Nothing had been evicted (the freeze log, which lives in
+ * the same storage, still held entries from the night before).
+ *
+ * The likely reason ink goes invisible is in gannoRender:
+ *     if (s.orient && s.orient !== currentOrient) return;
+ * Ink drawn in portrait is HIDDEN (not deleted) in landscape and vice versa.
+ * Rotate the iPad and a page of notes silently empties.
+ *
+ * This panel makes the truth visible: every page that holds ink, how many
+ * strokes, which orientation they were drawn in, and a tap to go there. Plus
+ * one switch to show ink from both orientations at once, so hidden notes come
+ * back immediately (they may sit slightly off from where they were drawn,
+ * because the page lays out differently - visible and slightly off beats
+ * invisible when you are two days from an exam).
+ */
+try {
+if (window.__inkRescue) return; window.__inkRescue = true;
+
+var PFX = 'gsk:', LOGP = 'gsl:';
+
+function keys(){
+  var out = {}, i, k;
+  try {
+    for (i = 0; i < localStorage.length; i++) {
+      k = localStorage.key(i);
+      if (!k) continue;
+      if (k.indexOf(PFX) === 0) out[k.slice(PFX.length)] = 1;
+      else if (k.indexOf(LOGP) === 0) out[k.slice(LOGP.length)] = 1;
+    }
+  } catch (e) {}
+  try { Object.keys((typeof store === 'object' && store && store.gannoStrokes) || {}).forEach(function(rk){ out[rk] = 1; }); } catch (e) {}
+  return Object.keys(out);
+}
+
+function label(rk){
+  var p = String(rk).split('_');
+  var kind = p[0] || rk, cid = p[1] || '', ch = p[2] || '', sec = p[3] || '';
+  var title = '';
+  try {
+    if (cid && ch && sec && typeof getLesson === 'function') {
+      var L = getLesson(cid, ch, sec);
+      if (L && L.title) title = L.title;
+    }
+    if (!title && cid && typeof COURSES === 'object' && COURSES[cid]) {
+      var c = COURSES[cid];
+      var chap = (c.chapters || []).filter(function(x){ return x.id === ch; })[0];
+      if (chap) {
+        var scn = (chap.sections || []).filter(function(x){ return x.id === sec; })[0];
+        title = (scn && scn.title) || chap.title || '';
+      }
+    }
+  } catch (e) {}
+  if (!title) title = (kind === 'section' ? 'Lesson' : kind) + (sec ? ' ' + sec : '');
+  return { title: title, course: cid || '—', kind: kind, courseId: cid, chId: ch, secId: sec };
+}
+
+function audit(){
+  var rows = [], cur = (typeof gannoOrient === 'function') ? gannoOrient() : null;
+  keys().forEach(function(rk){
+    var st = [];
+    try { st = (typeof gannoGetStrokes === 'function') ? (gannoGetStrokes(rk) || []) : []; } catch (e) {}
+    if (!st.length) return;
+    var l = 0, p = 0, legacy = 0;
+    for (var i = 0; i < st.length; i++) {
+      var o = st[i] && st[i].orient;
+      if (o === 'l') l++; else if (o === 'p') p++; else legacy++;
+    }
+    var info = label(rk);
+    rows.push({ rk: rk, total: st.length, l: l, p: p, legacy: legacy,
+                hidden: cur === 'l' ? p : (cur === 'p' ? l : 0),
+                title: info.title, course: info.course, courseId: info.courseId,
+                chId: info.chId, secId: info.secId, kind: info.kind });
+  });
+  rows.sort(function(a, b){ return b.total - a.total; });
+  return { orientation: cur, pages: rows.length,
+           strokes: rows.reduce(function(a, r){ return a + r.total; }, 0),
+           hidden: rows.reduce(function(a, r){ return a + r.hidden; }, 0),
+           rows: rows };
+}
+window.__inkAudit = audit;
+
+function applyFlag(){
+  var on = false;
+  try { on = (typeof store === 'object' && store && store.inkShowAllOrients === true); } catch (e) {}
+  window.__inkShowAllOrients = on;
+  return on;
+}
+applyFlag();
+
+function open(){
+  var a = audit();
+  var on = applyFlag();
+  var back = document.createElement('div');
+  back.setAttribute('data-ink-rescue', '1');
+  back.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9700; display:flex; align-items:center; justify-content:center; padding:16px;';
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg,#fff); color:var(--text); border:1px solid var(--border-strong,var(--border)); border-radius:16px; width:min(620px,100%); max-height:82vh; overflow:auto; padding:18px 18px 14px; box-shadow:0 14px 44px rgba(0,0,0,0.35);';
+
+  var orientWord = a.orientation === 'l' ? 'landscape' : a.orientation === 'p' ? 'portrait' : 'unknown';
+  var head = '<div style="font-weight:800; font-size:17px; margin-bottom:4px;">🔎 Find my notes</div>' +
+    '<div style="font-size:13px; color:var(--text-3); margin-bottom:14px;">Your iPad is ' + orientWord +
+    ' right now. Ink is stored per page and tagged with the orientation it was drawn in.</div>' +
+    '<div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">' +
+      '<div style="flex:1; min-width:120px; background:var(--surface-2); border-radius:10px; padding:10px 12px;">' +
+        '<div style="font-size:22px; font-weight:800;">' + a.pages + '</div><div style="font-size:11.5px; color:var(--text-3);">pages with ink</div></div>' +
+      '<div style="flex:1; min-width:120px; background:var(--surface-2); border-radius:10px; padding:10px 12px;">' +
+        '<div style="font-size:22px; font-weight:800;">' + a.strokes + '</div><div style="font-size:11.5px; color:var(--text-3);">strokes saved</div></div>' +
+      '<div style="flex:1; min-width:120px; background:' + (a.hidden ? 'var(--warning-bg,var(--surface-2))' : 'var(--surface-2)') + '; border-radius:10px; padding:10px 12px;">' +
+        '<div style="font-size:22px; font-weight:800;">' + a.hidden + '</div><div style="font-size:11.5px; color:var(--text-3);">hidden by rotation</div></div>' +
+    '</div>';
+
+  var toggle = '<label style="display:flex; gap:10px; align-items:flex-start; background:var(--surface-2); border-radius:10px; padding:11px 12px; margin-bottom:14px; cursor:pointer;">' +
+    '<input type="checkbox" id="ink-all-orients"' + (on ? ' checked' : '') + ' style="margin-top:2px; width:18px; height:18px;">' +
+    '<span style="font-size:13px; line-height:1.5;"><b>Show ink from both orientations</b><br>' +
+    '<span style="color:var(--text-3);">Brings back notes drawn while the iPad was turned the other way. They may sit a little off from where you drew them, because the page lays out differently.</span></span></label>';
+
+  var list = '';
+  if (!a.rows.length) {
+    list = '<div style="font-size:13.5px; line-height:1.6; background:var(--surface-2); border-radius:10px; padding:12px 14px;">' +
+      'No ink found in storage on this device. If you have an exported backup file, use <b>↑ Import backup</b> in Settings to restore it.</div>';
+  } else {
+    list = '<div style="font-size:12px; color:var(--text-3); margin-bottom:6px;">Tap a page to open it</div>';
+    a.rows.forEach(function(r, idx){
+      var bits = [];
+      if (r.l) bits.push(r.l + ' landscape');
+      if (r.p) bits.push(r.p + ' portrait');
+      if (r.legacy) bits.push(r.legacy + ' untagged');
+      list += '<button data-go="' + idx + '" style="display:block; width:100%; text-align:left; margin-bottom:7px; padding:10px 12px; border-radius:10px; ' +
+        'border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer;">' +
+        '<div style="font-weight:700; font-size:13.5px;">' + String(r.title).replace(/</g, '&lt;').slice(0, 90) + '</div>' +
+        '<div style="font-size:11.5px; color:var(--text-3); margin-top:2px;">' + r.course + ' · ' + r.total + ' strokes · ' + bits.join(', ') +
+        (r.hidden ? ' · <b style="color:var(--warning,#b45309)">' + r.hidden + ' hidden now</b>' : '') + '</div></button>';
+    });
+  }
+
+  card.innerHTML = head + toggle + list +
+    '<button data-close="1" style="width:100%; margin-top:8px; padding:11px; border-radius:10px; border:none; background:var(--accent); color:var(--accent-text,#fff); font-weight:700; cursor:pointer;">Close</button>';
+  back.appendChild(card);
+  document.body.appendChild(back);
+
+  function close(){ try { back.remove(); } catch (e) {} }
+  back.addEventListener('click', function(e){ if (e.target === back) close(); });
+  card.querySelector('[data-close]').addEventListener('click', close);
+  var cb = card.querySelector('#ink-all-orients');
+  cb.addEventListener('change', function(){
+    try {
+      store.inkShowAllOrients = !!cb.checked;
+      saveStore();
+      applyFlag();
+      if (typeof gannoRender === 'function' && typeof gannoGetStrokes === 'function' && typeof ganno === 'object' && ganno) {
+        gannoRender(gannoGetStrokes(ganno.routeKey), null);
+      }
+      if (typeof toast === 'function') toast(cb.checked ? 'Showing ink from both orientations' : 'Showing only this orientation');
+    } catch (e) {}
+  });
+  card.querySelectorAll('[data-go]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var r = a.rows[parseInt(btn.getAttribute('data-go'), 10)];
+      if (!r) return;
+      close();
+      try {
+        if (r.kind === 'section' && r.courseId && r.chId && r.secId && typeof go === 'function') {
+          go({ name: 'section', courseId: r.courseId, chId: r.chId, secId: r.secId });
+        } else if (typeof toast === 'function') {
+          toast('That ink is on a ' + r.kind + ' screen — open it the normal way to see it.');
+        }
+      } catch (e) {}
+    });
+  });
+}
+window.__findMyNotes = open;
+
+// The settings sheet is rebuilt each time it opens, so bind by delegation
+// rather than to a specific button instance.
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if (!t || !t.closest) return;
+  var btn = t.closest('[data-act="find-notes"]');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { var sheet = btn.closest('.pomo-sheet, .settings-sheet'); if (sheet) sheet.remove(); } catch (e2) {}
+  try { document.querySelectorAll('.pomo-sheet').forEach(function(x){ x.remove(); }); } catch (e3) {}
+  open();
+}, true);
+} catch (e) { if (window.console) console.error('[inkRescue]', e); }
 })();
 
 </script>
