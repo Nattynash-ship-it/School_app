@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.455">
+<meta name="app-build" content="18.456">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -128155,6 +128155,7 @@ window.__diag = function(){
                    ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
                    mem: navigator.deviceMemory || null,
                    persisted: (window.__storagePersisted !== undefined ? window.__storagePersisted : null),
+                   storage: window.__storageEstimate || null,
                    longtask: (function(){ try { return PerformanceObserver.supportedEntryTypes.indexOf('longtask') !== -1; } catch (e) { return false; } })() };
   } catch (e) {}
   return JSON.stringify(out);
@@ -128278,7 +128279,8 @@ window.__report = function(){
     out.device = { standalone: !!(window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
                    ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
                    mem: navigator.deviceMemory || null,
-                   persisted: (window.__storagePersisted !== undefined ? window.__storagePersisted : null) };
+                   persisted: (window.__storagePersisted !== undefined ? window.__storagePersisted : null),
+                   storage: window.__storageEstimate || null };
   } catch (e) {}
   return JSON.stringify(out);
 };
@@ -129710,6 +129712,18 @@ try {
       if (!granted && window.console) console.warn('[storageGuard] persistent storage DENIED - data remains evictable');
     });
   }).catch(function(){ window.__storagePersisted = 'error'; });
+  // How much the app uses vs how much the OS will allow. Rides along in the
+  // diagnostic reports so "does it have enough storage" is a number, not a
+  // guess. (This app needs ~50MB: the shell + content pack in the service
+  // worker cache, plus well under 1MB of localStorage.)
+  if (navigator.storage.estimate) {
+    navigator.storage.estimate().then(function(est){
+      window.__storageEstimate = {
+        usageMB: Math.round((est.usage || 0) / 1048576),
+        quotaMB: Math.round((est.quota || 0) / 1048576)
+      };
+    }).catch(function(){});
+  }
 } catch (e) { window.__storagePersisted = 'error'; }
 })();
 
