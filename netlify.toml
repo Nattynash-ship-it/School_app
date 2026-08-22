@@ -1,0 +1,8 @@
+# The site is the repo root, published as-is (same as before this file existed).
+# The [functions] block bundles netlify/functions/* with esbuild so the
+# Anthropic SDK dependency is packaged into the AI helper function.
+[build]
+  publish = "."
+
+[functions]
+  node_bundler = "esbuild"
