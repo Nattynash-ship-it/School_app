@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.458">
+<meta name="app-build" content="18.459">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -128040,18 +128040,35 @@ try {
 } catch (e) {}
 
 try {
+  /* SUSPENSION vs REAL FREEZE. Resetting the clock on visibilitychange was
+   * not enough: timers queued while iOS had the app suspended fire on resume
+   * BEFORE the visibilitychange event is dispatched, so the tick sees the
+   * whole suspended gap and books it as a freeze. That is how a 21-second
+   * "freeze" reached a report on a build where the heaviest operation I can
+   * construct - rendering 600 strokes - measures 133ms.
+   *
+   * So any large gap is now held back and only counted if NO visibility
+   * change arrives in the next 400ms. Small gaps (under 2s) are counted
+   * immediately: they are real jank and far too short to be a suspension. */
+  var visSeq = 0;
+  document.addEventListener('visibilitychange', function(){ visSeq++; });
   var TICK = 250, lastTick = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   document.addEventListener('visibilitychange', function(){ lastTick = (typeof performance !== 'undefined' ? performance.now() : Date.now()); });
+  window.__visSeq = function(){ return visSeq; };
   setInterval(function(){
     var now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     var drift = now - lastTick - TICK;
     lastTick = now;
     // Backgrounded tabs throttle timers; that is not a freeze.
     if (document.hidden) return;
-    // A drift measured in minutes/hours is the iPad suspending the app
-    // (screen off, app switch), not a freeze. Counting those poisoned the
-    // blk numbers in her reports with 7-digit values.
-    if (drift > 40 && drift < 45000) { dBlocked += drift; if (drift > dLongest) dLongest = drift; }
+    if (drift <= 40 || drift >= 45000) return;
+    if (drift < 2000) { dBlocked += drift; if (drift > dLongest) dLongest = drift; return; }
+    (function(d, seq){
+      setTimeout(function(){
+        if (visSeq !== seq || document.hidden) return;   // it was a suspension
+        dBlocked += d; if (d > dLongest) dLongest = d;
+      }, 400);
+    })(drift, visSeq);
   }, TICK);
 } catch (e) {}
 
@@ -128266,7 +128283,17 @@ try {
     var now = Date.now(), drift = now - last - 1000;
     last = now;
     // Cap at 45s: beyond that it is the iPad suspending the app, not a stall.
-    if (drift >= 400 && drift < 45000 && !document.hidden) record('stall', drift);   // 1500ms only caught disasters; 400ms is a visible glitch
+    if (drift < 400 || drift >= 45000 || document.hidden) return;
+    if (drift < 2000) { record('stall', drift); return; }
+    // Large gap: hold it, and drop it if a visibility change lands right
+    // after - see the note in the drift sampler above.
+    (function(d, seq){
+      setTimeout(function(){
+        var now2 = (typeof window.__visSeq === 'function') ? window.__visSeq() : seq;
+        if (now2 !== seq || document.hidden) return;
+        record('stall', d);
+      }, 400);
+    })(drift, (typeof window.__visSeq === 'function') ? window.__visSeq() : 0);
   }, 1000);
 } catch (e) {}
 
