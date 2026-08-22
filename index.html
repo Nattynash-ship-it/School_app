@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.456">
+<meta name="app-build" content="18.457">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -129725,6 +129725,170 @@ try {
     }).catch(function(){});
   }
 } catch (e) { window.__storagePersisted = 'error'; }
+})();
+
+
+(function aiHelper(){
+/* BUILT-IN AI STUDY HELPER. A small chat panel that sends the conversation
+ * plus the lesson currently on screen to /.netlify/functions/helper, which
+ * holds the API key server-side and streams the answer back. Until the
+ * owner sets ANTHROPIC_API_KEY in Netlify, the function answers 503 and
+ * this panel shows one-time setup instructions instead of a chat.
+ * The transcript lives in memory only - it is never written to storage.
+ */
+try {
+if (window.__aiHelper) return; window.__aiHelper = true;
+
+var css = document.createElement('style');
+css.textContent = [
+'.aih-fab { position: fixed; right: 18px; bottom: 172px; width: 46px; height: 46px; border-radius: 50%;',
+'  border: 1.5px solid var(--border-strong, var(--border)); background: var(--surface); color: var(--text);',
+'  font-size: 21px; z-index: 45; cursor: pointer; box-shadow: var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));',
+'  display: flex; align-items: center; justify-content: center; }',
+'.aih-back { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 9600; }',
+'.aih-sheet { position: fixed; right: 12px; bottom: 12px; z-index: 9601; width: min(560px, calc(100vw - 24px));',
+'  max-height: min(72vh, 640px); display: flex; flex-direction: column;',
+'  background: var(--bg, #ffffff); color: var(--text);',
+'  border: 1px solid var(--border-strong, var(--border)); border-radius: 16px;',
+'  box-shadow: 0 12px 40px rgba(0,0,0,0.3); overflow: hidden; }',
+'/* --surface is translucent glass in several themes; the chat needs an opaque',
+'   ground so lesson text cannot bleed through, hence var(--bg). */',
+'.aih-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border);',
+'  font-weight: 700; font-size: 14px; }',
+'.aih-head .aih-x { margin-left: auto; border: none; background: none; color: var(--text-3); font-size: 20px; cursor: pointer; }',
+'.aih-log { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;',
+'  font-size: 14px; line-height: 1.55; min-height: 120px; }',
+'.aih-msg { max-width: 92%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; word-wrap: break-word; }',
+'.aih-msg.u { align-self: flex-end; background: var(--accent-bg, var(--surface-2)); }',
+'.aih-msg.a { align-self: flex-start; background: var(--surface-2); }',
+'.aih-msg.err { align-self: stretch; background: var(--warning-bg, var(--surface-2)); font-size: 13px; }',
+'.aih-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }',
+'.aih-row textarea { flex: 1; resize: none; min-height: 40px; max-height: 110px; padding: 9px 11px;',
+'  border-radius: 10px; border: 1px solid var(--border-strong, var(--border)); background: var(--bg-2, var(--surface));',
+'  color: var(--text); font: inherit; font-size: 14px; }',
+'.aih-row button { padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: var(--accent-text, #fff);',
+'  font-weight: 700; cursor: pointer; }',
+'.aih-row button:disabled { opacity: 0.5; cursor: default; }',
+'.aih-hint { padding: 0 14px 10px; font-size: 11.5px; color: var(--text-4); }'
+].join('\n');
+document.head.appendChild(css);
+
+var chat = [];        // { role, content } - memory only
+var busy = false;
+var sheet = null, log = null, ta = null, sendBtn = null;
+
+function lessonContext(){
+  try {
+    if (typeof view === 'undefined' || !view || view.name !== 'section' || !view.courseId) return {};
+    var L = getLesson(view.courseId, view.chId, view.secId);
+    if (!L || typeof L.body !== 'string') return {};
+    var tpl = document.createElement('template');
+    tpl.innerHTML = L.body;
+    var text = (tpl.content.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 12000);
+    var title = (L.title || '') + ' (' + view.courseId + ')';
+    return { title: title, lesson: text };
+  } catch (e) { return {}; }
+}
+
+function addMsg(cls, text){
+  var d = document.createElement('div');
+  d.className = 'aih-msg ' + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+var SETUP_TEXT = 'The helper needs a one-time setup by the app owner:\n' +
+  '1. Create an API key at console.anthropic.com (add a few dollars of credit).\n' +
+  '2. In Netlify: Site settings -> Environment variables -> add ANTHROPIC_API_KEY with that key.\n' +
+  '3. Redeploy the site once (Deploys -> Trigger deploy).\n' +
+  'After that, this chat works on every device the app is installed on.';
+
+async function send(){
+  if (busy) return;
+  var q = (ta.value || '').trim();
+  if (!q) return;
+  ta.value = '';
+  busy = true; sendBtn.disabled = true;
+  addMsg('u', q);
+  chat.push({ role: 'user', content: q });
+  var bubble = addMsg('a', '…');
+  try {
+    var res = await fetch('/.netlify/functions/helper', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: chat.slice(-12), context: lessonContext() })
+    });
+    if (res.status === 503) { bubble.className = 'aih-msg err'; bubble.textContent = SETUP_TEXT; chat.pop(); return; }
+    if (res.status === 404) { bubble.className = 'aih-msg err'; bubble.textContent = 'The helper endpoint is not deployed yet.\n\n' + SETUP_TEXT; chat.pop(); return; }
+    if (!res.ok) { bubble.className = 'aih-msg err'; bubble.textContent = 'Helper error (' + res.status + '). Try again in a moment.'; chat.pop(); return; }
+    bubble.textContent = '';
+    var reader = res.body.getReader();
+    var dec = new TextDecoder();
+    var full = '';
+    while (true) {
+      var r = await reader.read();
+      if (r.done) break;
+      full += dec.decode(r.value, { stream: true });
+      bubble.textContent = full;
+      log.scrollTop = log.scrollHeight;
+    }
+    if (!full.trim()) { bubble.className = 'aih-msg err'; bubble.textContent = 'No answer came back. Try again.'; chat.pop(); return; }
+    chat.push({ role: 'assistant', content: full });
+  } catch (e) {
+    bubble.className = 'aih-msg err';
+    bubble.textContent = navigator.onLine === false
+      ? 'The helper needs an internet connection.'
+      : 'Could not reach the helper (' + (e && e.message ? e.message : 'network error') + ').';
+    chat.pop();
+  } finally {
+    busy = false; sendBtn.disabled = false;
+    try { ta.focus(); } catch (e2) {}
+  }
+}
+
+function close(){
+  var b = document.querySelector('.aih-back');
+  if (b) b.remove();
+  if (sheet) sheet.remove();
+  sheet = null;
+}
+
+function open(){
+  if (sheet) { close(); return; }
+  var back = document.createElement('div');
+  back.className = 'aih-back';
+  back.addEventListener('click', close);
+  document.body.appendChild(back);
+  sheet = document.createElement('div');
+  sheet.className = 'aih-sheet';
+  sheet.innerHTML =
+    '<div class="aih-head">✨ Study Helper<button class="aih-x" aria-label="Close">×</button></div>' +
+    '<div class="aih-log"></div>' +
+    '<div class="aih-row"><textarea rows="1" placeholder="Ask about what you’re studying…"></textarea><button>Send</button></div>' +
+    '<div class="aih-hint">Answers stream from an AI tutor that can see the lesson on your screen. It can make mistakes — verify anything surprising against the lesson.</div>';
+  document.body.appendChild(sheet);
+  log = sheet.querySelector('.aih-log');
+  ta = sheet.querySelector('textarea');
+  sendBtn = sheet.querySelector('.aih-row button');
+  sheet.querySelector('.aih-x').addEventListener('click', close);
+  sendBtn.addEventListener('click', send);
+  ta.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  for (var i = 0; i < chat.length; i++) addMsg(chat[i].role === 'user' ? 'u' : 'a', chat[i].content);
+  if (!chat.length) addMsg('a', 'Hi! Ask me anything about the lesson you’re reading — I can explain a step differently, work a similar problem, or quiz you on it.');
+  try { ta.focus(); } catch (e) {}
+}
+
+var fab = document.createElement('button');
+fab.className = 'aih-fab';
+fab.setAttribute('aria-label', 'AI study helper');
+fab.textContent = '✨';
+fab.addEventListener('click', open);
+document.body.appendChild(fab);
+} catch (e) { if (window.console) console.error('[aiHelper]', e); }
 })();
 
 </script>

@@ -1,0 +1,8 @@
+{
+  "name": "school-app",
+  "private": true,
+  "description": "Study Hub - static PWA plus one Netlify Function for the AI study helper",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}
