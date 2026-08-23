@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.469">
+<meta name="app-build" content="18.470">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -43706,6 +43706,22 @@ function _rdyStamp() {
   return h + ':' + o + ':' + hy;
 }
 
+var _histKey = '', _histSet = null;
+// Which sections she has actually answered questions in. Rebuilt only when the
+// history changes, so the guarantee below costs one pass, not one per section.
+function _sectionsWithHistory() {
+  const stamp = _rdyStamp();
+  if (_histKey === stamp && _histSet) return _histSet;
+  const set = new Set();
+  try {
+    for (const h of (store.quizHistory || [])) {
+      if (h && h.courseId && h.chId && h.secId) set.add(h.courseId + '/' + h.chId + '/' + h.secId);
+    }
+  } catch (e) {}
+  _histKey = stamp; _histSet = set;
+  return set;
+}
+
 function sectionMastery(courseId, chId, secId) {
   const stamp = _rdyStamp();
   if (stamp !== _rdyKey) { _rdyCache = {}; _rdyKey = stamp; }
@@ -43714,12 +43730,38 @@ function sectionMastery(courseId, chId, secId) {
 
   let qs = [];
   try { qs = getQuestions(courseId, chId, secId) || []; } catch (e) { qs = []; }
-  const total = qs.length;
+  let total = qs.length;
+
+  // A section she has answered questions in cannot really have an empty pool -
+  // that combination means the course content had not arrived when something
+  // asked. Recover it once, rather than reporting her finished work as
+  // untouched. Only runs for that contradiction, so sections that genuinely
+  // have no questions (worked examples, reference pages) cost nothing.
+  if (!total && _sectionsWithHistory().has(ck)) {
+    try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e) {}
+    try { if (window.__hydrateCourse) window.__hydrateCourse(courseId); } catch (e) {}
+    try { qs = getQuestions(courseId, chId, secId) || []; } catch (e) {}
+    total = qs.length;
+  }
 
   // A section with no questions can never be "proven" — treat it as passed so it
   // can never trap the learner behind a gate, and exclude it from the average.
   if (!total) {
-    const empty = { total: 0, attempted: 0, correct: 0, accuracy: 0, coverage: 0,
+    // If the pool still cannot be read, fall back to what her history records
+    // so completed work stays visible instead of showing as never started.
+    let hAtt = 0, hCor = 0;
+    try {
+      const seen = Object.create(null);
+      for (const h of (store.quizHistory || [])) {
+        if (!h || h.courseId !== courseId || h.chId !== chId || h.secId !== secId || !h.qId) continue;
+        const id = String(h.qId);
+        if (!seen[id] || (h.ts || 0) > seen[id].ts) seen[id] = { correct: !!h.correct, ts: h.ts || 0 };
+      }
+      const vals = Object.keys(seen).map(k => seen[k]);
+      hAtt = vals.length; hCor = vals.filter(x => x.correct).length;
+    } catch (e) {}
+    const empty = { total: 0, attempted: hAtt, correct: hCor,
+                    accuracy: hAtt ? hCor / hAtt : 0, coverage: 0,
                     freshness: 1, readiness: null, passed: true, passFull: false,
                     passAttempt: false, bestAttempt: 0, need: 0, days: 0 };
     // A zero here can mean "content pack not loaded yet", not "no questions" -
@@ -43730,7 +43772,7 @@ function sectionMastery(courseId, chId, secId) {
             (window.__focusedBuild || []).indexOf(courseId) === -1 ||
             window.__hydratedCourses().indexOf(courseId) !== -1;
     } catch (e) {}
-    if (hyd) _rdyCache[ck] = empty;
+    if (hyd && !hAtt) _rdyCache[ck] = empty;
     return empty;
   }
 
@@ -129542,6 +129584,7 @@ function packAbsorb(p){
   for (var i = 0; i < PACK_NAMES.length; i++) { if (typeof p[PACK_NAMES[i]] !== 'string') return false; }
   for (var j = 0; j < PACK_NAMES.length; j++) { if (SRC[PACK_NAMES[j]] === undefined) SRC[PACK_NAMES[j]] = p[PACK_NAMES[j]]; }
   packLoaded = true;
+  try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e) {}
   if (window.__packMissed) {
     window.__packMissed = false;
     setTimeout(function(){ try { if (typeof render === 'function') render(); } catch (e) {} }, 80);
@@ -129581,6 +129624,8 @@ function hydrate(cid){
   if (SRC['l_' + cid] === undefined && SRC['q_' + cid] === undefined) return; // pack unavailable - leave lazy so a later access retries
   done[cid] = true;
   try { (window.__hydrateWhy = window.__hydrateWhy || {})[cid] = { t: Math.round(performance.now()), by: new Error().stack }; } catch (e) {}
+  // Anything answered from the empty window is stale the moment content lands.
+  try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e) {}
   ['l', 'q'].forEach(function(t){
     var src = SRC[t + '_' + cid];
     if (!src) return;
@@ -129713,8 +129758,15 @@ getQuestions = function(courseId, chId, secId){
     var hit = cache[key];
     if (hit) return hit.slice();
     var v = _orig(courseId, chId, secId);
-    if (Array.isArray(v)) { cache[key] = v; return v.slice(); }
-    return v;
+    // NEVER cache an empty result. An empty list means the course content had
+    // not arrived yet, not that the section has no questions - and caching it
+    // sealed the failure shut: the lazy content getter was never touched
+    // again, so hydration was never retried, and the section reported zero
+    // questions for the rest of the session. A section with zero questions
+    // counts as "untouched" no matter what she scored on it, which is exactly
+    // how a completed quiz could vanish from a section's progress.
+    if (Array.isArray(v) && v.length) { cache[key] = v; return v.slice(); }
+    return Array.isArray(v) ? v.slice() : v;
   } catch (e) { return _orig(courseId, chId, secId); }
 };
 
