@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.465">
+<meta name="app-build" content="18.466">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -36394,10 +36394,55 @@ function gannoUpdateLiveStroke() {
 
 // Render strokes to SVG. Strokes use document coords; we translate by current
 // scrollY so they appear in viewport coords on the fixed SVG.
+// Highlighter ink carries mix-blend-mode. Inside the full-document overlay
+// that single property forces the compositor to keep the WHOLE overlay
+// (23-36MP on the iPad, ~100MB) as a live blended surface - the memory
+// pressure that kills the app mid-writing. So every blended element lives in
+// its own tiny <svg> sized to that one stroke; the big overlay keeps only
+// opaque ink and needs no compositing of its own.
+function gannoHlLayer() {
+ let d = document.querySelector('.ganno-hl-layer');
+ if (!d) {
+ d = document.createElement('div');
+ d.className = 'ganno-hl-layer';
+ d.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:9;';
+ const svg = document.querySelector('.ganno-svg');
+ if (svg && svg.parentNode) svg.parentNode.insertBefore(d, svg);
+ else document.body.appendChild(d);
+ }
+ return d;
+}
+function gannoHlClear() {
+ const d = document.querySelector('.ganno-hl-layer');
+ if (d) { while (d.firstChild) d.removeChild(d.firstChild); }
+}
+function gannoHlMount(el, bx, by, bw, bh, blend, gid) {
+ const x = Math.floor(bx), y = Math.floor(by);
+ const w = Math.max(1, Math.ceil(bw)), h = Math.max(1, Math.ceil(bh));
+ const mini = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+ mini.setAttribute('class', 'ganno-hl');
+ mini.setAttribute('viewBox', x + ' ' + y + ' ' + w + ' ' + h);
+ mini.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;pointer-events:none;overflow:visible;mix-blend-mode:' + blend + ';';
+ if (gid !== undefined && gid !== null) mini.setAttribute('data-gid-wrap', gid);
+ mini.appendChild(el);
+ gannoHlLayer().appendChild(mini);
+ return mini;
+}
+function gannoHlBBoxOfPts(pts, sy, pad) {
+ let nx = Infinity, xx = -Infinity, ny = Infinity, xy = -Infinity;
+ for (const p of pts) {
+ if (p.x < nx) nx = p.x; if (p.x > xx) xx = p.x;
+ const py = p.y - (sy || 0);
+ if (py < ny) ny = py; if (py > xy) xy = py;
+ }
+ if (nx === Infinity) { nx = 0; xx = 1; ny = 0; xy = 1; }
+ return { x: nx - pad, y: ny - pad, w: (xx - nx) + pad * 2, h: (xy - ny) + pad * 2 };
+}
 function gannoRender(strokes, currentStroke) {
  const svg = ganno.svg;
  if (!svg) return;
  while (svg.firstChild) svg.removeChild(svg.firstChild);
+ gannoHlClear();
 
  // Build defs with arrowhead markers (one per color used)
  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -36600,7 +36645,13 @@ function gannoRender(strokes, currentStroke) {
  path.setAttribute('stroke-width', baseW);
  }
  if (s && s._id !== undefined) path.setAttribute('data-gid', s._id);
+ if (isHL) {
+ path.removeAttribute('style');
+ const bb = gannoHlBBoxOfPts(pts, sy, (baseW * 5) / 2 + 6);
+ gannoHlMount(path, bb.x, bb.y, bb.w, bb.h, pageIsDark() ? 'screen' : 'multiply', (s && s._id !== undefined) ? s._id : null);
+ } else {
  svg.appendChild(path);
+ }
  };
  // Stable per-render id on each stroke so commit/erase can target one element.
  let _gid = 0; for (const s of strokes) { if (s) s._id = ++_gid; } ganno._sid = _gid;
@@ -36905,9 +36956,20 @@ function gannoPointerUp(e) {
  gannoSaveStrokes(ganno.routeKey, strokes);
  // INCREMENTAL COMMIT: finalize the existing live path in place (O(1)) instead
  // of rebuilding every stroke. Falls back to a full render for shapes/tables.
- if ((c.type === 'pen' || c.type === 'highlighter') && ganno.liveEl && ganno.liveEl.parentNode === ganno.svg && c.points && c.points.length >= 2) {
+ if ((c.type === 'pen' || c.type === 'highlighter') && ganno.liveEl && (ganno.liveEl.parentNode === ganno.svg || (ganno.liveEl.__hlWrap && ganno.liveEl.__hlWrap.parentNode)) && c.points && c.points.length >= 2) {
  ganno.liveEl.setAttribute('d', gannoBuildPathD(c.points, 0));
  ganno.liveEl.setAttribute('data-gid', c._id);
+ if (ganno.liveEl.__hlWrap) {
+ ganno.liveEl.__hlWrap.setAttribute('data-gid-wrap', c._id);
+ } else if (c.type === 'highlighter' && typeof gannoHlMount === 'function') {
+ // A blended path committed straight into the big overlay would re-promote
+ // the whole 23MP surface - rehome it into its own tiny svg instead.
+ const el = ganno.liveEl;
+ el.removeAttribute('style');
+ const bw = parseFloat(el.getAttribute('stroke-width')) || 15;
+ const bb = gannoHlBBoxOfPts(c.points, 0, bw / 2 + 6);
+ gannoHlMount(el, bb.x, bb.y, bb.w, bb.h, pageIsDark() ? 'screen' : 'multiply', c._id);
+ }
  ganno.liveEl = null;
  } else {
  gannoRender(strokes, null);
@@ -52174,8 +52236,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (!rects.length) continue;
       // Text found -> remove the freehand path the base renderer drew for this stroke.
       try { var old = svg.querySelectorAll('[data-gid="' + s._id + '"]'); for (var k=0;k<old.length;k++) old[k].parentNode && old[k].parentNode.removeChild(old[k]); } catch(e){}
+      try { var hlL = document.querySelector('.ganno-hl-layer'); if (hlL) { var oldw = hlL.querySelectorAll('[data-gid-wrap="' + s._id + '"]'); for (var k2=0;k2<oldw.length;k2++) oldw[k2].parentNode && oldw[k2].parentNode.removeChild(oldw[k2]); } } catch(e){}
       var col = (typeof gannoNeonHL === 'function') ? gannoNeonHL(s.color) : (s.color || '#ffe45c');
       s._hlRects = rects;
+      var g = document.createElementNS(NS, 'g');
+      var ux = Infinity, uy = Infinity, ux2 = -Infinity, uy2 = -Infinity;
       for (var r=0;r<rects.length;r++){
         var rc = rects[r];
         var el = document.createElementNS(NS, 'rect');
@@ -52185,10 +52250,17 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         el.setAttribute('rx', Math.min(3, rc.h * 0.18));
         el.setAttribute('fill', col);
         el.setAttribute('fill-opacity', dark ? '0.34' : '0.38');
-        el.setAttribute('style', 'mix-blend-mode:' + (dark ? 'screen' : 'multiply') + ';');
         el.setAttribute('data-texthl', s._id);
         el.setAttribute('pointer-events', 'none');
-        svg.appendChild(el);
+        g.appendChild(el);
+        if (rc.x < ux) ux = rc.x; if (rc.y < uy) uy = rc.y;
+        if (rc.x + rc.w > ux2) ux2 = rc.x + rc.w; if (rc.y + rc.h > uy2) uy2 = rc.y + rc.h;
+      }
+      if (typeof gannoHlMount === 'function' && ux < Infinity) {
+        gannoHlMount(g, ux - 3, uy - 3, (ux2 - ux) + 6, (uy2 - uy) + 6, dark ? 'screen' : 'multiply', s._id);
+      } else {
+        g.setAttribute('style', 'mix-blend-mode:' + (dark ? 'screen' : 'multiply') + ';');
+        svg.appendChild(g);
       }
     }
   }
@@ -129809,16 +129881,20 @@ gannoPointerUp = function(e){
       path.setAttribute('stroke-width', c.type === 'highlighter' ? baseW * 5 : baseW);
       if (c.type === 'highlighter') {
         path.setAttribute('stroke', (typeof gannoNeonHL === 'function') ? gannoNeonHL(c.color) : c.color);
-        if ((typeof pageIsDark === 'function') && pageIsDark()) {
-          path.setAttribute('stroke-opacity', '0.34');
-          path.setAttribute('style', 'mix-blend-mode: screen;');
+        var _hlDark = (typeof pageIsDark === 'function') && pageIsDark();
+        path.setAttribute('stroke-opacity', _hlDark ? '0.34' : '0.38');
+        if (typeof gannoHlMount === 'function' && c.points && c.points.length) {
+          var _bb = gannoHlBBoxOfPts(c.points, 0, (baseW * 5) / 2 + 6);
+          path.__hlWrap = gannoHlMount(path, _bb.x, _bb.y, _bb.w, _bb.h, _hlDark ? 'screen' : 'multiply', null);
         } else {
-          path.setAttribute('stroke-opacity', '0.38');
-          path.setAttribute('style', 'mix-blend-mode: multiply;');
+          path.setAttribute('style', 'mix-blend-mode: ' + (_hlDark ? 'screen' : 'multiply') + ';');
+          ganno.svg.appendChild(path);
         }
+        ganno.liveEl = path;
+      } else {
+        ganno.svg.appendChild(path);
+        ganno.liveEl = path;
       }
-      ganno.svg.appendChild(path);
-      ganno.liveEl = path;
     }
   } catch (e3) {}
   try { return _up(e); }
@@ -130493,6 +130569,111 @@ if (typeof render === 'function' && !render.__saveTestWrapped) {
 }
 setInterval(inject, 1500);   // belt and braces: results screens reached without render()
 } catch (e) { if (window.console) console.error('[testExport]', e); }
+})();
+
+
+(function inkWindow(){
+/* THE MEMORY FIX, DONE RIGHT THIS TIME (see inkViewportDisabled above).
+ *
+ * The ink overlay spanned the whole document: 23-36 megapixels of paintable
+ * surface on the iPad, ~100MB when the compositor keeps it live. Her crash
+ * log shows iOS killing the app repeatedly while writing on long inked
+ * sections - classic memory eviction.
+ *
+ * The v18.434 attempt panned a screen-sized overlay on every scroll event;
+ * iOS momentum scrolling runs ahead of the main thread, so the ink visibly
+ * floated, and it was reverted. This version cannot float by construction:
+ *
+ *   - The overlay stays position:absolute, so between window moves it is
+ *     part of the page and the compositor scrolls it pixel-perfectly.
+ *   - The window is 3 screens tall (one above, one below the view). It only
+ *     moves when scrolling has drifted more than 60% of a screen from its
+ *     center - a rare, discrete "teleport", not a per-frame chase.
+ *   - A move shifts style.top and viewBox.y by the SAME delta in one write:
+ *     top - viewBox.y stays constant, so every stroke paints at exactly the
+ *     same document position before and after. Even if iOS applies the move
+ *     a frame late there is nothing to drift - the two states are visually
+ *     identical.
+ *
+ * Strokes stay in document coordinates; gannoPointFromEvent already adds the
+ * viewBox origin back (that term was left in place when v18.434 was
+ * reverted), and the pen-canvas transform derives from rect+viewBox, so both
+ * input and preview mapping hold. Never moves mid-stroke.
+ */
+if (typeof document === 'undefined') return;
+if (window.__inkWindow) return; window.__inkWindow = true;
+
+function svgEl(){
+  try { if (typeof ganno !== 'undefined' && ganno && ganno.svg) return ganno.svg; } catch(e){}
+  return document.querySelector('.ganno-svg');
+}
+
+function guard(svg){
+  // INVARIANT: style.top always equals viewBox.y, no matter which code writes
+  // the viewBox (this module, gannoEnsureSvg, or stopEndlessScroll's fitter).
+  // With the invariant held, every stroke paints at top + (y - viewBox.y) =
+  // its true document position - a mixed write can change memory use for a
+  // moment, but can never move ink.
+  if (svg.__vbGuard) return;
+  svg.__vbGuard = true;
+  var _sa = svg.setAttribute.bind(svg);
+  svg.setAttribute = function(n, v){
+    if (n === 'viewBox') {
+      try {
+        var vy = parseFloat(String(v).trim().split(/\s+/)[1]) || 0;
+        svg.style.top = vy + 'px';
+      } catch (e) {}
+    }
+    return _sa(n, v);
+  };
+}
+function apply(force){
+  var svg = svgEl(); if (!svg) return;
+  guard(svg);
+  try { if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return; } catch(e){}
+  var real = (typeof window.__gannoRealSize === 'function') ? window.__gannoRealSize() : null;
+  if (!real || !real.w || !real.h) return;
+  var H = window.innerHeight || 800;
+  var winH = Math.min(real.h, 3 * H);
+  var maxTop = Math.max(0, real.h - winH);
+  var sy = Math.max(0, window.scrollY || window.pageYOffset || 0);
+  var want = Math.min(maxTop, Math.max(0, sy - H));
+  var curTop = svg.__winTop, curH = svg.__winH, curW = svg.__winW;
+  var sizeChanged = (curH !== winH) || (curW !== real.w);
+  if (!force && !sizeChanged && typeof curTop === 'number' && Math.abs(curTop - want) < 0.6 * H) return;
+  svg.__winTop = want; svg.__winH = winH; svg.__winW = real.w;
+  // one atomic geometry write; the viewBox write also sets style.top (guard)
+  svg.style.width = real.w + 'px';
+  svg.style.height = winH + 'px';
+  svg.setAttribute('viewBox', '0 ' + want + ' ' + real.w + ' ' + winH);
+  // keep stopEndlessScroll's bookkeeping satisfied so it never re-inflates
+  svg.__fitW = real.w; svg.__fitH = real.h;
+  try { if (typeof ganno !== 'undefined' && ganno) ganno._rectCache = null; } catch(e){}
+}
+window.__inkWindowApply = apply;
+
+var raf = 0;
+function onScroll(){
+  if (raf) return;
+  raf = requestAnimationFrame(function(){ raf = 0; apply(false); });
+}
+try { window.addEventListener('scroll', onScroll, { passive: true }); } catch(e){ window.addEventListener('scroll', onScroll); }
+try { window.addEventListener('resize', function(){ setTimeout(function(){ apply(true); }, 60); }); } catch(e){}
+try { window.addEventListener('orientationchange', function(){ setTimeout(function(){ apply(true); }, 250); }); } catch(e){}
+
+// route changes rebuild content and scroll to top - re-window after render
+if (typeof gannoUpdateRoute === 'function' && !gannoUpdateRoute.__inkWin) {
+  var _upd = gannoUpdateRoute;
+  gannoUpdateRoute = function(){
+    var r = _upd.apply(this, arguments);
+    try { setTimeout(function(){ apply(true); }, 0); setTimeout(function(){ apply(true); }, 300); } catch(e){}
+    return r;
+  };
+  gannoUpdateRoute.__inkWin = true;
+}
+// steady guard: catches late content growth and anything the hooks missed
+try { setInterval(function(){ apply(false); }, 900); } catch(e){}
+try { setTimeout(function(){ apply(true); }, 400); } catch(e){}
 })();
 
 </script>
