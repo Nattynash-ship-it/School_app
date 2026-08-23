@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.467">
+<meta name="app-build" content="18.468">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -128396,8 +128396,12 @@ function sample(){
   try {
     var _sv = (typeof ganno !== 'undefined' && ganno && ganno.svg) || document.querySelector('.ganno-svg');
     if (_sv) {
-      var _w = parseFloat(_sv.style.width) || 0;
-      var _h = parseFloat(_sv.style.height) || 0;
+      // Measured, not declared: another module can leave a stale inline height
+      // on this element, and the number that matters is the painted box.
+      var _w = 0, _h = 0;
+      try { var _r = _sv.getBoundingClientRect(); _w = _r.width || 0; _h = _r.height || 0; } catch (e) {}
+      if (!_w) _w = parseFloat(_sv.style.width) || 0;
+      if (!_h) _h = parseFloat(_sv.style.height) || 0;
       if (_h) s.dh = Math.round(_h);
       var _on = _sv.classList.contains('active');
       s.pen = _on ? 1 : 0;
@@ -130618,31 +130622,72 @@ function svgEl(){
   return document.querySelector('.ganno-svg');
 }
 
-function guard(svg){
-  // INVARIANT: style.top always equals viewBox.y, no matter which code writes
-  // the viewBox (this module, gannoEnsureSvg, or stopEndlessScroll's fitter).
-  // With the invariant held, every stroke paints at top + (y - viewBox.y) =
-  // its true document position - a mixed write can change memory use for a
-  // moment, but can never move ink.
-  if (svg.__vbGuard) return;
-  svg.__vbGuard = true;
-  var _sa = svg.setAttribute.bind(svg);
-  svg.setAttribute = function(n, v){
-    if (n === 'viewBox') {
-      try {
-        var vy = parseFloat(String(v).trim().split(/\s+/)[1]) || 0;
-        svg.style.top = vy + 'px';
-      } catch (e) {}
-    }
-    return _sa(n, v);
-  };
+/* WRITE-LOCK. Three other modules size this overlay to the whole document, and
+ * two of them do it from their own observers and timers this module cannot
+ * reach. Her 18.466 log caught exactly that: the overlay went 2460px -> 7177px
+ * (11.6MP -> 33.9MP) twenty seconds apart while she was writing. Repairing it
+ * afterwards still lets a 33MP surface exist, so the element's geometry is
+ * sealed instead: only this module may change it, and anyone else's write is
+ * dropped and answered with a re-assert on the next frame. The lock is what
+ * makes "style.top always equals viewBox.y" an invariant rather than a hope,
+ * so no competing writer can move a single stroke. */
+var writing = false;
+var _reassertRaf = 0;
+// A blocked write means some other module wanted a different size: re-assert
+// the window on the next frame so a genuine layout change is still honoured.
+function schedule(){
+  if (_reassertRaf) return;
+  try {
+    _reassertRaf = requestAnimationFrame(function(){ _reassertRaf = 0; apply(true); });
+  } catch (e) { _reassertRaf = 0; }
 }
+function pinCss(){
+  if (document.getElementById('ink-win-pin')) return;
+  var st = document.createElement('style');
+  st.id = 'ink-win-pin';
+  // The real guarantee. An author declaration marked !important outranks any
+  // inline style, so however many times another module writes a full-document
+  // height onto this element, the USED box - the thing the device actually
+  // rasterises - stays the window. The values come from custom properties that
+  // only this module sets.
+  st.textContent = '.ganno-svg{top:var(--iw-t,0px)!important;width:var(--iw-w,100%)!important;height:var(--iw-h,100%)!important;}';
+  (document.head || document.documentElement).appendChild(st);
+}
+function lockGeometry(svg){
+  pinCss();
+  if (svg.__geoLock) return; svg.__geoLock = true;
+  try {
+    var _sa = svg.setAttribute.bind(svg);
+    svg.setAttribute = function(n, v){
+      if (n === 'viewBox' && !writing) { schedule(); return; }
+      return _sa(n, v);
+    };
+  } catch (e) {}
+  try {
+    var st = svg.style;
+    ['width', 'height', 'top'].forEach(function(p){
+      var d = null, o = st;
+      while (o && !d) { d = Object.getOwnPropertyDescriptor(o, p); o = Object.getPrototypeOf(o); }
+      if (!d || typeof d.set !== 'function' || typeof d.get !== 'function') return;
+      Object.defineProperty(st, p, {
+        configurable: true, enumerable: false,
+        get: function(){ return d.get.call(st); },
+        set: function(v){ if (!writing) { schedule(); return; } d.set.call(st, v); }
+      });
+    });
+  } catch (e) { /* lock unavailable: the periodic re-assert still repairs */ }
+}
+
 var _rsAt = 0, _rsVal = null;
 function realSize(force){
   var now = Date.now();
   if (!force && _rsVal && (now - _rsAt) < 200) return _rsVal;
   if (typeof window.__gannoRealSize !== 'function') return null;
-  var r = window.__gannoRealSize();
+  // Their measurement collapses the overlay to 0x0 and restores it; those two
+  // writes must pass the lock, or the document measures itself with the overlay
+  // still inside it - which is how the old height ratchet came back.
+  var r; writing = true;
+  try { r = window.__gannoRealSize(); } finally { writing = false; }
   if (!r || !r.w || !r.h) return null;
   _rsAt = now; _rsVal = r;
   return r;
@@ -130650,12 +130695,12 @@ function realSize(force){
 
 /* The single sizing authority. Self-correcting BY MEASUREMENT: it compares the
  * element's real geometry against what the window should be, so it repairs the
- * overlay no matter which other module wrote to it. (The first attempt trusted
- * its own bookkeeping and silently gave up once another writer had changed the
- * DOM behind it - which is exactly what happened on the iPad.) */
+ * overlay no matter which module wrote last. (The first attempt trusted its own
+ * bookkeeping and silently gave up once another writer had changed the DOM
+ * behind it - exactly what happened on the iPad.) */
 function apply(force){
   var svg = svgEl(); if (!svg) return;
-  guard(svg);
+  lockGeometry(svg);
   try { if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return; } catch(e){}
   var real = realSize(force);
   if (!real) return;
@@ -130683,11 +130728,21 @@ function apply(force){
   if (top > maxTop) top = maxTop;
   if (top < 0) top = 0;
   svg.__winTop = top; svg.__winH = winH; svg.__winW = real.w;
-  // One atomic geometry change; the viewBox write also sets style.top (guard),
-  // so top - viewBox.y stays constant and no stroke can move.
-  svg.style.width = real.w + 'px';
-  svg.style.height = winH + 'px';
-  svg.setAttribute('viewBox', '0 ' + top + ' ' + real.w + ' ' + winH);
+  // One atomic geometry change, written through the lock. top and viewBox.y
+  // move by the same delta, so every stroke paints at the same document
+  // position before and after - a window move cannot shift ink.
+  writing = true;
+  try {
+    // custom properties feed the !important rule: these decide the real box
+    svg.style.setProperty('--iw-t', top + 'px');
+    svg.style.setProperty('--iw-w', real.w + 'px');
+    svg.style.setProperty('--iw-h', winH + 'px');
+    // keep the plain inline values in step so every reader agrees
+    svg.style.top = top + 'px';
+    svg.style.width = real.w + 'px';
+    svg.style.height = winH + 'px';
+    svg.setAttribute('viewBox', '0 ' + top + ' ' + real.w + ' ' + winH);
+  } finally { writing = false; }
   // keep the older fitters' change-detection satisfied so they stay quiet
   svg.__fitW = real.w; svg.__fitH = real.h;
   try { if (typeof ganno !== 'undefined' && ganno) ganno._rectCache = null; } catch(e){}
@@ -130749,6 +130804,45 @@ if (typeof gannoUpdateRoute === 'function' && !gannoUpdateRoute.__inkWin) {
 // steady guard: catches late content growth and anything the hooks missed
 try { setInterval(function(){ apply(false); }, 900); } catch(e){}
 try { setTimeout(function(){ apply(true); }, 400); } catch(e){}
+})();
+
+
+(function unlockEverything(){
+/* "unlock all units and sections bypassing the score issue for unlocking"
+ *
+ * Sections were gated behind proving 90% on the previous section. That gate is
+ * useful when you have months; it is an obstacle two days before an exam, when
+ * she knows exactly which topic she needs to open right now. Every unit and
+ * section is now open.
+ *
+ * store.gateOff is the app's own supported off-switch, checked inside
+ * isSectionLocked, so this is not a workaround around the gate - it is the
+ * gate's own disable, turned on and persisted. isSectionLocked is additionally
+ * hard-wired to false so a cleared or restored store cannot bring the padlocks
+ * back mid-session. Nothing about scoring, mastery, or progress changes: the
+ * 90% bar still shows on each section, it just no longer blocks entry.
+ */
+if (typeof document === 'undefined') return;
+if (window.__unlockAll) return; window.__unlockAll = true;
+function openEverything(){
+  try {
+    if (typeof store !== 'undefined' && store && store.gateOff !== true) {
+      store.gateOff = true;
+      if (typeof saveStore === 'function') saveStore();
+    }
+  } catch (e) {}
+  try {
+    if (typeof window.isSectionLocked === 'function' && !window.isSectionLocked.__allOpen) {
+      var open = function(){ return false; };
+      open.__allOpen = true;
+      window.isSectionLocked = open;
+    }
+  } catch (e) {}
+}
+openEverything();
+try { setTimeout(openEverything, 300); } catch (e) {}
+try { setTimeout(openEverything, 1500); } catch (e) {}
+window.__openEverything = openEverything;
 })();
 
 </script>
