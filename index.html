@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.468">
+<meta name="app-build" content="18.469">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -130843,6 +130843,123 @@ openEverything();
 try { setTimeout(openEverything, 300); } catch (e) {}
 try { setTimeout(openEverything, 1500); } catch (e) {}
 window.__openEverything = openEverything;
+})();
+
+
+(function memoryRelief(){
+/* WHY: her crashes are iOS evicting the app for memory, always on a lesson
+ * page, always with the pen on. Two things were spending memory for nothing
+ * at exactly that moment.
+ *
+ * 1. The ambient particle canvas is a full-screen canvas at device pixel
+ *    ratio (~15MB on her iPad) driven by an unconditional requestAnimationFrame
+ *    loop - it repainted every frame forever, including while she was writing
+ *    and while the app was in the BACKGROUND. It is decoration; it now stops
+ *    whenever she is on a lesson, whenever the pen is active, and whenever the
+ *    app is hidden, and its buffer is handed back while suspended.
+ *
+ * 2. Nothing released graphics memory when the app was backgrounded, which is
+ *    precisely when iOS decides which app to kill. Backgrounding now frees the
+ *    pen preview canvas (~16MB) and the particle canvas; both are rebuilt on
+ *    return, and neither holds any of her work - strokes live in the saved
+ *    data, not in these buffers.
+ *
+ * This does not touch a single stroke, and nothing here can lose ink.
+ */
+if (typeof document === 'undefined') return;
+if (window.__memRelief) return; window.__memRelief = true;
+
+function inkActive(){
+  // ACTIVELY drawing - not merely "the pen tool is switched on", which is
+  // always true on her iPad and would silently strip the particle themes she
+  // picked from every screen. Lesson pages are covered by studying() below.
+  try {
+    if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return true;
+  } catch (e) {}
+  return false;
+}
+function studying(){
+  try {
+    if (typeof view !== 'undefined' && view && (view.name === 'section' || view.name === 'lesson')) return true;
+  } catch (e) {}
+  return false;
+}
+function particlesAllowed(){
+  if (document.hidden) return false;
+  if (inkActive()) return false;
+  if (studying()) return false;
+  return true;
+}
+function suspendParticles(){
+  try {
+    if (typeof particleState !== 'undefined' && particleState) {
+      if (particleState.rafId) { cancelAnimationFrame(particleState.rafId); particleState.rafId = null; }
+      particleState.canvas = null; particleState.ctx = null; particleState.particles = [];
+    }
+  } catch (e) {}
+  try {
+    var c = document.getElementById('particles-canvas');
+    if (c) { c.width = 0; c.height = 0; if (c.parentNode) c.parentNode.removeChild(c); }
+  } catch (e) {}
+}
+function releasePenCanvas(){
+  // The live-stroke preview buffer. Freed only on backgrounding - never
+  // per stroke, which is the churn that was causing kills before 18.462.
+  try {
+    var c = document.querySelector('canvas[data-pen-canvas]');
+    if (c) { c.width = 0; c.height = 0; if (c.parentNode) c.parentNode.removeChild(c); }
+  } catch (e) {}
+}
+
+// Respect the policy even when the app asks for particles itself.
+try {
+  if (typeof window.setupParticles === 'function' && !window.setupParticles.__memWrapped) {
+    var _setup = window.setupParticles;
+    var wrapped = function(){
+      if (!particlesAllowed()) { suspendParticles(); return; }
+      return _setup.apply(this, arguments);
+    };
+    wrapped.__memWrapped = true;
+    window.setupParticles = wrapped;
+  }
+} catch (e) {}
+
+function enforce(){
+  if (!particlesAllowed()) { suspendParticles(); return; }
+  try {
+    if (typeof particleState !== 'undefined' && particleState && !particleState.rafId &&
+        typeof window.setupParticles === 'function') window.setupParticles();
+  } catch (e) {}
+}
+
+try {
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) { suspendParticles(); releasePenCanvas(); }
+    else setTimeout(enforce, 300);
+  });
+} catch (e) {}
+try {
+  window.addEventListener('pagehide', function(){ suspendParticles(); releasePenCanvas(); });
+} catch (e) {}
+// Route changes and pen toggles: a cheap 1s policy check, plus an immediate
+// pass right after navigation.
+try {
+  if (typeof window.go === 'function' && !window.go.__memWrapped) {
+    var _go = window.go;
+    var g = function(){ var r = _go.apply(this, arguments); try { setTimeout(enforce, 0); } catch (e) {} return r; };
+    g.__memWrapped = true; window.go = g;
+  }
+} catch (e) {}
+try { setInterval(enforce, 1000); } catch (e) {}
+try { setTimeout(enforce, 500); } catch (e) {}
+window.__memReliefState = function(){
+  var c = document.getElementById('particles-canvas');
+  return {
+    allowed: particlesAllowed(), studying: studying(), inkActive: inkActive(),
+    particleCanvas: !!c, particleRaf: (typeof particleState !== 'undefined' && particleState) ? !!particleState.rafId : null,
+    penCanvas: !!document.querySelector('canvas[data-pen-canvas]')
+  };
+};
 })();
 
 </script>
