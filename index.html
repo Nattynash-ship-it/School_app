@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.474">
+<meta name="app-build" content="18.475">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -131344,6 +131344,183 @@ try {
   });
 } catch (e) {}
 try { setInterval(function(){ check(false); }, 15 * 60 * 1000); } catch (e) {}
+})();
+
+
+(function dataFortress(){
+/* "Every time I close the app and reopen it I'm losing all of my data."
+ *
+ * Reproduced here: it does NOT happen in this engine - a completed test
+ * survives a full process kill and relaunch. The loss is happening in iOS's
+ * own storage layer: WebKit is dropping the installed app's localStorage
+ * between launches. That cannot be patched from inside a web page, so the app
+ * stops trusting localStorage as the only copy of her work:
+ *
+ *   1. Every save also mirrors the packed store into IndexedDB - a separate,
+ *      far more durable database. Mirroring is debounced and async, and
+ *      flushed immediately when the app is backgrounded.
+ *   2. At launch, if localStorage came back empty or gutted while the mirror
+ *      holds real data, the mirror is restored automatically and she is told.
+ *   3. Before any save may overwrite a large existing blob with a drastically
+ *      smaller one (the signature of saving a fresh-default store over real
+ *      data after a failed load), the old blob is stashed in a rescue slot.
+ *   4. "Reset all data" clears the mirror too - a deliberate erase stays
+ *      erased; recovery never resurrects what she chose to delete.
+ */
+if (typeof document === 'undefined') return;
+if (window.__dataFortress) return; window.__dataFortress = true;
+if (typeof indexedDB === 'undefined') return;
+
+var DB = 'sh-fortress', OS = 'kv', KEY = 'store', RESCUE = 'sh_store_rescue_v1';
+
+function idb(mode, fn){
+  return new Promise(function(res, rej){
+    var r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = function(){ try { r.result.createObjectStore(OS); } catch (e) {} };
+    r.onerror = function(){ rej(r.error); };
+    r.onsuccess = function(){
+      var db = r.result;
+      try {
+        var tx = db.transaction(OS, mode);
+        var out = fn(tx.objectStore(OS));
+        tx.oncomplete = function(){ db.close(); res(out && out.__v !== undefined ? out.__v : undefined); };
+        tx.onerror = function(){ db.close(); rej(tx.error); };
+      } catch (e) { try { db.close(); } catch (e2) {} rej(e); }
+    };
+  });
+}
+function mirrorWrite(){
+  try {
+    var raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return Promise.resolve();
+    var rec = { data: raw, at: Date.now(), build: (document.querySelector('meta[name=app-build]')||{}).content || '' };
+    return idb('readwrite', function(os){ os.put(rec, KEY); });
+  } catch (e) { return Promise.resolve(); }
+}
+function mirrorRead(){
+  var out = { __v: null };
+  return idb('readonly', function(os){
+    var g = os.get(KEY);
+    g.onsuccess = function(){ out.__v = g.result || null; };
+    return out;
+  });
+}
+function mirrorClear(){
+  return idb('readwrite', function(os){ os.delete(KEY); }).catch(function(){});
+}
+function unpackRaw(raw){
+  if (!raw) return null;
+  var j = raw;
+  if (raw.charAt(0) !== '{') {
+    try { var d = (typeof LZString !== 'undefined' && LZString.decompressFromUTF16) ? LZString.decompressFromUTF16(raw) : null; if (d) j = d; } catch (e) {}
+  }
+  try { return JSON.parse(j); } catch (e) { return null; }
+}
+// How much real work a store holds - used only to compare copies.
+function weight(st){
+  if (!st || typeof st !== 'object') return 0;
+  var w = 0;
+  try { w += (st.quizHistory || []).length * 10; } catch (e) {}
+  try { w += (st.sessions || []).length * 5; } catch (e) {}
+  try { w += (st.examSessions || []).length * 20; } catch (e) {}
+  try { w += Object.keys(st.userFlashcards || {}).length * 3; } catch (e) {}
+  try { w += Object.keys(st.pretests || {}).length * 10; } catch (e) {}
+  try { w += (st.xp || 0) > 0 ? 5 : 0; } catch (e) {}
+  return w;
+}
+window.__fortress = { mirroredAt: null, recovered: false, rescued: false };
+
+// ---- 3. clobber guard + 1. mirroring, wrapped around every save ----
+var _mirrorT = null;
+function mirrorSoon(){
+  if (_mirrorT) return;
+  _mirrorT = setTimeout(function(){
+    _mirrorT = null;
+    mirrorWrite().then(function(){ window.__fortress.mirroredAt = Date.now(); }).catch(function(){});
+  }, 2000);
+}
+if (typeof saveStore === 'function' && !saveStore.__fortress) {
+  var _save = saveStore;
+  var wrapped = function(){
+    try {
+      var prev = localStorage.getItem(STORE_KEY);
+      if (prev && prev.length > 5000) {
+        var next = JSON.stringify(store);
+        // a real store shrinking to under a fifth of its size in one write is
+        // the signature of clobbering good data with a fresh default
+        if (next && next.length * 3 < prev.length) {
+          try { localStorage.setItem(RESCUE, prev); window.__fortress.rescued = true; } catch (e) {}
+        }
+      }
+    } catch (e) {}
+    var r = _save.apply(this, arguments);
+    mirrorSoon();
+    return r;
+  };
+  wrapped.__fortress = true;
+  saveStore = wrapped;
+}
+// flush the mirror the moment she leaves the app - that is when iOS strikes
+function flush(){ try { if (_mirrorT) { clearTimeout(_mirrorT); _mirrorT = null; } mirrorWrite(); } catch (e) {} }
+try { document.addEventListener('visibilitychange', function(){ if (document.hidden) flush(); }); } catch (e) {}
+try { window.addEventListener('pagehide', flush); } catch (e) {}
+
+// ---- 4. deliberate erase also erases the mirror ----
+try {
+  var _rm = localStorage.removeItem.bind(localStorage);
+  localStorage.removeItem = function(k){
+    if (k === STORE_KEY) { mirrorClear(); try { _rm(RESCUE); } catch (e) {} }
+    return _rm(k);
+  };
+} catch (e) {}
+
+// ---- 2. recovery at launch ----
+function recover(){
+  mirrorRead().then(function(rec){
+    if (!rec || !rec.data) { mirrorSoon(); return; }
+    var snap = unpackRaw(rec.data);
+    var wSnap = weight(snap), wLocal = weight(store);
+    if (wSnap > 0 && wLocal * 5 < wSnap) {
+      // localStorage came back empty or gutted while the mirror holds real
+      // work - restore it. Union-merge when available so nothing new is lost.
+      try {
+        if (typeof mergeIntoStore === 'function' && wLocal > 0) mergeIntoStore(snap);
+        else {
+          for (var k in snap) { if (Object.prototype.hasOwnProperty.call(snap, k)) store[k] = snap[k]; }
+        }
+        saveStore();
+        window.__fortress.recovered = true;
+        try { if (typeof render === 'function') render(); } catch (e) {}
+        try { if (typeof toast === 'function') toast('Recovered your data from the backup mirror \u2713', 6000); } catch (e) {}
+      } catch (e) {}
+    } else {
+      mirrorSoon();
+    }
+  }).catch(function(){});
+}
+try { setTimeout(recover, 1200); } catch (e) {}
+
+// ---- diagnostics: the report shows the whole safety picture ----
+try {
+  if (typeof window.__diag === 'function' && !window.__diag.__fortress) {
+    var _diag = window.__diag;
+    var wrappedDiag = function(){
+      var txt = _diag.apply(this, arguments);
+      try {
+        var o = JSON.parse(txt);
+        o.now.fortress = {
+          mirroredAgoSec: window.__fortress.mirroredAt ? Math.round((Date.now() - window.__fortress.mirroredAt) / 1000) : null,
+          recovered: window.__fortress.recovered,
+          rescued: window.__fortress.rescued,
+          storeKB: (function(){ try { return Math.round((localStorage.getItem(STORE_KEY) || '').length / 512) / 2; } catch (e) { return null; } })()
+        };
+        return JSON.stringify(o);
+      } catch (e) { return txt; }
+    };
+    wrappedDiag.__fortress = true;
+    window.__diag = wrappedDiag;
+  }
+} catch (e) {}
 })();
 
 </script>
