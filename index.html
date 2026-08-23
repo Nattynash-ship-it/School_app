@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.475">
+<meta name="app-build" content="18.476">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -131391,7 +131391,12 @@ function idb(mode, fn){
 }
 function mirrorWrite(){
   try {
-    var raw = localStorage.getItem(STORE_KEY);
+    // Pack from MEMORY, not from localStorage. If localStorage writes are the
+    // thing failing on her device, reading back the stale blob would mirror
+    // yesterday's data forever - the mirror must be independent of the very
+    // layer it exists to protect.
+    var serialized = JSON.stringify(store);
+    var raw = (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized;
     if (!raw) return Promise.resolve();
     var rec = { data: raw, at: Date.now(), build: (document.querySelector('meta[name=app-build]')||{}).content || '' };
     return idb('readwrite', function(os){ os.put(rec, KEY); });
@@ -131512,6 +131517,8 @@ try {
           mirroredAgoSec: window.__fortress.mirroredAt ? Math.round((Date.now() - window.__fortress.mirroredAt) / 1000) : null,
           recovered: window.__fortress.recovered,
           rescued: window.__fortress.rescued,
+          // non-zero here means localStorage writes are FAILING on this device
+          saveFails: (typeof _saveErrorCount === 'number') ? _saveErrorCount : null,
           storeKB: (function(){ try { return Math.round((localStorage.getItem(STORE_KEY) || '').length / 512) / 2; } catch (e) { return null; } })()
         };
         return JSON.stringify(o);
