@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.473">
+<meta name="app-build" content="18.474">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -36741,8 +36741,12 @@ function gannoEraseAtPointAnchored(strokes, point, radius) {
  const cur = gannoGetAnchor();
  const curOrient = gannoOrient();
  return strokes.filter(s => {
- // Strokes hidden in this orientation can't be hit by the eraser
- if (s && s.orient && s.orient !== curOrient) return true;
+ // The eraser must match exactly what is DRAWN, or she can see ink she cannot
+ // remove. This guard used to ignore the "show both orientations" switch, so
+ // with that on, notes from the other orientation rendered but no eraser tap
+ // could ever touch them - the only way out was clearing the whole page.
+ // Same condition as the renderer now: visible means erasable.
+ if (!window.__inkShowAllOrients && s && s.orient && s.orient !== curOrient) return true;
  return gannoEraseAtPoint([gannoReanchor(s, cur)], point, radius).length > 0;
  });
 }
@@ -92220,6 +92224,11 @@ System.out.printf("%d: %.2f%%%n", s, 100.0 * counts[s] / trials);`) +
     '    align-items: start;',
     '  }',
     '  body.quiz-split .app > * { grid-column: 1; min-width: 0; }',
+    // Full-width (note-taking) mode was being overridden here: both rules carry
+    // !important and the same specificity, and this stylesheet is injected
+    // later, so the test pages ignored the setting entirely. This selector is
+    // more specific, so the user's choice wins wherever it is set.
+    '  body.wide-mode.quiz-split .app { max-width: 100% !important; }',
     '  body.quiz-split .app > .scratch-host {',
     '    grid-column: 2;',
     '    grid-row: 1 / span 60;',
@@ -126010,10 +126019,18 @@ F.append('C959/ch2/s3', 'mr_rxr', ''
 
   var css = [
     'body.sh-quiz-wide .scratch-host { display: none !important; }',
+    // "Wide" has to actually be wider. It used to cap the page at
+    // min(1100px, 94vw) while the split view sat at min(1240px, 96vw) - so on a
+    // large screen pressing Wide made the page NARROWER, and below 1000px the
+    // rules lived inside a min-width media query, so on a portrait iPad the
+    // button only hid the scratch pad and changed no width at all. That is
+    // exactly "the wide button isn't widening". Full available width, at every
+    // size, which is the whole point of the button.
+    'body.sh-quiz-wide .app { max-width: 100% !important; }',
     '@media (min-width: 1000px) {',
     '  body.quiz-split.sh-quiz-wide .app {',
     '    display: block !important;',
-    '    max-width: min(1100px, 94vw) !important;',
+    '    max-width: 100% !important;',
     '  }',
     '}',
     '#quiz-width-toggle {',
