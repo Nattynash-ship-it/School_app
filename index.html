@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.463">
+<meta name="app-build" content="18.464">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -739,6 +739,155 @@
 [data-theme="cartoon"] .brand-title, [data-theme="cartoon"] .screen-title {
  font-family: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
+
+
+/* ==================== 6 NEW THEMES (her request: 3 light + 3 dark, no
+   overlap with the existing palette families) ==================== */
+
+/* 1. STICKER BOOK - the properly playful one. Crayon primaries on white. */
+[data-theme="stickerbook"] {
+ --bg: #ffffff; --bg-2: #fff9ec; --surface: #ffffff; --surface-2: #fff3d6; --surface-3: #ffe8b3;
+ --surface-glass: rgba(255,255,255,0.85); --border: rgba(25,32,54,0.14); --border-strong: rgba(25,32,54,0.32);
+ --text: #1c2333; --text-2: #333d55; --text-3: #5d6880; --text-4: #8b94a8; --text-5: #b3bac9;
+ --accent: #e63946; --accent-2: #ff7b54; --accent-bg: #ffe3e6; --accent-text: #ffffff;
+ --accent-grad: linear-gradient(135deg, #e63946 0%, #ff7b54 50%, #ffd23f 100%);
+ --secondary: #2667ff; --secondary-2: #52a5ff; --secondary-bg: #e0ebff;
+ --secondary-grad: linear-gradient(135deg, #2667ff 0%, #52a5ff 100%);
+ --warning: #b07500; --warning-bg: #fff3cd; --danger: #d62828; --danger-bg: #ffe3e3;
+ --success: #099e5f; --success-bg: #dcf6ea;
+ --code-bg: #1c2333; --code-text: #ffd23f;
+ --highlight: rgba(255,210,63,0.55); --note-bg: #e0ebff; --note-border: #2667ff;
+ --shadow: 3px 3px 0 rgba(28,35,51,0.12); --shadow-strong: 5px 5px 0 rgba(28,35,51,0.14);
+ --shadow-card: 3px 3px 0 rgba(28,35,51,0.10);
+ --radius: 18px; --radius-sm: 12px;
+ --page-glow: radial-gradient(340px 220px at 8% 4%, rgba(255,210,63,0.35), transparent 60%), radial-gradient(300px 200px at 94% 10%, rgba(82,165,255,0.28), transparent 60%), radial-gradient(320px 220px at 90% 96%, rgba(230,57,70,0.20), transparent 60%), radial-gradient(280px 200px at 6% 92%, rgba(9,158,95,0.22), transparent 60%);
+}
+[data-theme="stickerbook"] { --avatar-body-top: #ff7b54; --avatar-body-bot: #e63946; --avatar-belly-top: #fffdf5; --avatar-belly-bot: #ffe8b3; --avatar-beak: #ffd23f; --avatar-bg-1: rgba(255,210,63,0.30); --avatar-bg-2: rgba(82,165,255,0.22); }
+[data-theme="stickerbook"] h1, [data-theme="stickerbook"] h2, [data-theme="stickerbook"] h3,
+[data-theme="stickerbook"] .brand-title, [data-theme="stickerbook"] .screen-title {
+ font-family: "Chalkboard SE", "Comic Sans MS", "Segoe Print", cursive;
+}
+[data-theme="stickerbook"] .card, [data-theme="stickerbook"] .chapter-item, [data-theme="stickerbook"] .q-card {
+ border: 2px solid rgba(28,35,51,0.30) !important;
+}
+
+/* 2. MATCHA & MILK - cozy cafe: oat milk, matcha green, toasted caramel. */
+[data-theme="matcha"] {
+ --bg: #f7f2e9; --bg-2: #fbf7ef; --surface: #fffdf8; --surface-2: #f1ead9; --surface-3: #e5dcc4;
+ --surface-glass: rgba(255,253,248,0.82); --border: rgba(60,50,36,0.12); --border-strong: rgba(60,50,36,0.26);
+ --text: #2c2620; --text-2: #453c31; --text-3: #6f6353; --text-4: #97896f; --text-5: #b8ac95;
+ --accent: #55813f; --accent-2: #7ba25f; --accent-bg: #e4eed9; --accent-text: #ffffff;
+ --accent-grad: linear-gradient(135deg, #55813f 0%, #7ba25f 55%, #b7cf9a 100%);
+ --secondary: #b0793a; --secondary-2: #cf9a5c; --secondary-bg: #f4e6d2;
+ --secondary-grad: linear-gradient(135deg, #b0793a 0%, #cf9a5c 100%);
+ --warning: #9a6b00; --warning-bg: #f6ebcd; --danger: #b3402f; --danger-bg: #f7e0da;
+ --success: #3f7d4e; --success-bg: #ddefdf;
+ --code-bg: #2c2620; --code-text: #cde3b3;
+ --highlight: rgba(207,154,92,0.35); --note-bg: #e4eed9; --note-border: #55813f;
+ --shadow: 0 3px 12px rgba(60,50,36,0.10); --shadow-strong: 0 10px 32px rgba(60,50,36,0.14);
+ --shadow-card: 0 1px 3px rgba(60,50,36,0.06), 0 4px 14px rgba(60,50,36,0.08);
+ --radius: 14px; --radius-sm: 10px;
+ --page-glow: radial-gradient(520px 320px at 10% -6%, rgba(123,162,95,0.18), transparent 60%), radial-gradient(480px 300px at 92% 104%, rgba(207,154,92,0.16), transparent 60%);
+}
+[data-theme="matcha"] { --avatar-body-top: #9bbd7d; --avatar-body-bot: #55813f; --avatar-belly-top: #fffdf8; --avatar-belly-bot: #f1ead9; --avatar-beak: #cf9a5c; --avatar-bg-1: rgba(123,162,95,0.24); --avatar-bg-2: rgba(207,154,92,0.16); }
+
+/* 3. ARCHITECT - graph paper, ink navy, drafting cyan + marker orange. */
+[data-theme="architect"] {
+ --bg: #fbfcfe; --bg-2: #ffffff; --surface: #ffffff; --surface-2: #f1f5fa; --surface-3: #e3eaf3;
+ --surface-glass: rgba(255,255,255,0.85); --border: rgba(29,43,69,0.14); --border-strong: rgba(29,43,69,0.30);
+ --text: #1d2b45; --text-2: #32415e; --text-3: #5c6b87; --text-4: #8894ab; --text-5: #b0b9c9;
+ --accent: #0e7c9e; --accent-2: #2fa8c9; --accent-bg: #ddf0f6; --accent-text: #ffffff;
+ --accent-grad: linear-gradient(135deg, #0e7c9e 0%, #2fa8c9 100%);
+ --secondary: #e8590c; --secondary-2: #ff8c42; --secondary-bg: #ffe8d9;
+ --secondary-grad: linear-gradient(135deg, #e8590c 0%, #ff8c42 100%);
+ --warning: #9a6700; --warning-bg: #fff0c9; --danger: #c92a2a; --danger-bg: #ffe3e3;
+ --success: #087f5b; --success-bg: #d9f2e9;
+ --code-bg: #1d2b45; --code-text: #8fd6ea;
+ --highlight: rgba(255,140,66,0.35); --note-bg: #ddf0f6; --note-border: #0e7c9e;
+ --shadow: 0 2px 8px rgba(29,43,69,0.08); --shadow-strong: 0 8px 26px rgba(29,43,69,0.12);
+ --shadow-card: 0 1px 2px rgba(29,43,69,0.05), 0 3px 10px rgba(29,43,69,0.07);
+ --radius: 6px; --radius-sm: 4px;
+ --page-glow: none;
+}
+[data-theme="architect"] body {
+ background-image: linear-gradient(rgba(29,43,69,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(29,43,69,0.055) 1px, transparent 1px);
+ background-size: 24px 24px;
+}
+[data-theme="architect"] { --avatar-body-top: #2fa8c9; --avatar-body-bot: #0e7c9e; --avatar-belly-top: #ffffff; --avatar-belly-bot: #e3eaf3; --avatar-beak: #ff8c42; --avatar-bg-1: rgba(14,124,158,0.16); --avatar-bg-2: rgba(232,89,12,0.12); }
+[data-theme="architect"] h1, [data-theme="architect"] h2, [data-theme="architect"] h3,
+[data-theme="architect"] .screen-title {
+ font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: -0.01em;
+}
+
+/* 4. AMBER TERMINAL - retro CRT: warm black, amber phosphor, scanlines. */
+[data-theme="crt"] {
+ --bg: #131007; --bg-2: #191408; --surface: #1c160a; --surface-2: #251d0d; --surface-3: #302610;
+ --surface-glass: rgba(28,22,10,0.72); --border: rgba(255,176,46,0.16); --border-strong: rgba(255,176,46,0.34);
+ --text: #f5e3c8; --text-2: #e3cda6; --text-3: #bda57d; --text-4: #8f7c5c; --text-5: #63563f;
+ --accent: #ffb02e; --accent-2: #ffd166; --accent-bg: #33270c; --accent-text: #1a1204;
+ --accent-grad: linear-gradient(135deg, #ffb02e 0%, #ffd166 100%);
+ --secondary: #7dd956; --secondary-2: #a3e97f; --secondary-bg: #1d2a10;
+ --secondary-grad: linear-gradient(135deg, #7dd956 0%, #ffd166 100%);
+ --warning: #ffd166; --warning-bg: #33270c; --danger: #ff6b5e; --danger-bg: #33130f;
+ --success: #7dd956; --success-bg: #1d2a10;
+ --code-bg: #0b0904; --code-text: #ffb02e;
+ --highlight: rgba(255,176,46,0.30); --note-bg: rgba(255,176,46,0.10); --note-border: #ffb02e;
+ --shadow: 0 4px 18px rgba(255,176,46,0.12); --shadow-strong: 0 12px 38px rgba(255,176,46,0.16), 0 2px 8px rgba(0,0,0,0.5);
+ --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35);
+ --radius: 8px; --radius-sm: 6px;
+ --page-glow: radial-gradient(600px 340px at 50% -10%, rgba(255,176,46,0.10), transparent 60%);
+}
+[data-theme="crt"] body {
+ background-image: repeating-linear-gradient(0deg, rgba(255,176,46,0.028) 0px, rgba(255,176,46,0.028) 1px, transparent 1px, transparent 3px);
+}
+[data-theme="crt"] { --avatar-body-top: #ffd166; --avatar-body-bot: #ffb02e; --avatar-belly-top: #33270c; --avatar-belly-bot: #251d0d; --avatar-beak: #7dd956; --avatar-bg-1: rgba(255,176,46,0.18); --avatar-bg-2: rgba(125,217,86,0.10); }
+[data-theme="crt"] h1, [data-theme="crt"] h2, [data-theme="crt"] h3, [data-theme="crt"] .screen-title {
+ font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* 5. GILDED NOIR - espresso black, art-deco gold, serif headings. */
+[data-theme="gilded"] {
+ --bg: #120e0a; --bg-2: #181310; --surface: #1c1610; --surface-2: #262017; --surface-3: #332a1d;
+ --surface-glass: rgba(28,22,16,0.72); --border: rgba(217,164,65,0.14); --border-strong: rgba(217,164,65,0.32);
+ --text: #f3e9d8; --text-2: #ddcfb6; --text-3: #b5a488; --text-4: #8a7c64; --text-5: #5f5647;
+ --accent: #d9a441; --accent-2: #f0c674; --accent-bg: #33290f; --accent-text: #1c1403;
+ --accent-grad: linear-gradient(135deg, #d9a441 0%, #f0c674 55%, #f7e3ae 100%);
+ --secondary: #2f9c74; --secondary-2: #55c99c; --secondary-bg: #10261d;
+ --secondary-grad: linear-gradient(135deg, #2f9c74 0%, #d9a441 100%);
+ --warning: #f0c674; --warning-bg: #33290f; --danger: #e5605e; --danger-bg: #331211;
+ --success: #55c99c; --success-bg: #10261d;
+ --code-bg: #0c0906; --code-text: #f0c674;
+ --highlight: rgba(217,164,65,0.30); --note-bg: rgba(217,164,65,0.10); --note-border: #d9a441;
+ --shadow: 0 4px 18px rgba(0,0,0,0.45); --shadow-strong: 0 14px 44px rgba(0,0,0,0.55), 0 2px 10px rgba(217,164,65,0.10);
+ --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 5px 18px rgba(0,0,0,0.35);
+ --radius: 12px; --radius-sm: 8px;
+ --page-glow: radial-gradient(560px 320px at 6% -8%, rgba(217,164,65,0.12), transparent 60%), radial-gradient(520px 300px at 96% -6%, rgba(240,198,116,0.08), transparent 60%);
+}
+[data-theme="gilded"] { --avatar-body-top: #f0c674; --avatar-body-bot: #d9a441; --avatar-belly-top: #f3e9d8; --avatar-belly-bot: #ddcfb6; --avatar-beak: #2f9c74; --avatar-bg-1: rgba(217,164,65,0.20); --avatar-bg-2: rgba(47,156,116,0.10); }
+[data-theme="gilded"] h1, [data-theme="gilded"] h2, [data-theme="gilded"] h3,
+[data-theme="gilded"] .brand-title, [data-theme="gilded"] .screen-title {
+ font-family: "Charter", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; letter-spacing: 0.01em;
+}
+
+/* 6. CHERRY DINER - dark maroon booth, cherry neon + mint milkshake. */
+[data-theme="diner"] {
+ --bg: #190d12; --bg-2: #1f1016; --surface: #24131a; --surface-2: #2f1a22; --surface-3: #3d222c;
+ --surface-glass: rgba(36,19,26,0.72); --border: rgba(255,143,163,0.14); --border-strong: rgba(255,143,163,0.32);
+ --text: #fdeff2; --text-2: #f0d5dc; --text-3: #c9a4b0; --text-4: #997685; --text-5: #6b4f5b;
+ --accent: #ff4d6d; --accent-2: #ff8fa3; --accent-bg: #3d1420; --accent-text: #ffffff;
+ --accent-grad: linear-gradient(135deg, #ff4d6d 0%, #ff8fa3 55%, #4fd8af 100%);
+ --secondary: #4fd8af; --secondary-2: #7ee8c8; --secondary-bg: #0f2e24;
+ --secondary-grad: linear-gradient(135deg, #4fd8af 0%, #ff8fa3 100%);
+ --warning: #ffc95e; --warning-bg: #33270e; --danger: #ff6b5e; --danger-bg: #33130f;
+ --success: #4fd8af; --success-bg: #0f2e24;
+ --code-bg: #10070a; --code-text: #ff8fa3;
+ --highlight: rgba(79,216,175,0.30); --note-bg: rgba(255,77,109,0.10); --note-border: #ff4d6d;
+ --shadow: 0 4px 18px rgba(255,77,109,0.14); --shadow-strong: 0 14px 42px rgba(255,77,109,0.18), 0 2px 8px rgba(0,0,0,0.5);
+ --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 5px 16px rgba(0,0,0,0.35);
+ --radius: 20px; --radius-sm: 14px;
+ --page-glow: radial-gradient(520px 300px at 8% -8%, rgba(255,77,109,0.14), transparent 60%), radial-gradient(480px 280px at 94% -4%, rgba(79,216,175,0.10), transparent 60%), radial-gradient(560px 320px at 50% 108%, rgba(255,143,163,0.08), transparent 60%);
+}
+[data-theme="diner"] { --avatar-body-top: #ff8fa3; --avatar-body-bot: #ff4d6d; --avatar-belly-top: #fdeff2; --avatar-belly-bot: #f0d5dc; --avatar-beak: #4fd8af; --avatar-bg-1: rgba(255,77,109,0.20); --avatar-bg-2: rgba(79,216,175,0.14); }
 
  /* ============ AVATAR COLOR PER THEME ============ */
  /* The owl mascot uses CSS vars so each theme gives it personality */
@@ -4660,6 +4809,12 @@ html { scroll-behavior: smooth; }
  border-color: rgba(255,255,255,0.26); }
 [data-theme="glass"] .brand-bar { background: rgba(255,255,255,0.08); }
 .theme-preview.theme-glass { background: linear-gradient(135deg, #1c1140 0%, #ff5ec8 40%, #38e8ff 100%); }
+.theme-preview.theme-stickerbook { background: linear-gradient(135deg, #ffffff 0%, #ffd23f 30%, #e63946 62%, #2667ff 100%); }
+.theme-preview.theme-matcha { background: linear-gradient(135deg, #f7f2e9 0%, #cde3b3 45%, #55813f 100%); }
+.theme-preview.theme-architect { background: linear-gradient(135deg, #fbfcfe 0%, #dfe7f2 50%, #0e7c9e 100%); }
+.theme-preview.theme-crt { background: linear-gradient(135deg, #131007 0%, #3a2a08 55%, #ffb02e 100%); }
+.theme-preview.theme-gilded { background: linear-gradient(135deg, #120e0a 0%, #33290f 55%, #d9a441 100%); }
+.theme-preview.theme-diner { background: linear-gradient(135deg, #190d12 0%, #ff4d6d 55%, #4fd8af 100%); }
 
 /* ==================== STICKERS ==================== */
 .ganno-tool[data-tool="sticker"] { order: 8; font-size: 19px; line-height: 1; }
@@ -5186,7 +5341,13 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
  [data-theme="rainfall"],
  [data-theme="sakura"],
  [data-theme="warmcalm"],
- [data-theme="winter"] { --glass-blur: 18px; }
+ [data-theme="winter"],
+ [data-theme="stickerbook"],
+ [data-theme="matcha"],
+ [data-theme="architect"],
+ [data-theme="crt"],
+ [data-theme="gilded"],
+ [data-theme="diner"] { --glass-blur: 18px; }
 
 /* ═══ QUIZLET-STYLE FLASHCARDS ═══ */
 .knowt-card { min-height: 300px !important; border-radius: 18px !important; padding: 30px !important;
@@ -24206,6 +24367,12 @@ const THEMES = [
  { id: 'notebook', name: 'Notebook', desc: 'Black & white · ruled paper' },
  { id: 'field', name: 'Green Field', desc: 'Rich greenery · glowing meadow' },
  { id: 'deepocean', name: 'Deep Ocean', desc: 'Saturated blues · glowing current' },
+ { id: 'stickerbook', name: 'Sticker Book', desc: 'Crayon primaries · truly playful' },
+ { id: 'matcha', name: 'Matcha & Milk', desc: 'Oat cream & green tea · cozy cafe' },
+ { id: 'architect', name: 'Architect', desc: 'Graph paper · ink navy & drafting cyan' },
+ { id: 'crt', name: 'Amber Terminal', desc: 'Retro CRT · amber phosphor & scanlines' },
+ { id: 'gilded', name: 'Gilded Noir', desc: 'Espresso black & art-deco gold' },
+ { id: 'diner', name: 'Cherry Diner', desc: 'Dark booth red · mint milkshake neon' },
  { id: 'glass', name: 'Glassmorphic', desc: 'Frosted glass · vivid glow blobs' },
 ];
 function renderThemePicker() {
