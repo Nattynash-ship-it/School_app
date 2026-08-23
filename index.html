@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.464">
+<meta name="app-build" content="18.465">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -43634,7 +43634,9 @@ function _rdyStamp() {
   if (!_rdyCache) _rdyCache = {};
   const h = (store.quizHistory && store.quizHistory.length) || 0;
   const o = (store.unlockOverride && Object.keys(store.unlockOverride).length) || 0;
-  return h + ':' + o;
+  let hy = 0;
+  try { hy = window.__hydratedCourses ? window.__hydratedCourses().length : 0; } catch (e) {}
+  return h + ':' + o + ':' + hy;
 }
 
 function sectionMastery(courseId, chId, secId) {
@@ -43653,7 +43655,16 @@ function sectionMastery(courseId, chId, secId) {
     const empty = { total: 0, attempted: 0, correct: 0, accuracy: 0, coverage: 0,
                     freshness: 1, readiness: null, passed: true, passFull: false,
                     passAttempt: false, bestAttempt: 0, need: 0, days: 0 };
-    _rdyCache[ck] = empty; return empty;
+    // A zero here can mean "content pack not loaded yet", not "no questions" -
+    // memoizing that would show the course as reset all session.
+    let hyd = true;
+    try {
+      hyd = !window.__hydratedCourses ||
+            (window.__focusedBuild || []).indexOf(courseId) === -1 ||
+            window.__hydratedCourses().indexOf(courseId) !== -1;
+    } catch (e) {}
+    if (hyd) _rdyCache[ck] = empty;
+    return empty;
   }
 
   const ids = new Set(qs.map(q => String(q.id)));
@@ -129445,16 +129456,25 @@ function packAbsorb(p){
   for (var i = 0; i < PACK_NAMES.length; i++) { if (typeof p[PACK_NAMES[i]] !== 'string') return false; }
   for (var j = 0; j < PACK_NAMES.length; j++) { if (SRC[PACK_NAMES[j]] === undefined) SRC[PACK_NAMES[j]] = p[PACK_NAMES[j]]; }
   packLoaded = true;
+  if (window.__packMissed) {
+    window.__packMissed = false;
+    setTimeout(function(){ try { if (typeof render === 'function') render(); } catch (e) {} }, 80);
+  }
   return true;
 }
+var _packSyncAt = 0;
 function packLoadSync(){
   if (packLoaded) return;
+  var _now = Date.now();
+  if (_now - _packSyncAt < 3000) return;
+  _packSyncAt = _now;
   try {
     var x = new XMLHttpRequest();
     x.open('GET', PACK_URL, false);
     x.send();
     if (x.status === 200) packAbsorb(JSON.parse(x.responseText));
   } catch (e) {}
+  if (!packLoaded) window.__packMissed = true;
 }
 try {
   fetch(PACK_URL).then(function(r){ return r.json(); }).then(function(p){
