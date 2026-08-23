@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.471">
+<meta name="app-build" content="18.472">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -31205,6 +31205,13 @@ function renderSearch() {
  const doSearch = () => {
  const q = input.value.trim().toLowerCase();
  if (!q) { results.innerHTML = ''; return; }
+ // Longest word of the query drives the cheap pre-scan: a whole phrase can be
+ // broken across markup ("De <i>Morgan</i>"), a single word almost never is.
+ let _preRx = null;
+ try {
+ const _w = q.split(/\s+/).filter(Boolean).sort((a, b) => b.length - a.length)[0];
+ if (_w && _w.length >= 3) _preRx = new RegExp(_w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+ } catch (e) { _preRx = null; }
  const hits = [];
  // Every list below is guarded. Sections added by the later content modules
  // do not all carry an objectives array, and `for...of undefined` threw
@@ -31232,7 +31239,11 @@ function renderSearch() {
  // Lesson body
  let lesson = null;
  try { lesson = getLesson(cId, ch.id, s.id); } catch (e) { lesson = null; }
- if (lesson && typeof lesson.body === 'string') {
+ // Stripping the HTML of every lesson on the page was the whole cost of a
+ // search. Scan the raw body first with a case-insensitive regex, which
+ // allocates nothing, and only pay for the strip on the sections that can
+ // actually match. The exact test below is unchanged, so results are the same.
+ if (lesson && typeof lesson.body === 'string' && (!_preRx || _preRx.test(lesson.body))) {
  const plain = lesson.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
  const i = plain.toLowerCase().indexOf(q);
  if (i !== -1) {
@@ -31273,7 +31284,15 @@ function renderSearch() {
  el.addEventListener('click', () => go({ name: 'section', courseId: h.courseId, chId: h.chId, secId: h.secId }));
  });
  };
- input.addEventListener('input', doSearch);
+ // A search scans every lesson on every active course. Running that on each
+ // keystroke meant typing an eleven-letter phrase ran it eleven times, and on
+ // her iPad each run is seconds of frozen screen. One run per pause instead.
+ let _searchTimer = null;
+ input.addEventListener('input', () => {
+ if (_searchTimer) clearTimeout(_searchTimer);
+ if (!input.value.trim()) { results.innerHTML = ''; return; }   // clearing is instant
+ _searchTimer = setTimeout(doSearch, 180);
+ });
  return wrap;
 }
 
@@ -131042,6 +131061,116 @@ window.__memReliefState = function(){
     penCanvas: !!document.querySelector('canvas[data-pen-canvas]')
   };
 };
+})();
+
+
+(function inkBlockSettle(){
+/* THE 32-PIXEL OFFSET.
+ *
+ * Strokes are anchored to the paragraph they were drawn over, by text: at
+ * render time the app measures every text block into an index, and places each
+ * stroke at its block's position plus the offset it was drawn at. That is the
+ * right design - when the page reflows, ink follows its line.
+ *
+ * But the index is measured ONCE, when the ink renders. Lesson pages keep
+ * changing shape for a moment afterwards: a web font lands, a visual study
+ * block is injected, an image gets its size. Everything below shifts, and the
+ * index still holds the old numbers - so every anchored stroke is positioned
+ * from a stale measurement.
+ *
+ * Measured on a real lesson: after a re-render the index said the paragraph
+ * was at 1836.4, the paragraph was actually at 1868.4, and the ink landed at
+ * 1849 - thirty-two pixels, about two lines, above the words she wrote on.
+ *
+ * Fix: once layout settles, re-measure the blocks and compare. If anything
+ * moved, render the ink again so it lands on its line. Bounded to a few passes
+ * per page so it can never loop, and it does nothing at all on pages with no
+ * anchored ink.
+ */
+if (typeof document === 'undefined') return;
+if (window.__inkBlockSettle) return; window.__inkBlockSettle = true;
+
+var passes = 0, lastRoute = null, pending = 0;
+
+function lessonRoot(){
+  try { return document.querySelector('.lesson') || document.getElementById('app'); } catch (e) { return null; }
+}
+function anchoredStrokesExist(){
+  try {
+    if (typeof ganno === 'undefined' || !ganno || !ganno.routeKey) return false;
+    var st = (typeof gannoGetStrokes === 'function') ? gannoGetStrokes(ganno.routeKey) : null;
+    if (!st || !st.length) return false;
+    for (var i = 0; i < st.length; i++) if (st[i] && st[i].blockText) return true;
+  } catch (e) {}
+  return false;
+}
+
+function verify(){
+  pending = 0;
+  try {
+    if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return;   // never mid-stroke
+    if (ganno && ganno.routeKey !== lastRoute) { lastRoute = ganno.routeKey; passes = 0; }
+    if (passes >= 4) return;
+    if (!anchoredStrokesExist()) return;
+    if (typeof window.__gannoGetOverlayFrame !== 'function' ||
+        typeof window.__gannoBuildBlockIndex !== 'function') return;
+    var cur = window.__gannoBlockIndex;
+    if (!cur || !cur.length) return;
+    var frame = window.__gannoGetOverlayFrame();
+    if (!frame) return;
+    var fresh = window.__gannoBuildBlockIndex(frame);
+    if (!fresh || !fresh.length) return;
+    var byIdx = Object.create(null);
+    for (var f = 0; f < fresh.length; f++) if (fresh[f]) byIdx[fresh[f].idx] = fresh[f];
+    var moved = false;
+    for (var c = 0; c < cur.length; c++) {
+      var a = cur[c]; if (!a) continue;
+      var b = byIdx[a.idx];
+      if (b && Math.abs(a.top - b.top) > 1) { moved = true; break; }
+    }
+    if (!moved) return;
+    passes++;
+    if (typeof gannoRender === 'function' && typeof gannoGetStrokes === 'function') {
+      gannoRender(gannoGetStrokes(ganno.routeKey), null);
+    }
+  } catch (e) {}
+}
+function schedule(){
+  if (pending) return;
+  try { pending = requestAnimationFrame(function(){ verify(); }); } catch (e) { pending = 0; verify(); }
+}
+window.__inkBlockVerify = verify;
+
+// After a route change the page is still settling - check a few times, then stop.
+if (typeof gannoUpdateRoute === 'function' && !gannoUpdateRoute.__blockSettle) {
+  var _upd = gannoUpdateRoute;
+  gannoUpdateRoute = function(){
+    var r = _upd.apply(this, arguments);
+    passes = 0;
+    try {
+      setTimeout(schedule, 350);
+      setTimeout(schedule, 1000);
+      setTimeout(schedule, 2200);
+    } catch (e) {}
+    return r;
+  };
+  gannoUpdateRoute.__blockSettle = true;
+}
+
+// The direct signal: the lesson column changing shape is exactly what makes the
+// index stale, so watch it instead of polling.
+try {
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(function(){ setTimeout(schedule, 120); });
+    var attach = function(){
+      var root = lessonRoot();
+      if (root && root !== ro.__target) { try { ro.disconnect(); } catch (e) {} ro.observe(root); ro.__target = root; }
+    };
+    attach();
+    setInterval(attach, 1500);
+  }
+} catch (e) {}
+try { window.addEventListener('load', function(){ setTimeout(schedule, 300); }); } catch (e) {}
 })();
 
 </script>
