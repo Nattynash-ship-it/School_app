@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.466">
+<meta name="app-build" content="18.467">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -37659,9 +37659,14 @@ function gannoGetAnchor() {
  ? svg.viewBox.baseVal : null;
  const kx = vb ? (vb.width / sr.width) : 1;
  const ky = (vb && vb.height > 0) ? (vb.height / sr.height) : 1;
+ // Document coordinates, same space the strokes live in: add the viewBox
+ // origin so the anchor does not move when the ink window slides. (With a
+ // document-sized overlay the origin is 0,0 and this is the old value
+ // exactly, so anchors saved by earlier builds stay valid.)
+ const ox = vb ? vb.x : 0, oy = vb ? vb.y : 0;
  return {
- x: (ar.left - sr.left) * kx,
- y: (ar.top - sr.top) * ky,
+ x: ox + (ar.left - sr.left) * kx,
+ y: oy + (ar.top - sr.top) * ky,
  w: Math.max(1, ar.width * kx),
  h: Math.max(1, ar.height * ky)
  };
@@ -46280,13 +46285,18 @@ function getQuestions(courseId, chId, secId) {
       var vb = (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0) ? svg.viewBox.baseVal : null;
       var kx = vb ? (vb.width / sr.width) : 1;
       var ky = (vb && vb.height > 0) ? (vb.height / sr.height) : 1;
-      return { sr: sr, kx: kx, ky: ky };
+      // Origin of the overlay's coordinate space. The overlay is a window that
+      // slides down the document, so its top-left corner is at document
+      // (viewBox.x, viewBox.y) - NOT (0,0). Every conversion between client
+      // rects and stroke coordinates must carry this term or saved ink shifts
+      // by the window offset. While the origin is 0,0 these are identity.
+      return { sr: sr, kx: kx, ky: ky, ox: vb ? vb.x : 0, oy: vb ? vb.y : 0 };
     }catch(e){ return null; }
   };
   window.__gannoRectToOverlay = function(rect, frame){
     return {
-      x: (rect.left - frame.sr.left) * frame.kx,
-      y: (rect.top - frame.sr.top) * frame.ky,
+      x: (frame.ox || 0) + (rect.left - frame.sr.left) * frame.kx,
+      y: (frame.oy || 0) + (rect.top - frame.sr.top) * frame.ky,
       w: Math.max(1, rect.width * frame.kx),
       h: Math.max(1, rect.height * frame.ky)
     };
@@ -52083,7 +52093,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     try { return document.getElementById('app') || document.querySelector('.app') || document.body; } catch(e){ return document.body; }
   }
   function frame(){ try { return (window.__gannoGetOverlayFrame && window.__gannoGetOverlayFrame()) || null; } catch(e){ return null; } }
-  function overlayToClient(pt, f){ return { x: pt.x / f.kx + f.sr.left, y: pt.y / f.ky + f.sr.top }; }
+  function overlayToClient(pt, f){ return { x: (pt.x - (f.ox || 0)) / f.kx + f.sr.left, y: (pt.y - (f.oy || 0)) / f.ky + f.sr.top }; }
 
   function caretAt(cx, cy){
     try {
@@ -130627,30 +130637,95 @@ function guard(svg){
     return _sa(n, v);
   };
 }
+var _rsAt = 0, _rsVal = null;
+function realSize(force){
+  var now = Date.now();
+  if (!force && _rsVal && (now - _rsAt) < 200) return _rsVal;
+  if (typeof window.__gannoRealSize !== 'function') return null;
+  var r = window.__gannoRealSize();
+  if (!r || !r.w || !r.h) return null;
+  _rsAt = now; _rsVal = r;
+  return r;
+}
+
+/* The single sizing authority. Self-correcting BY MEASUREMENT: it compares the
+ * element's real geometry against what the window should be, so it repairs the
+ * overlay no matter which other module wrote to it. (The first attempt trusted
+ * its own bookkeeping and silently gave up once another writer had changed the
+ * DOM behind it - which is exactly what happened on the iPad.) */
 function apply(force){
   var svg = svgEl(); if (!svg) return;
   guard(svg);
   try { if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return; } catch(e){}
-  var real = (typeof window.__gannoRealSize === 'function') ? window.__gannoRealSize() : null;
-  if (!real || !real.w || !real.h) return;
+  var real = realSize(force);
+  if (!real) return;
   var H = window.innerHeight || 800;
   var winH = Math.min(real.h, 3 * H);
   var maxTop = Math.max(0, real.h - winH);
   var sy = Math.max(0, window.scrollY || window.pageYOffset || 0);
-  var want = Math.min(maxTop, Math.max(0, sy - H));
-  var curTop = svg.__winTop, curH = svg.__winH, curW = svg.__winW;
-  var sizeChanged = (curH !== winH) || (curW !== real.w);
-  if (!force && !sizeChanged && typeof curTop === 'number' && Math.abs(curTop - want) < 0.6 * H) return;
-  svg.__winTop = want; svg.__winH = winH; svg.__winW = real.w;
-  // one atomic geometry write; the viewBox write also sets style.top (guard)
+  var ideal = Math.min(maxTop, Math.max(0, sy - H));
+
+  var curTop = parseFloat(svg.style.top) || 0;
+  var curH = parseFloat(svg.style.height) || 0;
+  var curW = parseFloat(svg.style.width) || 0;
+  var vb = (svg.viewBox && svg.viewBox.baseVal) ? svg.viewBox.baseVal : null;
+
+  var sizeOk  = Math.abs(curH - winH) <= 1 && Math.abs(curW - real.w) <= 1 &&
+                !!vb && Math.abs(vb.height - winH) <= 1 && Math.abs(vb.width - real.w) <= 1;
+  var alignOk = !!vb && Math.abs(vb.y - curTop) <= 0.5;
+  // Hysteresis: the window is 3 screens tall with the viewport in the middle
+  // third, so it only needs to move once scrolling has drifted more than 60%
+  // of a screen - a rare discrete jump, never a per-frame chase.
+  var topOk   = Math.abs(curTop - ideal) < 0.6 * H;
+  if (!force && sizeOk && alignOk && topOk) return;
+
+  var top = (alignOk && topOk) ? curTop : ideal;
+  if (top > maxTop) top = maxTop;
+  if (top < 0) top = 0;
+  svg.__winTop = top; svg.__winH = winH; svg.__winW = real.w;
+  // One atomic geometry change; the viewBox write also sets style.top (guard),
+  // so top - viewBox.y stays constant and no stroke can move.
   svg.style.width = real.w + 'px';
   svg.style.height = winH + 'px';
-  svg.setAttribute('viewBox', '0 ' + want + ' ' + real.w + ' ' + winH);
-  // keep stopEndlessScroll's bookkeeping satisfied so it never re-inflates
+  svg.setAttribute('viewBox', '0 ' + top + ' ' + real.w + ' ' + winH);
+  // keep the older fitters' change-detection satisfied so they stay quiet
   svg.__fitW = real.w; svg.__fitH = real.h;
   try { if (typeof ganno !== 'undefined' && ganno) ganno._rectCache = null; } catch(e){}
 }
+window.__inkWindowState = function(){
+  var svg = svgEl(); if (!svg) return null;
+  var vb = svg.viewBox && svg.viewBox.baseVal;
+  return { top: parseFloat(svg.style.top) || 0, h: parseFloat(svg.style.height) || 0,
+           w: parseFloat(svg.style.width) || 0, vbY: vb ? vb.y : null, vbH: vb ? vb.height : null };
+};
 window.__inkWindowApply = apply;
+
+/* OWN THE SIZERS. Both are global function bindings that earlier modules have
+ * already replaced with document-sized versions (v18.332 fit(), and the
+ * endless-scroll fitter). They run on every render, so whoever assigns LAST
+ * decides the overlay's size - this module is the last one in the file. */
+window.gannoEnsureSvg = function gannoEnsureSvg(){
+  var svg = svgEl();
+  if (!svg) {
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'ganno-svg');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    document.body.appendChild(svg);
+  }
+  try { if (typeof ganno !== 'undefined' && ganno) ganno.svg = svg; } catch(e){}
+  apply(false);
+  return svg;
+};
+window.gannoOnResize = function gannoOnResize(){
+  var svg = svgEl(); if (!svg) return;
+  apply(true);
+  try {
+    if (typeof gannoRender === 'function' && typeof gannoGetStrokes === 'function' &&
+        typeof ganno !== 'undefined' && ganno) gannoRender(gannoGetStrokes(ganno.routeKey), null);
+  } catch(e){}
+};
+// The endless-scroll module's public fitter also re-inflates; point it here.
+window.__gannoFitOverlay = function(){ apply(true); };
 
 var raf = 0;
 function onScroll(){
