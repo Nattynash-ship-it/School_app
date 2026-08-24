@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.481">
+<meta name="app-build" content="18.482">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -28229,9 +28229,15 @@ function gannoRenderToolbar() {
  });
  primary.querySelector('[data-act="clear"]').addEventListener('click', () => {
  const strokes = gannoGetStrokes(ganno.routeKey);
- if (strokes.length === 0) return;
+ let hls = 0;
+ try { hls = (window.__textHL && window.__textHL.countPage()) || 0; } catch (e) {}
+ if (strokes.length === 0 && !hls) return;
  if (!confirm('Clear all annotations on this page?')) return;
  gannoSaveStrokes(ganno.routeKey, []);
+ // Text highlights are annotations on this page too - the trash can used to
+ // leave them behind, which read as "delete does nothing" whenever the marks
+ // she was aiming at were text highlights rather than ink.
+ try { if (window.__textHL) window.__textHL.clearPage(); } catch (e) {}
  gannoRender([], null);
  });
  primary.querySelector('[data-act="clearall"]').addEventListener('click', () => {
@@ -28240,6 +28246,7 @@ function gannoRenderToolbar() {
  // Emptying that object alone cleared nothing and still said it had.
  let wiped = 0;
  try { if (typeof window.__inkDropAll === 'function') wiped = window.__inkDropAll(); } catch (e) {}
+ try { if (window.__textHL) wiped += window.__textHL.clearAll(); } catch (e) {}
  store.gannoStrokes = {};
  saveStore();
  try { if (typeof ganno === 'object' && ganno) ganno.liveEl = null; } catch (e) {}
@@ -44952,6 +44959,68 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     save();
     hideMenu();
     applyAll();
+  }
+
+  // A text highlight is an annotation to her, whichever system drew it - so
+  // the annotation toolbar's trash cans and eraser must reach these too.
+  // Before this, a highlight whose text anchor had drifted sat overlapping
+  // the wrong words and NOTHING on the ink toolbar could remove it: the
+  // eraser, the page trash can and Clear ALL all operate on ink strokes,
+  // and these live in their own store (store.textHL).
+  window.__textHL = {
+    countPage: function(){ try { var k = keyOf(); return (k && listFor(k).length) || 0; } catch (e) { return 0; } },
+    clearPage: function(){
+      try {
+        var k = keyOf(); if (!k) return 0;
+        var b = bag(); var n = (b && b[k] && b[k].length) || 0;
+        if (b && b[k]) delete b[k];
+        save(); hideMenu(); hidePalette(); applyAll();
+        return n;
+      } catch (e) { return 0; }
+    },
+    clearAll: function(){
+      try {
+        var b = bag(); if (!b) return 0; var n = 0;
+        for (var k in b){ n += (b[k] && b[k].length) || 0; delete b[k]; }
+        save(); hideMenu(); hidePalette(); applyAll();
+        return n;
+      } catch (e) { return 0; }
+    }
+  };
+
+  // Eraser pass over a text highlight removes it, same as any ink stroke.
+  // The eraser works in overlay coordinates; the marks are DOM elements, so
+  // the point is mapped back to client space and tested against each mark's
+  // on-screen box (one highlight can render as several marks across lines).
+  if (typeof gannoEraseAtPointAnchored === 'function' && !gannoEraseAtPointAnchored.__textHLMarks){
+    var _erHL = gannoEraseAtPointAnchored;
+    gannoEraseAtPointAnchored = function(strokes, point, radius){
+      try {
+        var f = (window.__gannoGetOverlayFrame && window.__gannoGetOverlayFrame());
+        var k = keyOf();
+        if (f && point && k){
+          var cx = (point.x - (f.ox || 0)) / f.kx + f.sr.left;
+          var cy = (point.y - (f.oy || 0)) / f.ky + f.sr.top;
+          var pad = (radius || 16) / (f.kx || 1);
+          var marks = document.querySelectorAll('mark[data-hl]');
+          var doomed = {};
+          for (var i = 0; i < marks.length; i++) {
+            var r = marks[i].getBoundingClientRect();
+            if (cx >= r.left - pad && cx <= r.right + pad && cy >= r.top - pad && cy <= r.bottom + pad) {
+              doomed[marks[i].getAttribute('data-hl')] = 1;
+            }
+          }
+          var ids = Object.keys(doomed);
+          if (ids.length){
+            var list = listFor(k), hit = false;
+            for (var j = list.length - 1; j >= 0; j--) if (doomed[list[j].id]) { list.splice(j, 1); hit = true; }
+            if (hit){ save(); applyAll(); }
+          }
+        }
+      } catch (e) {}
+      return _erHL.apply(this, arguments);
+    };
+    gannoEraseAtPointAnchored.__textHLMarks = true;
   }
   function recolor(id, colorId){
     var k = keyOf(); if (!k) return;
