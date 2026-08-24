@@ -57605,6 +57605,22 @@ function packAbsorb(m){     // kept name: absorbs the MANIFEST
   } catch (eS) { if (window.console && console.warn) console.warn('structure absorb failed:', eS); return false; }
   if (m.qids && typeof m.qids === 'object') window.__packMeta = m.qids;
   packLoaded = true;
+  // Chapter structure now travels with the content. The modules that used to
+  // build these chapters in code at every launch are gone; the pack is the
+  // single source of truth for what each focused course looks like.
+  try {
+    for (var sc = 0; sc < PACK_NAMES.length; sc++) {
+      var nm = PACK_NAMES[sc];
+      if (nm.charAt(0) !== 's' || nm.charAt(1) !== '_') continue;
+      var cid2 = nm.slice(2);
+      var raw2 = SRC[nm];
+      if (typeof raw2 !== 'string' || !raw2) continue;
+      if (typeof COURSES !== 'undefined' && COURSES[cid2]) {
+        COURSES[cid2].chapters = JSON.parse(raw2);
+        SRC[nm] = null;
+      }
+    }
+  } catch (eS) { if (window.console && console.warn) console.warn('structure absorb failed:', eS); }
   try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e) {}
   if (window.__packMissed) {
     window.__packMissed = false;
