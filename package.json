@@ -1,9 +1,10 @@
 {
   "name": "school-app",
   "private": true,
-  "description": "Study Hub - static PWA plus one Netlify Function for the AI study helper",
+  "description": "Study Hub - static PWA plus Netlify Functions for the AI study helper and device sync",
   "dependencies": {
-    "@anthropic-ai/sdk": "latest"
+    "@anthropic-ai/sdk": "latest",
+    "@netlify/blobs": "latest"
   },
   "scripts": {
     "export:classes": "node scripts/export-classes.mjs",
