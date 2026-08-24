@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.482">
+<meta name="app-build" content="18.483">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -57558,6 +57558,345 @@ try {
     window.__diag = wrappedDiag;
   }
 } catch (e) {}
+})();
+
+
+(function deviceSync(){
+/* SYNC ACROSS DEVICES - "the work I've done on my iPad does not translate to
+ * my computer or anywhere else."
+ *
+ * Everything the app saves lives in ONE browser's storage. The iPad and the
+ * laptop are separate worlds to it, so nothing ever crossed between them.
+ *
+ * This keeps them in step through the site's own /sync function (Netlify
+ * Blobs - no account, no database, nothing to set up). A sync code is typed
+ * once on each device; only its SHA-256 hash is ever sent, and that hash is
+ * the record key, so the server never holds anything that could be typed
+ * back into the app.
+ *
+ * Two rules make this safe to run automatically:
+ *   1. NEVER DELETE. A pull merges what the other device has INTO this one -
+ *      quiz history, sessions, notes and ink are unions, never replacements.
+ *      Something studied on one device cannot be erased by the other.
+ *   2. PULL BEFORE PUSH. The merged result is what gets uploaded, so both
+ *      devices converge instead of overwriting each other.
+ *
+ * Handwriting needs its own pass: ink lives outside the store, one packed
+ * slot per page. Strokes have no stable id across devices (the _id is a
+ * per-render counter), so they are matched on their own content with the
+ * volatile fields stripped and the keys sorted - identical stroke, same
+ * signature, on any device.
+ */
+if (typeof document === 'undefined') return;
+if (window.__deviceSync) return; window.__deviceSync = true;
+
+var CFG = 'sh_sync_v1';
+var EP = '/.netlify/functions/sync';
+var MAX = 4400000;                 // the function rejects anything larger
+var state = { busy: false, last: null, error: null };
+
+function cfg(){ try { return JSON.parse(localStorage.getItem(CFG) || 'null'); } catch (e) { return null; } }
+function setCfg(v){ try { localStorage.setItem(CFG, JSON.stringify(v)); } catch (e) {} }
+function on(){ var c = cfg(); return !!(c && c.hash); }
+
+function sha256hex(s){
+  if (!window.crypto || !crypto.subtle) return Promise.reject(new Error('This browser cannot set up sync here. Open the app at its real web address (https) and try again.'));
+  return crypto.subtle.digest('SHA-256', new TextEncoder().encode('studyhub:' + s))
+    .then(function(buf){
+      var b = new Uint8Array(buf), out = '';
+      for (var i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, '0');
+      return out;
+    });
+}
+
+function newCode(){
+  var b = new Uint8Array(10); (window.crypto || {}).getRandomValues && crypto.getRandomValues(b);
+  var h = ''; for (var i = 0; i < b.length; i++) h += b[i].toString(16).padStart(2, '0');
+  return (h.match(/.{1,4}/g) || []).join('-');
+}
+function normCode(s){ return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+/* ---------- snapshot ---------- */
+function inkKeys(){
+  var out = [];
+  try { for (var k in (store.gannoInkIndex || {})) out.push(k); } catch (e) {}
+  return out;
+}
+function snapshot(){
+  var snap = { v: 1, at: Date.now(), store: store, ink: {} };
+  try {
+    var ks = inkKeys();
+    for (var i = 0; i < ks.length; i++) {
+      var s = null;
+      try { s = gannoGetStrokes(ks[i]); } catch (e) {}
+      if (s && s.length) snap.ink[ks[i]] = s;
+    }
+  } catch (e) {}
+  return snap;
+}
+function pack(o){
+  var j = JSON.stringify(o);
+  return (typeof LZString !== 'undefined' && LZString.compressToBase64) ? LZString.compressToBase64(j) : null;
+}
+function unpack(s){
+  try {
+    var j = (typeof LZString !== 'undefined' && LZString.decompressFromBase64) ? LZString.decompressFromBase64(s) : null;
+    return j ? JSON.parse(j) : null;
+  } catch (e) { return null; }
+}
+
+/* ---------- ink union ---------- */
+function sig(s){
+  try {
+    var ks = [];
+    for (var k in s) if (k.charAt(0) !== '_') ks.push(k);
+    ks.sort();
+    var o = {};
+    for (var i = 0; i < ks.length; i++) o[ks[i]] = s[ks[i]];
+    return JSON.stringify(o);
+  } catch (e) { return null; }
+}
+function mergeInk(remoteInk){
+  var added = 0, pages = 0;
+  if (!remoteInk) return { added: 0, pages: 0 };
+  for (var rk in remoteInk) {
+    var incoming = remoteInk[rk];
+    if (!incoming || !incoming.length) continue;
+    var local = [];
+    try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
+    var seen = Object.create(null), i;
+    for (i = 0; i < local.length; i++) { var sg = sig(local[i]); if (sg) seen[sg] = 1; }
+    var merged = local.slice(), grew = 0;
+    for (i = 0; i < incoming.length; i++) {
+      var s2 = sig(incoming[i]);
+      if (!s2 || seen[s2]) continue;
+      seen[s2] = 1; merged.push(incoming[i]); grew++;
+    }
+    if (grew) {
+      try { gannoSaveStrokes(rk, merged); added += grew; pages++; } catch (e) {}
+    }
+  }
+  return { added: added, pages: pages };
+}
+
+function applyRemote(snap){
+  var res = { history: 0, ink: 0, pages: 0 };
+  if (!snap || snap.v !== 1 || !snap.store) return res;
+  var before = ((store.quizHistory || []).length) || 0;
+  try { if (typeof mergeIntoStore === 'function') mergeIntoStore(snap.store); } catch (e) {}
+  res.history = Math.max(0, (((store.quizHistory || []).length) || 0) - before);
+  var ink = mergeInk(snap.ink);
+  res.ink = ink.added; res.pages = ink.pages;
+  try { saveStore(); } catch (e) {}
+  try { if (typeof render === 'function') render(); } catch (e) {}
+  try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
+  return res;
+}
+
+/* ---------- network ---------- */
+function pull(){
+  var c = cfg();
+  if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
+  return fetch(EP + '?k=' + encodeURIComponent(c.hash), { method: 'GET', cache: 'no-store' })
+    .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ('server said ' + r.status)); return j; }); })
+    .then(function(j){
+      if (j.empty) return { empty: true, history: 0, ink: 0 };
+      var snap = unpack(j.data);
+      if (!snap) throw new Error('The synced data could not be read.');
+      var res = applyRemote(snap);
+      res.remoteAt = j.updatedAt || 0;
+      return res;
+    });
+}
+function push(){
+  var c = cfg();
+  if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
+  var data = pack(snapshot());
+  if (!data) return Promise.reject(new Error('Could not prepare the data on this device.'));
+  if (data.length > MAX) return Promise.reject(new Error('This device holds more than the sync can carry (' + Math.round(data.length / 1e6) + 'MB). Clearing old handwriting would bring it under.'));
+  return fetch(EP + '?k=' + encodeURIComponent(c.hash), {
+    method: 'POST', cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ data: data, device: c.label || '' })
+  }).then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ('server said ' + r.status)); return j; }); })
+    .then(function(j){ var cc = cfg() || {}; cc.lastPush = Date.now(); setCfg(cc); return j; });
+}
+
+// The pair, in the only safe order: take what the other device has, then send
+// the merged result back so both ends match.
+function syncNow(){
+  if (!on()) return Promise.reject(new Error('Sync is not set up on this device yet.'));
+  if (state.busy) return Promise.resolve(null);
+  state.busy = true; state.error = null;
+  return pull()
+    .then(function(res){ return push().then(function(){ return res; }); })
+    .then(function(res){
+      state.busy = false; state.last = Date.now(); dirty = false;
+      var cc = cfg() || {}; cc.lastSync = state.last; setCfg(cc);
+      return res;
+    })
+    .catch(function(e){ state.busy = false; state.error = e && e.message ? e.message : String(e); throw e; });
+}
+window.__sync = { now: syncNow, pull: pull, push: push, state: function(){ return { on: on(), busy: state.busy, last: state.last, error: state.error, cfg: cfg() }; },
+                  _snapshot: snapshot, _pack: pack, _unpack: unpack, _apply: applyRemote, _sha: sha256hex };
+
+/* ---------- when it runs by itself ---------- */
+var dirty = false;
+try {
+  if (typeof saveStore === 'function' && !saveStore.__syncWrapped) {
+    var _save = saveStore;
+    saveStore = function(){ var r = _save.apply(this, arguments); dirty = true; return r; };
+    saveStore.__syncWrapped = true;
+  }
+} catch (e) {}
+
+function quietSync(why){
+  if (!on() || state.busy || !navigator.onLine) return;
+  syncNow().then(function(res){
+    if (res && (res.history || res.ink) && typeof toast === 'function') {
+      var bits = [];
+      if (res.history) bits.push(res.history + ' quiz answer' + (res.history === 1 ? '' : 's'));
+      if (res.ink) bits.push(res.ink + ' note' + (res.ink === 1 ? '' : 's'));
+      toast('Synced from your other device: ' + bits.join(' and '));
+    }
+  }).catch(function(){ /* silent - the sheet shows the reason */ });
+}
+// Opening the app is the moment the other device's work should appear.
+setTimeout(function(){ quietSync('boot'); }, 4000);
+// Leaving is the moment this device's work should be safe elsewhere.
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && dirty) quietSync('hidden');
+});
+window.addEventListener('pagehide', function(){ if (dirty) quietSync('pagehide'); });
+// And a slow heartbeat while she works, so a long session is not one big risk.
+try {
+  (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
+    if (dirty && !state.busy) quietSync('heartbeat');
+  }, 120, 'ui');
+} catch (e) {}
+
+/* ---------- the sheet ---------- */
+function ago(ts){
+  if (!ts) return 'never';
+  var s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + ' hr ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+function openSheet(){
+  var old = document.querySelector('.sync-sheet');
+  if (old) old.remove();
+  var c = cfg();
+  var wrap = document.createElement('div');
+  wrap.className = 'pomo-sheet sync-sheet';
+  wrap.style.alignItems = 'center';
+  wrap.innerHTML =
+    '<div class="pomo-card" style="text-align:left; max-width:440px; padding:20px;">' +
+    '<button class="pomo-close" data-close>&times;</button>' +
+    '<div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:10px;">Sync across devices</div>' +
+    (on()
+      ? '<p style="margin:0 0 12px; font-size:14px; line-height:1.55; color:var(--text-2);">Sync is on for this device. Your studying is kept in step with anywhere else using the same code.</p>' +
+        '<div style="font-size:13px; color:var(--text-3); margin-bottom:14px;">Last synced: <strong id="sync-when">' + ago(c && c.lastSync) + '</strong></div>' +
+        '<button class="pomo-btn primary" data-sync-now style="width:100%; margin-bottom:8px;">Sync now</button>' +
+        '<button class="pomo-btn" data-sync-show style="width:100%; margin-bottom:8px;">Show my sync code</button>' +
+        '<div id="sync-code" style="display:none; font-family:ui-monospace,Menlo,monospace; font-size:15px; letter-spacing:0.04em; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:11px; margin-bottom:8px; word-break:break-all;"></div>' +
+        '<button class="pomo-btn" data-sync-off style="width:100%; color:var(--danger,#ef4444);">Turn sync off on this device</button>' +
+        '<p id="sync-msg" style="margin:12px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-3);"></p>'
+      : '<p style="margin:0 0 12px; font-size:14px; line-height:1.55; color:var(--text-2);">Type the same sync code on every device you study on, and they keep each other up to date. Nothing is ever deleted by syncing — the two devices are merged together.</p>' +
+        '<input id="sync-input" placeholder="your sync code" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%; padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:15px; font-family:ui-monospace,Menlo,monospace; margin-bottom:8px;">' +
+        '<button class="pomo-btn primary" data-sync-on style="width:100%; margin-bottom:8px;">Turn sync on</button>' +
+        '<button class="pomo-btn" data-sync-gen style="width:100%; margin-bottom:8px;">Make a code for me</button>' +
+        '<p id="sync-msg" style="margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-3);">Keep the code private — anyone who has it can read your study data. It is stored only on your devices, never sent to the server.</p>') +
+    '</div>';
+  document.body.appendChild(wrap);
+
+  var msg = wrap.querySelector('#sync-msg');
+  function say(t, bad){ if (msg) { msg.textContent = t; msg.style.color = bad ? 'var(--danger,#ef4444)' : 'var(--text-3)'; } }
+  function close(){ wrap.remove(); }
+  wrap.addEventListener('click', function(e){ if (e.target === wrap || e.target.hasAttribute('data-close')) close(); });
+
+  var gen = wrap.querySelector('[data-sync-gen]');
+  if (gen) gen.addEventListener('click', function(){
+    var el = wrap.querySelector('#sync-input');
+    el.value = newCode();
+    say('Write this down, then type it on your other device too.');
+  });
+
+  var onBtn = wrap.querySelector('[data-sync-on]');
+  if (onBtn) onBtn.addEventListener('click', function(){
+    var raw = normCode((wrap.querySelector('#sync-input') || {}).value);
+    if (raw.length < 8) { say('That code is too short — use at least 8 letters or numbers.', true); return; }
+    onBtn.disabled = true; say('Setting up…');
+    sha256hex(raw).then(function(h){
+      setCfg({ hash: h, code: raw, label: (navigator.platform || 'device').slice(0, 24), lastSync: 0 });
+      say('Syncing…');
+      return syncNow();
+    }).then(function(res){
+      close();
+      if (typeof toast === 'function') {
+        toast(res && res.empty ? 'Sync is on — this device is now the starting point'
+                               : 'Sync is on — your other device’s work has been merged in');
+      }
+    }).catch(function(e){ onBtn.disabled = false; say(e.message || String(e), true); });
+  });
+
+  var nowBtn = wrap.querySelector('[data-sync-now]');
+  if (nowBtn) nowBtn.addEventListener('click', function(){
+    nowBtn.disabled = true; say('Syncing…');
+    syncNow().then(function(res){
+      nowBtn.disabled = false;
+      var w = wrap.querySelector('#sync-when'); if (w) w.textContent = 'just now';
+      if (!res) { say('Already syncing…'); return; }
+      if (res.empty) say('Nothing on the other device yet — this device’s work is now saved for it.');
+      else if (res.history || res.ink) say('Brought in ' + res.history + ' quiz answers and ' + res.ink + ' handwritten notes.');
+      else say('Everything was already up to date.');
+    }).catch(function(e){ nowBtn.disabled = false; say(e.message || String(e), true); });
+  });
+
+  var showBtn = wrap.querySelector('[data-sync-show]');
+  if (showBtn) showBtn.addEventListener('click', function(){
+    var box = wrap.querySelector('#sync-code'), cc = cfg();
+    if (!box) return;
+    box.style.display = 'block';
+    box.textContent = (cc && cc.code) ? (cc.code.match(/.{1,4}/g) || [cc.code]).join('-') : 'This device only kept the scrambled form of the code. Use the code you wrote down.';
+  });
+
+  var offBtn = wrap.querySelector('[data-sync-off]');
+  if (offBtn) offBtn.addEventListener('click', function(){
+    if (!confirm('Turn sync off on this device?\n\nNothing is deleted here or anywhere else — this device just stops keeping in step.')) return;
+    try { localStorage.removeItem(CFG); } catch (e) {}
+    close();
+    if (typeof toast === 'function') toast('Sync turned off on this device');
+  });
+}
+window.__openSyncSheet = openSheet;
+
+/* ---------- the button in the gear menu ---------- */
+function inject(){
+  try {
+    var anchor = document.querySelector('.pomo-sheet [data-act="export"], .pomo-card [data-act="export"]');
+    if (!anchor || !anchor.parentNode) return;
+    if (anchor.parentNode.querySelector('[data-act="device-sync"]')) return;
+    var b = document.createElement('button');
+    b.className = 'pomo-btn';
+    b.setAttribute('data-act', 'device-sync');
+    b.style.cssText = 'width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;'
+                    + 'background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);';
+    b.textContent = on() ? '⇄ Sync across devices — on' : '⇄ Sync across devices — set up';
+    b.addEventListener('click', function(e){
+      e.preventDefault(); e.stopPropagation();
+      var sheet = b.closest('.pomo-sheet'); if (sheet) sheet.remove();
+      openSheet();
+    });
+    anchor.parentNode.insertBefore(b, anchor);
+  } catch (e) {}
+}
+try {
+  new MutationObserver(function(){ inject(); }).observe(document.body || document.documentElement, { childList: true, subtree: true });
+} catch (e) {}
+document.addEventListener('click', function(){ setTimeout(inject, 120); }, true);
+inject();
 })();
 
 </script>
