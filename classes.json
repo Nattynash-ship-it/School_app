@@ -6,14 +6,24 @@
       "name": "Discrete Math I",
       "color": "teal",
       "assignments": [],
-      "exams": []
+      "exams": [
+        {
+          "name": "C959 Objective Assessment",
+          "date": "2026-09-15"
+        }
+      ]
     },
     {
       "code": "D286",
       "name": "Java Fundamentals",
       "color": "blue",
       "assignments": [],
-      "exams": []
+      "exams": [
+        {
+          "name": "D286 Objective Assessment",
+          "date": "2026-09-29"
+        }
+      ]
     },
     {
       "code": "D684",
