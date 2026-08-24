@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.479">
+<meta name="app-build" content="18.480">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -46559,6 +46559,53 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
 // toolbar actions, sticker placement, window resize and route changes alike.
 // v18.318 patched only the route-change path, which is why it came back the
 // moment anything was drawn.
+(function pulse(){
+/* THE HEARTBEAT - one timer instead of thirteen.
+ *
+ * Thirteen separate patches each kept their own 0.9-20s setInterval alive for
+ * the whole session, and almost every tick touches the DOM - querySelector,
+ * getBoundingClientRect, style writes. On the iPad that meant a constant
+ * drizzle of layout work: while she is drawing (the exact moment the app used
+ * to glitch), while the app is backgrounded (the exact moment iOS decides
+ * whether to kill it), all the time.
+ *
+ * Every one of those timers was a BACKSTOP - each module already reacts to
+ * its real signals (MutationObserver, resize, navigation, visibility). So the
+ * backstops now share one 1-second heartbeat that knows when to stay quiet:
+ *   'ui'     - cosmetic DOM upkeep. Skipped while the pen is down and while
+ *              the app is hidden; catches up on the next beat after.
+ *   'ink'    - the ink overlay guard. Runs while drawing (it protects the
+ *              ink), skipped while hidden.
+ *   'always' - memory enforcement. Runs hidden too - that is its job - at a
+ *              fifth of the pace so the iPad can idle.
+ * A visibility flip beats once immediately (queued behind the modules' own
+ * visibility handlers), so hiding still releases memory promptly and coming
+ * back still repaints promptly.
+ */
+if (window.__pulseAdd) return;
+var cbs = [];
+window.__pulseAdd = function(fn, everySec, cls){
+  cbs.push({ f: fn, n: Math.max(1, Math.round(everySec)), cls: cls || 'ui', at: 0 });
+};
+function drawing(){ try { return !!(window.ganno && ganno.drawing); } catch (e) { return false; } }
+var t = 0;
+function beat(force){
+  t++;
+  var hid = !!document.hidden, drw = drawing();
+  for (var i = 0; i < cbs.length; i++) {
+    var c = cbs[i];
+    if (hid && c.cls !== 'always') continue;
+    if (drw && c.cls === 'ui') continue;
+    if (!force && (t - c.at) < (hid ? c.n * 5 : c.n)) continue;
+    c.at = t;
+    try { c.f(); } catch (e) {}
+  }
+}
+try { setInterval(function(){ beat(false); }, 1000); } catch (e) {}
+try { document.addEventListener('visibilitychange', function(){ setTimeout(function(){ beat(true); }, 0); }); } catch (e) {}
+window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs.map(function(c){ return { n: c.n, cls: c.cls }; }), hidden: !!document.hidden, drawing: drawing() }; };
+})();
+
 (function scrollContainment(){
  try {
   if (window.__scrollContainment) return; window.__scrollContainment = true;
@@ -46663,7 +46710,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   // over, something grew the page while nothing was watching — re-fit. One
   // rect read every 1.5s, and the expensive re-measure only when it is wrong.
   try {
-    setInterval(function(){
+    (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
       var svg = svgEl(); if (!svg) return;
       try { if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return; } catch(e){}
       var app = document.getElementById('app'); if (!app) return;
@@ -46671,7 +46718,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (contentBottom < 200) return;            // #app does not wrap this view
       var h = parseFloat(svg.style.height) || 0;
       if (h > contentBottom + 80) fit();
-    }, 1500);
+    }, 2, 'ui');
   } catch(e){}
 
   if (typeof window.go === 'function' && !window.go.__containWrapped) {
@@ -48929,1487 +48976,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
 //
 // Every determinant, product, inverse and row-reduction below was checked
 // with sympy before it was written down.
-(function c959MatrixTextbook(){
- try {
-  if (window.__c959U4) return; window.__c959U4 = true;
-  var F = window.__FIG, MX = window.__MX;
-  if (!F || !MX || typeof SAMPLE_LESSON === 'undefined') return;
-
-  var K = 'C959/ch_matrix/';
-  var BLUE = '#0ea5e9';          // rows — matches the .mx-hi-r tint
-  var ORANGE = '#e8795a';        // columns — matches the .mx-hi-c tint
-  var PURPLE = '#8b5cf6';        // where a row meets a column
-  var GREEN = '#16a34a', RED = '#e11d48';
-  var added = 0, swapped = 0, qAdded = 0;
-
-  function add(sec, marker, html){ if (F.append(K + sec, marker, html)) added++; }
-
-  // Replace the whole <pre>…</pre> block that contains `anchor`.
-  function repre(sec, anchor, html){
-    var L = SAMPLE_LESSON[K + sec];
-    if (!L || !L.body) return;
-    var i = L.body.indexOf(anchor);
-    if (i < 0) return;
-    var s = L.body.lastIndexOf('<pre', i);
-    var e = L.body.indexOf('</pre>', i);
-    if (s < 0 || e < 0) return;
-    L.body = L.body.slice(0, s) + html + L.body.slice(e + 6);
-    swapped++;
-  }
-  // Replace an arbitrary span of body text, from startAnchor to the end of endAnchor.
-  function respan(sec, startAnchor, endAnchor, html){
-    var L = SAMPLE_LESSON[K + sec];
-    if (!L || !L.body) return;
-    var s = L.body.indexOf(startAnchor);
-    if (s < 0) return;
-    var e = L.body.indexOf(endAnchor, s);
-    if (e < 0) return;
-    L.body = L.body.slice(0, s) + html + L.body.slice(e + endAnchor.length);
-    swapped++;
-  }
-
-  // ---- small layout helpers -------------------------------------------
-  // a row of drawn matrices with operators between them
-  function line(parts){
-    return '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px; margin:10px 0;">' +
-      parts.join('') + '</div>';
-  }
-  function op(t){
-    return '<span style="font-size:19px; font-weight:600; padding:0 8px; color:var(--text-2);">' + t + '</span>';
-  }
-  function lab(t){
-    return '<span style="font-size:13px; font-weight:700; padding:0 6px; color:var(--text-2);">' + t + '</span>';
-  }
-  // one line of an elimination: the operation on the left, the matrix on the right
-  function step(opText, rows, note, mopts){
-    return '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:6px 0; ' +
-      'padding:6px 0; border-top:1px dashed var(--border);">' +
-      '<span style="min-width:118px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; ' +
-      'font-weight:700; color:' + BLUE + ';">' + opText + '</span>' +
-      MX(rows, mopts || {}) +
-      (note ? '<span style="font-size:12.5px; color:var(--text-3); font-style:italic;">' + note + '</span>' : '') +
-      '</div>';
-  }
-  function bar(){ return '│'; }
-  function mono(t){
-    return '<p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13.5px; line-height:1.75;">' +
-      t + '</p>';
-  }
-  function keyline(t){
-    return '<p style="margin:8px 0; padding:8px 12px; border-radius:8px; background:var(--surface-2); ' +
-      'font-size:14px;">' + t + '</p>';
-  }
-  function rowWord(n){ return '<strong style="color:' + BLUE + ';">row ' + n + '</strong>'; }
-  function colWord(n){ return '<strong style="color:' + ORANGE + ';">column ' + n + '</strong>'; }
-
-  // draw a labelled cell grid inside an SVG figure
-  function grid(gx, gy, cw, ch, vals, o){
-    o = o || {};
-    var nR = vals.length, nC = vals[0].length, s = '', i, j;
-    // tints first, so the rules sit on top
-    if (o.hiRow != null)
-      s += '<rect x="' + gx + '" y="' + (gy + o.hiRow * ch) + '" width="' + (nC * cw) + '" height="' + ch +
-        '" fill="' + BLUE + '" opacity="0.20"/>';
-    if (o.hiCol != null)
-      s += '<rect x="' + (gx + o.hiCol * cw) + '" y="' + gy + '" width="' + cw + '" height="' + (nR * ch) +
-        '" fill="' + ORANGE + '" opacity="0.22"/>';
-    if (o.hiRow != null && o.hiCol != null)
-      s += '<rect x="' + (gx + o.hiCol * cw) + '" y="' + (gy + o.hiRow * ch) + '" width="' + cw + '" height="' + ch +
-        '" fill="' + PURPLE + '" opacity="0.34"/>';
-    for (i = 1; i < nR; i++) s += F.line(gx, gy + i * ch, gx + nC * cw, gy + i * ch, { stroke: 'var(--border)', w: 1 });
-    for (j = 1; j < nC; j++) s += F.line(gx + j * cw, gy, gx + j * cw, gy + nR * ch, { stroke: 'var(--border)', w: 1 });
-    s += F.rect(gx, gy, nC * cw, nR * ch, { stroke: 'var(--text-2)', w: 1.8, rx: 3 });
-    for (i = 0; i < nR; i++) for (j = 0; j < nC; j++) {
-      s += F.txt(gx + (j + 0.5) * cw, gy + (i + 0.5) * ch + (o.sub ? -2 : 4.5), String(vals[i][j]),
-        { size: o.size || 13, weight: 600, mono: !o.nomono });
-      if (o.sub) s += F.txt(gx + (j + 0.5) * cw, gy + (i + 0.5) * ch + 15, o.sub[i][j],
-        { size: 9.5, fill: 'var(--text-3)', mono: true });
-    }
-    // R and C labels around the edge
-    if (o.rowLabels) for (i = 0; i < nR; i++)
-      s += F.txt(gx - 10, gy + (i + 0.5) * ch + 4, 'R' + sub(i + 1),
-        { size: 11.5, weight: 700, anchor: 'end', fill: BLUE });
-    if (o.colLabels) for (j = 0; j < nC; j++)
-      s += F.txt(gx + (j + 0.5) * cw, gy - 9, 'C' + sub(j + 1),
-        { size: 11.5, weight: 700, fill: ORANGE });
-    return s;
-  }
-  function sub(n){ return String(n).replace(/[0-9]/g, function(d){ return '₀₁₂₃₄₅₆₇₈₉'[+d]; }); }
-
-
-  // =====================================================================
-  // S1 — TYPES OF MATRICES, ADDITION, SCALAR MULTIPLICATION
-  // =====================================================================
-  // Bakery: 2 branches (rows) × 3 products (columns). Deliberately not
-  // consecutive integers — if you misread a row as a column you get a number
-  // that is obviously wrong, which is the whole point.
-  var MON = [['128', '94', '47'], ['86', '130', '62']];
-  var TUE = [['143', '88', '51'], ['102', '117', '58']];
-  var SUM = [['271', '182', '98'], ['188', '247', '120']];      // verified
-  var OPEN = [['310', '240', '150'], ['295', '280', '165']];
-  var LEFT = [['182', '146', '103'], ['209', '150', '103']];    // verified
-  var HRS = [['34', '27'], ['41', '22']];
-  var PAY = [['612', '486'], ['738', '396']];                   // verified 18·H
-
-  (function s1(){
-    // ---- the anatomy figure -----------------------------------------
-    var gx = 196, gy = 108, cw = 92, ch = 64;
-    var s = '';
-    s += F.txt(52, 34, '2 × 3', { size: 22, weight: 700, anchor: 'start' });
-    s += F.txt(52, 52, 'rows × columns', { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.txt(52, 72, '— always that order', { size: 11, anchor: 'start', fill: 'var(--text-3)', italic: true });
-    s += grid(gx, gy, cw, ch, [['a₁₁', 'a₁₂', 'a₁₃'], ['a₂₁', 'a₂₂', 'a₂₃']], {
-      hiRow: 1, hiCol: 2, rowLabels: true, colLabels: true, size: 14, nomono: true,
-      sub: [['128', '94', '47'], ['86', '130', '62']]
-    });
-    // which way each index runs
-    s += F.arrow(gx - 44, gy + 1.5 * ch - 26, gx - 44, gy + 1.5 * ch + 4, { stroke: BLUE, w: 1.6 });
-    s += F.txt(gx - 62, gy + 1.5 * ch - 30, 'row index', { size: 10.5, weight: 700, fill: BLUE, anchor: 'start' });
-    s += F.txt(gx + 1.1 * cw, gy - 36, 'column index', { size: 10.5, weight: 700, fill: ORANGE, anchor: 'end' });
-    s += F.arrow(gx + 1.2 * cw, gy - 40, gx + 2.5 * cw - 6, gy - 40, { stroke: ORANGE, w: 1.6 });
-    // the read-out on the right
-    var rx = gx + 3 * cw + 26;
-    s += F.txt(rx, gy + 16, 'a₂₃ = 62', { size: 20, weight: 700, anchor: 'start', fill: PURPLE });
-    s += F.txt(rx, gy + 40, 'row 2 FIRST …', { size: 12, weight: 700, anchor: 'start', fill: BLUE });
-    s += F.txt(rx, gy + 58, '… then column 3', { size: 12, weight: 700, anchor: 'start', fill: ORANGE });
-    s += F.txt(rx, gy + 82, 'Hillcrest branch,', { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.txt(rx, gy + 97, 'croissants: 62 sold', { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.txt(rx, gy + 122, 'a₃₂ does not exist —', { size: 11, anchor: 'start', fill: RED });
-    s += F.txt(rx, gy + 137, 'there is no row 3.', { size: 11, anchor: 'start', fill: RED });
-    // legend
-    s += '<rect x="52" y="252" width="14" height="12" fill="' + BLUE + '" opacity="0.20" stroke="var(--border)"/>';
-    s += F.txt(74, 262, 'a row runs across', { size: 11, anchor: 'start', fill: BLUE, weight: 700 });
-    s += '<rect x="212" y="252" width="14" height="12" fill="' + ORANGE + '" opacity="0.22" stroke="var(--border)"/>';
-    s += F.txt(234, 262, 'a column runs down', { size: 11, anchor: 'start', fill: ORANGE, weight: 700 });
-    s += '<rect x="392" y="252" width="14" height="12" fill="' + PURPLE + '" opacity="0.34" stroke="var(--border)"/>';
-    s += F.txt(414, 262, 'one entry sits where they cross', { size: 11, anchor: 'start', fill: PURPLE, weight: 700 });
-    s += F.cap(340, 288, 'a 2 × 3 matrix: 2 rows deep, 3 columns wide');
-
-    var html =
-      '<h3>Anatomy of a matrix — rows first, then columns</h3>' +
-      '<p>A matrix is just a table with the words stripped off. Keep the words in your head while you learn to read one. ' +
-      'The Riverside and Hillcrest branches of a bakery each sold sourdough loaves, bagels and croissants on Monday:</p>' +
-      MX(MON, { rowLabels: true, colLabels: true,
-        caption: 'R₁ = Riverside, R₂ = Hillcrest · C₁ = sourdough, C₂ = bagels, C₃ = croissants' }) +
-      '<p>Two branches means <strong>two rows</strong>. Three products means <strong>three columns</strong>. ' +
-      'So this is a <strong>2 × 3</strong> matrix — and the dimensions are quoted rows-first, every single time. ' +
-      'A 2 × 3 matrix is short and wide; a 3 × 2 matrix is tall and narrow. They are different shapes and they are ' +
-      'not interchangeable.</p>' +
-      F.fig('anatomy of a matrix — where aᵢⱼ lives', 680, 300, 680, s) +
-      F.def('<p style="margin:0 0 7px;"><strong>Dimensions (m × n):</strong> m rows by n columns. ' +
-        'Rows first — the same order as the subscripts.</p>' +
-        '<p style="margin:0 0 7px;"><strong>Entry aᵢⱼ:</strong> the value where ' + rowWord('i') + ' crosses ' +
-        colWord('j') + '. Row index first, column index second.</p>' +
-        '<p style="margin:0;"><strong>How to say it aloud:</strong> “a-two-three” means “go down to row 2, then across to column 3.”</p>') +
-      F.table(['You are asked for…', 'Where you look', 'Value here'], [
-        ['a₁₁', 'row 1, column 1 — Riverside sourdough', '<strong>128</strong>'],
-        ['a₁₃', 'row 1, column 3 — Riverside croissants', '<strong>47</strong>'],
-        ['a₂₁', 'row 2, column 1 — Hillcrest sourdough', '<strong>86</strong>'],
-        ['a₂₂', 'row 2, column 2 — Hillcrest bagels', '<strong>130</strong>'],
-        ['a₃₁', 'row 3 — there is no row 3', '<strong>does not exist</strong>']
-      ]) +
-      keyline('Notice that a₁₃ = 47 and a₂₁ = 86 are wildly different numbers. That is on purpose. If a matrix is ' +
-        'filled with 1, 2, 3, 4, 5, 6 then reading the wrong way round still gives you a plausible answer and you ' +
-        'never find out you were confused. Real data tells you immediately.') +
-
-      '<h3>Adding matrices — same shape, entry by entry</h3>' +
-      '<p>Addition is the easy operation: line the two tables up and add each pair of numbers that sit in the ' +
-      '<em>same position</em>. Both matrices must have <strong>identical dimensions</strong>, because otherwise ' +
-      'some entry has nothing to pair with.</p>' +
-      F.worked('Monday sales + Tuesday sales',
-        '<p>Tuesday’s figures came in for the same two branches and the same three products:</p>' +
-        line([MX(MON, { caption: 'Monday' }), op('+'), MX(TUE, { caption: 'Tuesday' }), op('='), MX(SUM, { caption: 'two-day total' })]) +
-        '<p>Position by position:</p>' +
-        mono('a₁₁: 128 + 143 = 271 &nbsp;&nbsp; a₁₂: 94 + 88 = 182 &nbsp;&nbsp; a₁₃: 47 + 51 = 98<br>' +
-          'a₂₁: 86 + 102 = 188 &nbsp;&nbsp; a₂₂: 130 + 117 = 247 &nbsp;&nbsp; a₂₃: 62 + 58 = 120') +
-        '<p>The answer is still 2 × 3, because addition never changes the shape. And the numbers mean something: ' +
-        'Hillcrest sold 247 bagels over the two days.</p>') +
-      F.worked('subtraction — what is left on the shelf',
-        '<p>The bakery opened Monday with this much stock, and sold Monday’s figures out of it. ' +
-        'Subtraction is the same rule with a minus sign:</p>' +
-        line([MX(OPEN, { caption: 'opening stock' }), op('−'), MX(MON, { caption: 'sold Monday' }), op('='), MX(LEFT, { caption: 'left on the shelf' })]) +
-        mono('Riverside bagels: 240 − 94 = 146 &nbsp;(row 1, column 2)<br>' +
-          'Hillcrest sourdough: 295 − 86 = 209 &nbsp;(row 2, column 1)') +
-        '<p>Note how the two calculations use different rows <em>and</em> different columns. Saying “row 1, column 2” ' +
-        'out loud before you reach for a number is the habit that fixes this whole chapter.</p>') +
-      F.worked('when addition is undefined',
-        '<p>The bakery matrix is 2 × 3. A supplier sends a delivery note laid out the other way round — three ' +
-        'products down the side, two branches across — which is 3 × 2:</p>' +
-        line([MX(MON, { caption: '2 × 3' }), op('+'),
-          MX([['128', '86'], ['94', '130'], ['47', '62']], { caption: '3 × 2' }), op('='),
-          '<span style="font-weight:700; color:' + RED + '; font-size:15px;">UNDEFINED</span>']) +
-        '<p>These hold the same information, but they are not the same shape, so there is no entry-by-entry pairing ' +
-        'to do. 2 × 3 plus 3 × 2 is not zero, not an error in the numbers — it simply <strong>does not exist</strong>.</p>') +
-
-      '<h3>Scalar multiplication — one number touches every entry</h3>' +
-      '<p>Multiplying a matrix by a single number (a <strong>scalar</strong>) multiplies <em>every</em> entry by it. ' +
-      'There is no dimension rule at all, because nothing has to pair up.</p>' +
-      F.worked('hours worked × hourly rate',
-        '<p>Two shop assistants, two weeks, hours worked. Everyone is paid £18 an hour, so the wage bill is 18 times ' +
-        'the hours matrix:</p>' +
-        line([lab('18 ·'), MX(HRS, { rowLabels: true, colLabels: true, caption: 'hours: R = assistant, C = week' }),
-          op('='), MX(PAY, { rowLabels: true, colLabels: true, caption: 'pay in £' })]) +
-        mono('18 × 34 = 612 &nbsp;&nbsp; 18 × 27 = 486<br>18 × 41 = 738 &nbsp;&nbsp; 18 × 22 = 396') +
-        '<p>Assistant 2 in week 1 worked 41 hours — row 2, column 1 — and earned £738.</p>') +
-
-      '<h3>The transpose — the table turned on its side</h3>' +
-      '<p>The <strong>transpose</strong> Aᵀ writes each row as a column. Row 1 becomes column 1, row 2 becomes ' +
-      'column 2, and an m × n matrix becomes n × m.</p>' +
-      line([lab('A ='), MX(MON, { hiRow: 0, caption: '2 × 3 — row 1 tinted' }), lab('→ Aᵀ ='),
-        MX([['128', '86'], ['94', '130'], ['47', '62']], { hiCol: 0, caption: '3 × 2 — that row is now column 1' })]) +
-      '<p>Read it as a table and it makes sense: the bakery data has branches down the side and products across the ' +
-      'top; the transpose has products down the side and branches across the top. Same numbers, axes swapped. ' +
-      'A matrix that equals its own transpose is <strong>symmetric</strong> — a driving-distance table between towns ' +
-      'is the classic example, because the distance from Ashford to Belton equals the distance back.</p>' +
-      F.table(['Named type', 'What makes it that', 'A realistic instance'], [
-        ['Square (n × n)', 'as many rows as columns', 'a 4 × 4 table of drive times between 4 depots'],
-        ['Row matrix (1 × n)', 'a single row', 'one branch’s sales across 3 products'],
-        ['Column matrix (m × 1)', 'a single column', 'one product’s sales across 3 branches'],
-        ['Zero matrix', 'every entry 0', 'a closed branch: sold nothing all week — A + 0 = A'],
-        ['Identity I', '1s down the main diagonal, 0s elsewhere', 'the “leave it alone” matrix — A·I = A'],
-        ['Diagonal', 'non-zeros only on the main diagonal', 'a price list applied product-by-product, no mixing'],
-        ['Symmetric', 'A = Aᵀ, so aᵢⱼ = aⱼᵢ', 'a distance table — always square'],
-        ['Upper triangular', 'all zeros below the main diagonal', 'the shape row-reduction drives a system into']
-      ]) +
-      keyline('The <strong>main diagonal</strong> runs top-left to bottom-right: the entries a₁₁, a₂₂, a₃₃ … where ' +
-        'the row number and the column number are the same. It is the only place a row index and a column index ' +
-        'agree, which is why so many definitions are phrased around it.') +
-
-      F.trap('<p><strong>Rows are horizontal; columns are vertical. Dimensions are rows × columns.</strong> ' +
-        'A 2 × 3 matrix has 2 rows and 3 columns — it is <em>wider than it is tall</em>. Reading it as “2 columns, ' +
-        '3 rows” makes every later dimension check come out backwards, so a multiplication that is genuinely ' +
-        'undefined will look fine to you and one that works will look impossible.</p>' +
-        '<p style="margin-bottom:0;">The second half of the same mistake is aᵢⱼ. The <strong>row index always comes ' +
-        'first</strong>: a₃₂ is row 3, column 2 — not column 3, row 2. If a question offers you both numbers as ' +
-        'options, it is testing exactly this.</p>') +
-      F.tip('<p>Before doing any arithmetic, write the dimensions above each matrix — “2×3” and “2×3”. ' +
-        'For addition and subtraction they must match <em>exactly</em>; if they do not, the answer is ' +
-        '“undefined” and you are already finished. Several exam items are pure dimension checks with plausible ' +
-        'numeric options attached purely to tempt you into computing something.</p>' +
-        '<p style="margin-bottom:0;">Scalar multiplication has no such restriction and never changes the shape, ' +
-        'so 5 · (a 2 × 7 matrix) is a 2 × 7 matrix. Transposing does change the shape: m × n becomes n × m.</p>');
-
-    add('s1', 'c959u4s1', html);
-
-    // ---- replace the two ASCII <pre> blocks in place ------------------
-    repre('s1', '2×2 plus 2×3',
-      '<p style="margin-top:0;">Both matrices are 2 × 3 (two branches, three products), so they add entry by entry:</p>' +
-      line([MX(MON), op('+'), MX(TUE), op('='), MX(SUM)]) +
-      '<p>But a 2 × 3 and a 3 × 2 cannot be added at all — no entry has a partner in the same position:</p>' +
-      line([MX(MON, { caption: '2 × 3' }), op('+'),
-        MX([['128', '86'], ['94', '130'], ['47', '62']], { caption: '3 × 2' }), op('='),
-        '<span style="font-weight:700; color:' + RED + ';">UNDEFINED</span>']));
-    repre('s1', 'Every entry, including the negatives',
-      '<p style="margin-top:0;">Hours worked, multiplied by an £18 hourly rate — the scalar reaches every entry:</p>' +
-      line([lab('18 ·'), MX(HRS), op('='), MX(PAY)]) +
-      '<p style="margin-bottom:0;">And it reaches negative entries too: −4 · ' +
-      MX([['25', '−13'], ['−8', '17']]) + ' = ' + MX([['−100', '52'], ['32', '−68']]) + '</p>');
-  })();
-
-
-  // =====================================================================
-  // S2 — MATRIX MULTIPLICATION
-  // =====================================================================
-  // Vans × parcels × (weight, fee). Verified: [[369,271],[269,196]]
-  var VAN = [['14', '9', '22'], ['6', '17', '11']];
-  var PARCEL = [['3', '2'], ['7', '5'], ['12', '9']];
-  var VANP = [['369', '271'], ['269', '196']];
-  // Stores × products, then products × (retail price, wholesale cost)
-  var SOLD = [['42', '18', '25'], ['36', '27', '14'], ['51', '12', '30']];
-  var PRICE = [['85', '52'], ['120', '74'], ['24', '11']];
-  var REV = [['6330', '3791'], ['6636', '4024'], ['6495', '3870']];   // verified
-
-  (function s2(){
-    // ---- the dot-product figure --------------------------------------
-    var s = '';
-    var ax = 30, ay = 56, acw = 46, ach = 44;
-    var bx = 210, by = 46, bcw = 46, bch = 44;
-    var cx = 348, cy = 56, ccw = 58, cch = 44;
-    s += grid(ax, ay, acw, ach, [['14', '9', '22'], ['6', '17', '11']], { hiRow: 0, rowLabels: true, size: 13 });
-    s += F.txt(99, 164, 'A — parcels per van (2 × 3)', { size: 10.5, weight: 700 });
-    s += F.txt(188, 104, '·', { size: 24, weight: 700 });
-    s += grid(bx, by, bcw, bch, [['3', '2'], ['7', '5'], ['12', '9']], { hiCol: 1, colLabels: true, size: 13 });
-    s += F.txt(256, 196, 'B — kg & fee per parcel (3 × 2)', { size: 10.5, weight: 700 });
-    s += F.txt(324, 104, '=', { size: 22, weight: 700 });
-    s += grid(cx, cy, ccw, cch, [['369', '271'], ['269', '196']], { hiRow: 0, hiCol: 1, size: 13 });
-    s += F.txt(406, 164, 'A·B (2 × 2)', { size: 10.5, weight: 700 });
-    // row 1 of A sweeps over the top into the target cell — the band above y=34 is kept clear
-    s += '<path d="M99,50 C155,4 385,4 435,50" fill="none" stroke="' + BLUE +
-      '" stroke-width="1.8" stroke-dasharray="5 4" marker-end="@ARROW@"/>';
-    // column 2 of B slides across, under the equals sign, into the same cell
-    s += '<path d="M306,146 L398,84" fill="none" stroke="' + ORANGE +
-      '" stroke-width="1.8" stroke-dasharray="5 4" marker-end="@ARROW@"/>';
-    s += F.txt(20, 232, 'entry (1, 2)  =  row 1 of A  ·  column 2 of B',
-      { size: 12.5, weight: 700, anchor: 'start' });
-    s += F.txt(20, 254, '14·2 + 9·5 + 22·9  =  28 + 45 + 198  =  271',
-      { size: 13, weight: 700, anchor: 'start', mono: true, fill: PURPLE });
-    s += F.cap(280, 276, 'walk the row across, walk the column down, multiply the pairs, add them up');
-
-    var html =
-      '<h3>Where each entry of the product comes from</h3>' +
-      '<p>Matrix multiplication is the one operation that is <em>not</em> done entry by entry, and that is the ' +
-      'thing to unlearn first. Each entry of the product is a whole <strong>dot product</strong>: you take a ' +
-      '<span style="color:' + BLUE + '; font-weight:700;">row of the left matrix</span>, a ' +
-      '<span style="color:' + ORANGE + '; font-weight:700;">column of the right matrix</span>, multiply them ' +
-      'position by position, and add.</p>' +
-      '<p>The position of the answer tells you which row and which column to use: entry (i, j) of the product is ' +
-      rowWord('i') + ' of the first matrix dotted with ' + colWord('j') + ' of the second. Say that out loud as ' +
-      'you compute and the row/column confusion disappears.</p>' +
-      F.fig('one entry of the product = one row · one column', 560, 288, 560, s) +
-      F.def('<p style="margin:0 0 7px;"><strong>When it is defined:</strong> A·B needs the number of ' +
-        '<em>columns of A</em> to equal the number of <em>rows of B</em>. ' +
-        'Write (m × <strong>n</strong>) · (<strong>n</strong> × p): the inner numbers must match, and the outer ' +
-        'numbers give the answer’s size, m × p.</p>' +
-        '<p style="margin:0;"><strong>Entry (i, j):</strong> aᵢ₁b₁ⱼ + aᵢ₂b₂ⱼ + … — row i across, column j down.</p>') +
-
-      '<h3>Worked example 1 — parcels, weight and handling fees</h3>' +
-      '<p>A courier runs two vans. Matrix <strong>A</strong> counts how many small, medium and large parcels each ' +
-      'van is carrying. Matrix <strong>B</strong> holds, for each parcel size, its weight in kilograms and its ' +
-      'handling fee in pounds.</p>' +
-      line([lab('A ='), MX(VAN, { rowLabels: true, colLabels: true,
-        caption: 'R = van, C = small / medium / large' }),
-        lab('B ='), MX(PARCEL, { rowLabels: true, colLabels: true,
-          caption: 'R = small / medium / large, C = kg / fee' })]) +
-      '<p><strong>Shape check first.</strong> A is 2 × 3 and B is 3 × 2. The inner numbers are 3 and 3, so the ' +
-      'product exists, and the outer numbers say it is 2 × 2 — one row per van, one column per quantity ' +
-      '(total kilograms, total fee). That interpretation is a useful sanity check on its own.</p>' +
-      F.worked('all four entries of A·B',
-        '<p><strong>Entry (1,1) — van 1’s total weight.</strong> Row 1 of A, column 1 of B:</p>' +
-        line([MX(VAN, { hiRow: 0 }), op('·'), MX(PARCEL, { hiCol: 0 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">14·3 + 9·7 + 22·12 = 42 + 63 + 264 = <strong>369</strong></span>']) +
-        '<p><strong>Entry (1,2) — van 1’s total fee.</strong> Same row, next column:</p>' +
-        line([MX(VAN, { hiRow: 0 }), op('·'), MX(PARCEL, { hiCol: 1 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">14·2 + 9·5 + 22·9 = 28 + 45 + 198 = <strong>271</strong></span>']) +
-        '<p><strong>Entry (2,1) — van 2’s total weight.</strong> Row 2 now:</p>' +
-        line([MX(VAN, { hiRow: 1 }), op('·'), MX(PARCEL, { hiCol: 0 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">6·3 + 17·7 + 11·12 = 18 + 119 + 132 = <strong>269</strong></span>']) +
-        '<p><strong>Entry (2,2) — van 2’s total fee.</strong></p>' +
-        line([MX(VAN, { hiRow: 1 }), op('·'), MX(PARCEL, { hiCol: 1 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">6·2 + 17·5 + 11·9 = 12 + 85 + 99 = <strong>196</strong></span>']) +
-        '<p>Assembled:</p>' +
-        line([MX(VAN), op('·'), MX(PARCEL), op('='), MX(VANP, { rowLabels: true, colLabels: true,
-          caption: 'R = van, C₁ = total kg, C₂ = total fee £' })]) +
-        '<p>Van 1 is carrying 369 kg and will be billed £271. Every number in the answer is a plausible weight or ' +
-        'price, which is a further check that you walked the right row and the right column.</p>') +
-
-      '<h3>Worked example 2 — three shops, three lines, two money columns</h3>' +
-      '<p>A retailer with three shops sold jackets, boots and gloves last week. A second matrix holds the retail ' +
-      'price and the wholesale cost of each line.</p>' +
-      line([lab('S ='), MX(SOLD, { rowLabels: true, colLabels: true,
-        caption: 'R = shop, C = jackets / boots / gloves' }),
-        lab('P ='), MX(PRICE, { rowLabels: true, colLabels: true,
-          caption: 'R = jackets / boots / gloves, C = price / cost' })]) +
-      '<p>(3 × <strong>3</strong>) · (<strong>3</strong> × 2) → the product is <strong>3 × 2</strong>: revenue and ' +
-      'cost of goods, one row per shop.</p>' +
-      F.worked('two of the entries in detail',
-        '<p><strong>Entry (2,1) — shop 2’s revenue.</strong> ' + rowWord(2) + ' of S with ' + colWord(1) + ' of P:</p>' +
-        line([MX(SOLD, { hiRow: 1 }), op('·'), MX(PRICE, { hiCol: 0 })]) +
-        mono('36·85 + 27·120 + 14·24 = 3060 + 3240 + 336 = <strong>6636</strong>') +
-        '<p><strong>Entry (3,2) — shop 3’s cost of goods.</strong> ' + rowWord(3) + ' of S with ' + colWord(2) + ' of P:</p>' +
-        line([MX(SOLD, { hiRow: 2 }), op('·'), MX(PRICE, { hiCol: 1 })]) +
-        mono('51·52 + 12·74 + 30·11 = 2652 + 888 + 330 = <strong>3870</strong>') +
-        '<p>The full product:</p>' +
-        line([MX(SOLD), op('·'), MX(PRICE), op('='), MX(REV, { rowLabels: true, colLabels: true,
-          caption: 'R = shop, C₁ = revenue £, C₂ = cost £' })]) +
-        '<p>Shop 2 took £6,636 and the stock it sold cost £4,024 — a gross margin of £2,612. ' +
-        'The whole trading summary came out of one multiplication.</p>') +
-
-      '<h3>Order matters: A·B is not B·A</h3>' +
-      '<p>With ordinary numbers 7 × 4 and 4 × 7 are the same. With matrices they are usually different, and often ' +
-      'only one of them is even defined. Two 2 × 2 matrices where both products exist:</p>' +
-      line([lab('A ='), MX([['6', '2'], ['1', '5']]), lab('B ='), MX([['4', '3'], ['7', '2']])]) +
-      F.worked('A·B and B·A on the same pair',
-        '<p><strong>A·B</strong> — rows of A, columns of B:</p>' +
-        mono('(1,1) = 6·4 + 2·7 = 24 + 14 = 38 &nbsp;&nbsp; (1,2) = 6·3 + 2·2 = 18 + 4 = 22<br>' +
-          '(2,1) = 1·4 + 5·7 = 4 + 35 = 39 &nbsp;&nbsp; (2,2) = 1·3 + 5·2 = 3 + 10 = 13') +
-        line([MX([['6', '2'], ['1', '5']]), op('·'), MX([['4', '3'], ['7', '2']]), op('='),
-          MX([['38', '22'], ['39', '13']], { caption: 'A·B' })]) +
-        '<p><strong>B·A</strong> — now the rows come from B and the columns from A:</p>' +
-        mono('(1,1) = 4·6 + 3·1 = 24 + 3 = 27 &nbsp;&nbsp; (1,2) = 4·2 + 3·5 = 8 + 15 = 23<br>' +
-          '(2,1) = 7·6 + 2·1 = 42 + 2 = 44 &nbsp;&nbsp; (2,2) = 7·2 + 2·5 = 14 + 10 = 24') +
-        line([MX([['4', '3'], ['7', '2']]), op('·'), MX([['6', '2'], ['1', '5']]), op('='),
-          MX([['27', '23'], ['44', '24']], { caption: 'B·A' })]) +
-        '<p>Same two matrices, same sizes, completely different answers. There is not a single entry in common.</p>') +
-      '<p>With the courier matrices it is worse still: A·B is (2 × 3)(3 × 2) = 2 × 2, but B·A is (3 × 2)(2 × 3) = ' +
-      '3 × 3 — not merely a different answer, a different shape.</p>' +
-
-      '<h3>The identity leaves things alone</h3>' +
-      '<p>The identity matrix I has 1s on the main diagonal and 0s everywhere else, and A·I = I·A = A. Check one ' +
-      'entry to see why: row 1 of A dotted with column 1 of I is 6·1 + 2·0 = 6, the entry you started with.</p>' +
-      line([MX([['6', '2'], ['1', '5']], { hiRow: 0 }), op('·'), MX([['1', '0'], ['0', '1']], { hiCol: 0 }),
-        op('='), MX([['6', '2'], ['1', '5']])]) +
-
-      '<h3>Powers of a matrix: counting two-leg journeys</h3>' +
-      '<p>A square matrix can be multiplied by itself, and when the matrix is an <strong>adjacency matrix</strong> ' +
-      'the powers count routes. Four towns — Ashford, Belton, Corley, Denham — with a 1 wherever a direct road ' +
-      'joins them:</p>' +
-      line([lab('M ='), MX([['0', '1', '1', '0'], ['1', '0', '1', '1'], ['1', '1', '0', '0'], ['0', '1', '0', '0']],
-        { rowLabels: true, colLabels: true, caption: 'R and C are both A, B, C, D — direct roads' })]) +
-      F.worked('what M² tells you',
-        line([lab('M² ='), MX([['2', '1', '1', '1'], ['1', '3', '1', '0'], ['1', '1', '2', '1'], ['1', '0', '1', '1']],
-          { rowLabels: true, colLabels: true, caption: 'journeys using exactly two roads' })]) +
-        '<p>Entry (1, 4) = 1: there is exactly <strong>one</strong> two-road journey from Ashford to Denham — ' +
-        'Ashford → Belton → Denham. Entry (2, 4) = 0: you cannot get from Belton to Denham in exactly two roads, ' +
-        'even though they are directly joined, because there is no third town linking them back up.</p>' +
-        '<p>Entry (2, 2) = 3 counts the out-and-back trips from Belton: to Ashford and back, to Corley and back, ' +
-        'to Denham and back. That diagonal entry is Belton’s number of roads.</p>') +
-
-      F.table(['Property', 'Holds for matrices?', 'What that means in practice'], [
-        ['A·B = B·A', '<strong style="color:' + RED + ';">No</strong>',
-          'order is part of the question; swapping it changes or destroys the answer'],
-        ['(A·B)·C = A·(B·C)', '<strong style="color:' + GREEN + ';">Yes</strong>',
-          'you may bracket a chain however is convenient — but not reorder it'],
-        ['A·(B + C) = A·B + A·C', '<strong style="color:' + GREEN + ';">Yes</strong>',
-          'multiplying out works as usual, keeping A on the left throughout'],
-        ['A·I = I·A = A', '<strong style="color:' + GREEN + ';">Yes</strong>', 'I is the do-nothing matrix'],
-        ['A·B = 0 ⟹ A = 0 or B = 0', '<strong style="color:' + RED + ';">No</strong>',
-          'two matrices of non-zero data can multiply to all zeros'],
-        ['(A·B)ᵀ = Bᵀ·Aᵀ', '<strong style="color:' + GREEN + ';">Yes</strong>',
-          'transposing a product reverses the order — a favourite exam detail']
-      ]) +
-
-      F.trap('<p><strong>Multiplying entry by entry.</strong> The product’s (1,1) entry is <em>not</em> a₁₁ × b₁₁. ' +
-        'It is the whole of row 1 dotted with the whole of column 1. If your answer took one multiplication per ' +
-        'entry instead of a running sum, you did addition’s rule on multiplication’s operation.</p>' +
-        '<p style="margin-bottom:0;"><strong>Taking two rows, or two columns.</strong> It is always ' +
-        '<em>row of the first</em> with <em>column of the second</em>. Taking row 1 of A with row 1 of B is the ' +
-        'single most common slip, and with square matrices it produces a number that looks perfectly reasonable.</p>') +
-      F.tip('<p>Write the two dimension pairs side by side before anything else: (2 × <strong>3</strong>) ' +
-        '(<strong>3</strong> × 2). If the inner numbers differ, write “undefined” and move on — that is the ' +
-        'complete answer and it takes three seconds. If they match, the outer numbers tell you the shape of the ' +
-        'answer, which often eliminates two options immediately.</p>' +
-        '<p style="margin-bottom:0;">When you are asked for a single entry rather than the whole product, ' +
-        'do not compute the whole product. Entry (3,2) needs only row 3 of the first matrix and column 2 of the ' +
-        'second — one dot product.</p>');
-
-    add('s2', 'c959u4s2', html);
-
-    repre('s2', 'inner 3 = 3',
-      '<p style="margin-top:0;">Only the inner pair has to match. The outer pair is the answer’s shape:</p>' +
-      F.table(['Product', 'Inner numbers', 'Defined?', 'Shape of the answer'], [
-        ['(2 × <strong>3</strong>) · (<strong>3</strong> × 4)', '3 and 3 — match',
-          '<strong style="color:' + GREEN + ';">Yes</strong>', '2 × 4'],
-        ['(2 × <strong>3</strong>) · (<strong>2</strong> × 3)', '3 and 2 — differ',
-          '<strong style="color:' + RED + ';">No — undefined</strong>', '—'],
-        ['(3 × <strong>1</strong>) · (<strong>1</strong> × 3)', '1 and 1 — match',
-          '<strong style="color:' + GREEN + ';">Yes</strong>', '3 × 3'],
-        ['(1 × <strong>3</strong>) · (<strong>3</strong> × 1)', '3 and 3 — match',
-          '<strong style="color:' + GREEN + ';">Yes</strong>', '1 × 1 — a single number'],
-        ['(4 × <strong>4</strong>) · (<strong>4</strong> × 4)', '4 and 4 — match',
-          '<strong style="color:' + GREEN + ';">Yes</strong>', '4 × 4']
-      ]) +
-      '<p style="margin-bottom:0;">Notice rows 3 and 4: the same two matrices in the other order give a 3 × 3 and ' +
-      'a 1 × 1. Order is not a detail.</p>');
-
-    respan('s2',
-      '<p style="font-family:ui-monospace,Menlo,monospace; font-size:13px; line-height:1.7;">A = ⎡ 1 2 3 ⎤',
-      'So AB = ⎡58 64⎤ over ⎣139 154⎦.</p>',
-      '<p style="margin-top:0;">A courier’s two vans, carrying small / medium / large parcels; B gives each ' +
-      'parcel size’s weight in kg and its handling fee in £.</p>' +
-      line([lab('A ='), MX(VAN, { caption: '2 × 3' }), lab('B ='), MX(PARCEL, { caption: '3 × 2' })]) +
-      '<p>Shapes: (2 × <strong>3</strong>)(<strong>3</strong> × 2) → the 3s match, so the product is ' +
-      '<strong>2 × 2</strong>.</p>' +
-      mono('(1,1) = 14·3 + 9·7 + 22·12 = <strong>369</strong> &nbsp;&nbsp; total kg in van 1<br>' +
-        '(1,2) = 14·2 + 9·5 + 22·9 &nbsp;= <strong>271</strong> &nbsp;&nbsp; total fee for van 1<br>' +
-        '(2,1) = 6·3 + 17·7 + 11·12 = <strong>269</strong> &nbsp;&nbsp; total kg in van 2<br>' +
-        '(2,2) = 6·2 + 17·5 + 11·9 &nbsp;= <strong>196</strong> &nbsp;&nbsp; total fee for van 2') +
-      line([lab('A·B ='), MX(VANP, { rowLabels: true, colLabels: true,
-        caption: 'R = van, C₁ = kg, C₂ = fee £' })]));
-  })();
-
-
-  // =====================================================================
-  // S3 — DETERMINANTS, INVERSES, SOLVING A·x = b
-  // =====================================================================
-  // A = [[8,5],[3,2]], det 1, inverse [[2,-5],[-3,8]]     (verified)
-  // B = [[12,8],[9,7]], det 12, inverse (1/12)[[7,-8],[-9,12]]  (verified)
-  (function s3(){
-    // ---- crossing-diagonals figure -----------------------------------
-    var gx = 74, gy = 66, cw = 84, ch = 62, s = '';
-    s += grid(gx, gy, cw, ch, [['8', '5'], ['3', '2']], { rowLabels: true, colLabels: true, size: 17 });
-    // ring the two entries of each diagonal, then join them without crossing the digits
-    s += F.circ(gx + 0.5 * cw, gy + 0.5 * ch - 4, 17, { stroke: GREEN, w: 2 });
-    s += F.circ(gx + 1.5 * cw, gy + 1.5 * ch - 4, 17, { stroke: GREEN, w: 2 });
-    s += F.circ(gx + 1.5 * cw, gy + 0.5 * ch - 4, 17, { stroke: RED, w: 2, dash: '5 3' });
-    s += F.circ(gx + 0.5 * cw, gy + 1.5 * ch - 4, 17, { stroke: RED, w: 2, dash: '5 3' });
-    s += F.arrow(gx + 0.5 * cw + 16, gy + 0.5 * ch + 8, gx + 1.5 * cw - 16, gy + 1.5 * ch - 18,
-      { stroke: GREEN, w: 2.2 });
-    s += F.arrow(gx + 1.5 * cw - 16, gy + 0.5 * ch + 8, gx + 0.5 * cw + 16, gy + 1.5 * ch - 18,
-      { stroke: RED, w: 2.2, dash: '6 4' });
-    s += F.txt(gx + 2 * cw + 22, gy + 32, '+  8 · 2  =  16',
-      { size: 14, weight: 700, anchor: 'start', mono: true, fill: GREEN });
-    s += F.txt(gx + 2 * cw + 22, gy + 52, 'down-right, added',
-      { size: 10.5, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.txt(gx + 2 * cw + 22, gy + 86, '−  5 · 3  =  15',
-      { size: 14, weight: 700, anchor: 'start', mono: true, fill: RED });
-    s += F.txt(gx + 2 * cw + 22, gy + 106, 'down-left, subtracted',
-      { size: 10.5, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.line(gx + 2 * cw + 22, gy + 122, gx + 2 * cw + 190, gy + 122, { stroke: 'var(--text-2)', w: 1.4 });
-    s += F.txt(gx + 2 * cw + 22, gy + 146, 'det A  =  16 − 15  =  1',
-      { size: 15, weight: 700, anchor: 'start', mono: true });
-    s += F.txt(gx + 2 * cw + 22, gy + 166, 'not zero → A has an inverse',
-      { size: 11, anchor: 'start', fill: GREEN, weight: 700 });
-    s += F.txt(gx + cw, gy + 2 * ch + 34, 'ad − bc', { size: 13, weight: 700, mono: true });
-    s += F.cap(gx + cw, gy + 2 * ch + 56, 'the two diagonals cross; the down-right one wins the plus sign');
-
-    var A = [['8', '5'], ['3', '2']], AINV = [['2', '−5'], ['−3', '8']];
-    var I2 = [['1', '0'], ['0', '1']];
-    var B = [['12', '8'], ['9', '7']], BINV12 = [['7', '−8'], ['−9', '12']];
-    var SING = [['15', '25'], ['9', '15']];
-
-    var html =
-      '<h3>The determinant is a crossing</h3>' +
-      '<p>For a 2 × 2 matrix the determinant is one number that answers one question: <em>can this matrix be ' +
-      'undone?</em> You get it by multiplying along the two diagonals and subtracting. The diagonal that runs ' +
-      '<strong>down to the right</strong> is added; the one that runs <strong>down to the left</strong> is ' +
-      'subtracted.</p>' +
-      F.fig('det = ad − bc, drawn as two crossing diagonals', 520, 260, 520, s) +
-      F.def('<p style="margin:0 0 7px;">For A = ' + MX([['a', 'b'], ['c', 'd']]) +
-        ' &nbsp;&nbsp; <strong>det A = ad − bc</strong>.</p>' +
-        '<p style="margin:0 0 7px;"><strong>det A ≠ 0</strong> → A is <strong>invertible</strong> ' +
-        '(also called non-singular): A⁻¹ exists and is unique.</p>' +
-        '<p style="margin:0;"><strong>det A = 0</strong> → A is <strong>singular</strong>: no inverse exists at all. ' +
-        'This is the matrix version of dividing by zero.</p>') +
-
-      F.worked('two determinants from a real setting',
-        '<p>A print shop makes posters and banners. Each poster needs 8 minutes on the press and 3 on the cutter; ' +
-        'each banner needs 5 minutes on the press and 2 on the cutter. That is the machine-time matrix:</p>' +
-        line([lab('A ='), MX(A, { rowLabels: true, colLabels: true,
-          caption: 'R₁ = press, R₂ = cutter · C₁ = poster, C₂ = banner' })]) +
-        mono('det A = 8·2 − 5·3 = 16 − 15 = <strong>1</strong>') +
-        '<p>Non-zero, so the machine hours can be worked backwards into a production count — which is exactly the ' +
-        'question solved further down.</p>' +
-        '<p>Now a second shop whose two products use time in the <em>same proportion</em>:</p>' +
-        line([lab('S ='), MX(SING, { rowLabels: true, colLabels: true })]) +
-        mono('det S = 15·15 − 25·9 = 225 − 225 = <strong>0</strong>') +
-        '<p>Zero, so S is <strong>singular</strong>. Look at why: row 2 is exactly ⅗ of row 1 (9 = 0.6 × 15, ' +
-        '15 = 0.6 × 25). The second machine tells you nothing the first did not, so no total of machine hours can ' +
-        'pin down how many of each product were made. A zero determinant always means one row is a multiple or a ' +
-        'combination of the others.</p>') +
-
-      '<h3>The 2 × 2 inverse — swap, negate, divide</h3>' +
-      keyline('A⁻¹ = (1 / det A) · ' + MX([['d', '−b'], ['−c', 'a']]) +
-        ' &nbsp;— <strong>swap</strong> the two main-diagonal entries a and d, <strong>negate</strong> the other ' +
-        'two, then <strong>divide</strong> everything by the determinant.') +
-      F.worked('inverse 1 — the print shop matrix, det = 1',
-        line([lab('A ='), MX(A), lab('det A = 8·2 − 5·3 = 1')]) +
-        '<p>Swap 8 and 2, negate 5 and 3, divide by 1 (which changes nothing):</p>' +
-        line([lab('A⁻¹ ='), MX(AINV)]) +
-        '<p><strong>Verify it.</strong> A·A⁻¹ must be the identity. Row 1 of A with column 1 of A⁻¹, and so on:</p>' +
-        mono('(1,1) = 8·2 + 5·(−3) = 16 − 15 = 1<br>' +
-          '(1,2) = 8·(−5) + 5·8 &nbsp;= −40 + 40 = 0<br>' +
-          '(2,1) = 3·2 + 2·(−3) = 6 − 6 &nbsp;&nbsp;= 0<br>' +
-          '(2,2) = 3·(−5) + 2·8 = −15 + 16 = 1') +
-        line([MX(A), op('·'), MX(AINV), op('='), MX(I2, { caption: 'I — verified' })]) +
-        '<p>Four dot products and you know the inverse is right. It is worth the ten seconds every time.</p>') +
-      F.worked('inverse 2 — det ≠ 1, so the division matters',
-        '<p>A joinery workshop: each bookshelf uses 12 board-feet of oak and 9 minutes of sanding; each side table ' +
-        'uses 8 board-feet and 7 minutes.</p>' +
-        line([lab('B ='), MX(B, { rowLabels: true, colLabels: true,
-          caption: 'R₁ = oak (board-feet), R₂ = sanding (min) · C₁ = bookshelf, C₂ = side table' })]) +
-        mono('det B = 12·7 − 8·9 = 84 − 72 = <strong>12</strong>') +
-        '<p>Swap 12 and 7, negate 8 and 9, then divide by 12:</p>' +
-        line([lab('B⁻¹ ='), lab('(1/12) ·'), MX(BINV12), op('='),
-          MX([['7/12', '−2/3'], ['−3/4', '1']], { caption: 'as exact fractions' })]) +
-        '<p><strong>Verify it.</strong> Keep the 1/12 outside and multiply B by the bracketed matrix first:</p>' +
-        line([MX(B), op('·'), lab('(1/12)'), MX(BINV12), op('='), lab('(1/12)'),
-          MX([['12', '0'], ['0', '12']]), op('='), MX(I2, { caption: 'I — verified' })]) +
-        mono('(1,1) = 12·7 + 8·(−9) = 84 − 72 = 12 &nbsp;→ 12/12 = 1<br>' +
-          '(1,2) = 12·(−8) + 8·12 &nbsp;= −96 + 96 = 0<br>' +
-          '(2,1) = 9·7 + 7·(−9) &nbsp;&nbsp;= 63 − 63 = 0<br>' +
-          '(2,2) = 9·(−8) + 7·12 &nbsp;&nbsp;= −72 + 84 = 12 → 12/12 = 1') +
-        '<p>Forgetting the ÷12 is the standard error, and this check catches it instantly: you would get 12s down ' +
-        'the diagonal instead of 1s.</p>') +
-
-      '<h3>Solving A·x = b — the point of all this</h3>' +
-      '<p>A system of linear equations packs into one matrix equation. The coefficients become A, the unknowns ' +
-      'become the column x, the constants become the column b. Then multiply both sides <strong>on the ' +
-      'left</strong> by A⁻¹:</p>' +
-      keyline('A·x = b &nbsp;⟹&nbsp; A⁻¹·A·x = A⁻¹·b &nbsp;⟹&nbsp; I·x = A⁻¹·b &nbsp;⟹&nbsp; ' +
-        '<strong>x = A⁻¹·b</strong>') +
-      F.worked('how many posters and how many banners?',
-        '<p>The press ran for 470 minutes and the cutter for 180 minutes. Each poster: 8 press, 3 cutter. ' +
-        'Each banner: 5 press, 2 cutter. With p posters and n banners:</p>' +
-        mono('8p + 5n = 470 &nbsp;&nbsp;(press minutes)<br>3p + 2n = 180 &nbsp;&nbsp;(cutter minutes)') +
-        line([lab('A ='), MX(A), lab('x ='), MX([['p'], ['n']]), lab('b ='), MX([['470'], ['180']])]) +
-        '<p>det A = 1, so A⁻¹ = ' + MX(AINV) + ' and x = A⁻¹·b. ' +
-        'Row 1 of A⁻¹ with the single column of b, then row 2:</p>' +
-        line([MX(AINV, { hiRow: 0 }), op('·'), MX([['470'], ['180']], { hiCol: 0 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">2·470 + (−5)·180 = 940 − 900 = <strong>40</strong></span>']) +
-        line([MX(AINV, { hiRow: 1 }), op('·'), MX([['470'], ['180']], { hiCol: 0 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">(−3)·470 + 8·180 = −1410 + 1440 = <strong>30</strong></span>']) +
-        line([lab('x ='), MX([['40'], ['30']], { caption: '40 posters, 30 banners' })]) +
-        '<p><strong>Check in the original equations:</strong> 8(40) + 5(30) = 320 + 150 = 470 ✓ and ' +
-        '3(40) + 2(30) = 120 + 60 = 180 ✓.</p>') +
-      F.worked('the joinery workshop, using B⁻¹',
-        '<p>The workshop used 1,200 board-feet of oak and 915 minutes of sanding. With s bookshelves and ' +
-        't side tables:</p>' +
-        mono('12s + 8t = 1200 &nbsp;&nbsp;(board-feet)<br>&nbsp;9s + 7t = &nbsp;915 &nbsp;&nbsp;(sanding minutes)') +
-        '<p>det B = 12, B⁻¹ = (1/12)·' + MX(BINV12) + ', so:</p>' +
-        mono('s = (1/12)[ 7·1200 + (−8)·915 ] = (1/12)(8400 − 7320) = 1080/12 = <strong>90</strong><br>' +
-          't = (1/12)[ (−9)·1200 + 12·915 ] = (1/12)(−10800 + 10980) = 180/12 = <strong>15</strong>') +
-        line([lab('x ='), MX([['90'], ['15']], { caption: '90 bookshelves, 15 side tables' })]) +
-        '<p><strong>Check:</strong> 12(90) + 8(15) = 1080 + 120 = 1200 ✓ and 9(90) + 7(15) = 810 + 105 = 915 ✓.</p>') +
-
-      F.table(['What the determinant tells you', 'About A·x = b'], [
-        ['det A ≠ 0', '<strong>exactly one</strong> solution, for every possible b'],
-        ['det A = 0', 'either <strong>no</strong> solution or <strong>infinitely many</strong> — the determinant ' +
-          'alone cannot say which; row-reduce to find out'],
-        ['det A = 0 and b = 0', 'infinitely many (the all-zero solution always works, plus others)']
-      ]) +
-      keyline('Determinants of bigger matrices: for a <strong>triangular</strong> matrix (all zeros on one side of ' +
-        'the main diagonal) the determinant is simply the product of the diagonal entries. ' +
-        MX([['7', '3', '5'], ['0', '2', '8'], ['0', '0', '6']]) +
-        ' has determinant 7 · 2 · 6 = 84. That is why row-reduction to triangular form is a practical way to get a ' +
-        'determinant by hand.') +
-
-      F.trap('<p><strong>Swapping the wrong pair.</strong> The inverse formula swaps <em>a and d</em> — the ' +
-        'main diagonal — and negates <em>b and c</em>. Doing it the other way round gives a matrix that fails the ' +
-        'A·A⁻¹ = I check, which is why you should always run the check.</p>' +
-        '<p style="margin-bottom:0;"><strong>x = A⁻¹·b, never b·A⁻¹.</strong> The inverse goes on the ' +
-        '<strong>left</strong>, because the left is the side you multiplied from in order to cancel A. ' +
-        'Multiplication does not commute, so the sides are not interchangeable — and with b a column, ' +
-        'b·A⁻¹ is not even a defined product.</p>') +
-      F.tip('<p>Compute the determinant first, always. If it is zero you can answer “singular / no unique solution” ' +
-        'without inverting anything, and several exam items ask nothing more than that. If it is non-zero, keep the ' +
-        '1/det outside the brackets while you work — the arithmetic stays in whole numbers and you cannot forget ' +
-        'the division.</p>' +
-        '<p style="margin-bottom:0;">Only <strong>square</strong> matrices have determinants or inverses. ' +
-        'If a question hands you a 2 × 3 and asks for its inverse, the answer is that it does not have one, ' +
-        'no matter what the entries are.</p>');
-
-    add('s3', 'c959u4s3', html);
-
-    // the existing inverse figure relied on leading spaces to line up its two
-    // bracket rows, and SVG collapses those — so the lower row floated left.
-    respan('s3', '<text x="470" y="100"', '⎣ −c  a ⎦</text>',
-      '<text x="566" y="100" fill="var(--text)" font-size="11.5" font-weight="400" ' +
-      'text-anchor="start" font-family="ui-monospace,Menlo,monospace">⎣ −c  a ⎦</text>');
-
-    repre('s3', 'row 2 = 1.5 × row 1',
-      '<p style="margin-top:0;">A print shop’s machine-time matrix — press and cutter minutes per poster and ' +
-      'per banner:</p>' +
-      line([lab('det'), MX(A), lab('= 8·2 − 5·3 = 16 − 15 ='),
-        '<strong style="font-size:15px; color:' + GREEN + ';">1</strong>', lab('→ invertible')]) +
-      '<p>A second shop whose two machines use time in the same proportion:</p>' +
-      line([lab('det'), MX(SING), lab('= 15·15 − 25·9 = 225 − 225 ='),
-        '<strong style="font-size:15px; color:' + RED + ';">0</strong>', lab('→ SINGULAR')]) +
-      '<p style="margin-bottom:0;">Row 2 is 0.6 × row 1, so the second row carries no new information and the ' +
-      'matrix cannot be undone.</p>');
-  })();
-
-
-  // =====================================================================
-  // S4 — ELEMENTARY ROW OPERATIONS & GAUSSIAN ELIMINATION
-  // =====================================================================
-  // Fundraiser: a + s + t = 240; 22a + 14s + 9t = 3920; s + t = 120
-  // Solution (120, 40, 80) — every step below verified with sympy.
-  (function s4(){
-    var B = bar();
-    var G0 = [['1', '1', '1', B, '240'], ['22', '14', '9', B, '3920'], ['0', '1', '1', B, '120']];
-    var G1 = [['1', '1', '1', B, '240'], ['0', '−8', '−13', B, '−1360'], ['0', '1', '1', B, '120']];
-    var G2 = [['1', '1', '1', B, '240'], ['0', '1', '1', B, '120'], ['0', '−8', '−13', B, '−1360']];
-    var G3 = [['1', '1', '1', B, '240'], ['0', '1', '1', B, '120'], ['0', '0', '−5', B, '−400']];
-    var G4 = [['1', '1', '1', B, '240'], ['0', '1', '1', B, '120'], ['0', '0', '1', B, '80']];
-    var G5 = [['1', '1', '1', B, '240'], ['0', '1', '0', B, '40'], ['0', '0', '1', B, '80']];
-    var G6 = [['1', '1', '0', B, '160'], ['0', '1', '0', B, '40'], ['0', '0', '1', B, '80']];
-    var G7 = [['1', '0', '0', B, '120'], ['0', '1', '0', B, '40'], ['0', '0', '1', B, '80']];
-
-    // ---- echelon staircase figure ------------------------------------
-    var s = '';
-    var gx = 60, gy = 60, cw = 62, ch = 48;
-    s += grid(gx, gy, cw, ch, [['1', '1', '1', '240'], ['0', '1', '1', '120'], ['0', '0', '1', '80']],
-      { rowLabels: true, size: 13 });
-    // the staircase down the pivots
-    var pts = [];
-    pts.push([gx, gy]);
-    for (var i = 0; i < 3; i++) { pts.push([gx + i * cw, gy + (i + 1) * ch]); pts.push([gx + (i + 1) * cw, gy + (i + 1) * ch]); }
-    var d = 'M' + pts.map(function(p){ return p[0] + ',' + p[1]; }).join(' L');
-    s += '<path d="' + d + '" fill="none" stroke="' + BLUE + '" stroke-width="2.6"/>';
-    // circle the pivots
-    for (i = 0; i < 3; i++)
-      s += F.circ(gx + (i + 0.5) * cw, gy + (i + 0.5) * ch, 15, { stroke: GREEN, w: 2 });
-    // the augment bar
-    s += F.line(gx + 3 * cw, gy, gx + 3 * cw, gy + 3 * ch, { stroke: 'var(--text-2)', w: 2.4, dash: '5 3' });
-    s += F.txt(gx + 3.5 * cw, gy - 12, 'constants', { size: 10.5, weight: 700, fill: 'var(--text-3)' });
-    s += F.txt(gx + 1.5 * cw, gy - 12, 'coefficients', { size: 10.5, weight: 700, fill: 'var(--text-3)' });
-    s += F.txt(gx + 4 * cw + 30, gy + 24, 'pivots (circled) step',
-      { size: 11.5, weight: 700, anchor: 'start', fill: GREEN });
-    s += F.txt(gx + 4 * cw + 30, gy + 40, 'one place right each row',
-      { size: 11.5, weight: 700, anchor: 'start', fill: GREEN });
-    s += F.txt(gx + 4 * cw + 30, gy + 72, 'everything below the',
-      { size: 11.5, weight: 700, anchor: 'start', fill: BLUE });
-    s += F.txt(gx + 4 * cw + 30, gy + 88, 'staircase is zero',
-      { size: 11.5, weight: 700, anchor: 'start', fill: BLUE });
-    s += F.txt(gx + 4 * cw + 30, gy + 120, 'last row reads 1t = 80,',
-      { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.txt(gx + 4 * cw + 30, gy + 136, 'so you can walk back up',
-      { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    s += F.cap(280, gy + 3 * ch + 44, 'row echelon form — a staircase of pivots with zeros beneath it');
-
-    var html =
-      '<h3>Row operations, and why they are safe</h3>' +
-      '<p>Every row of an augmented matrix <em>is</em> an equation. That is the idea the whole method rests on. ' +
-      'Anything you are allowed to do to a system of equations, you are allowed to do to the rows — and there are ' +
-      'exactly three such moves.</p>' +
-      F.table(['Row operation', 'Written', 'The equation-level reason it is safe'], [
-        ['Swap two rows', '<strong>Rᵢ ↔ Rⱼ</strong>', 'the order you list equations in never mattered'],
-        ['Multiply a row by a non-zero constant', '<strong>kRᵢ</strong>',
-          'doubling both sides of an equation does not change its solutions'],
-        ['Add a multiple of one row to another', '<strong>Rᵢ + kRⱼ</strong>',
-          'adding equal quantities to both sides of an equation is always valid']
-      ]) +
-      keyline('The word <strong>non-zero</strong> in the second one is examined directly. Multiplying a row by 0 ' +
-        'turns an equation into 0 = 0, destroying information you cannot get back — so it is not an elementary ' +
-        'row operation. All three legal moves are reversible, and that reversibility is precisely why the ' +
-        'solution set never changes.') +
-      F.fig('row echelon form: the staircase of pivots', 560, 260, 560, s) +
-
-      '<h3>A full elimination, one operation per line</h3>' +
-      '<p>A school fundraiser sold adult tickets at £22, senior tickets at £14 and student tickets at £9. ' +
-      'Three facts were recorded:</p>' +
-      mono('240 tickets were sold altogether &nbsp;→&nbsp; a + s + t = 240<br>' +
-        'takings were £3,920 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→&nbsp; 22a + 14s + 9t = 3920<br>' +
-        'seniors and students together: 120 &nbsp;→&nbsp; s + t = 120') +
-      '<p>Write the coefficients on the left of the bar and the constants on the right. Each column belongs to one ' +
-      'unknown: ' + colWord(1) + ' is a, ' + colWord(2) + ' is s, ' + colWord(3) + ' is t.</p>' +
-      line([lab('augmented matrix:'), MX(G0, { rowLabels: true,
-        caption: 'columns: a &nbsp; s &nbsp; t &nbsp;│&nbsp; constants' })]) +
-      F.worked('Gauss–Jordan: every step, every matrix',
-        step('start', G0, 'the system as written', { rowLabels: true }) +
-        step('R₂ − 22R₁', G1, 'clears the 22 under the first pivot', { rowLabels: true, hiRow: 1 }) +
-        '<p style="font-size:13px; color:var(--text-3); margin:2px 0 8px;">' +
-        'Row 2 was [22, 14, 9 │ 3920]. Subtract 22 × row 1 = [22, 22, 22 │ 5280] to get ' +
-        '[0, −8, −13 │ −1360]. Only ' + rowWord(2) + ' changed; row 1 is untouched.</p>' +
-        step('R₂ ↔ R₃', G2, 'put the tidy row with the leading 1 up next', { rowLabels: true }) +
-        '<p style="font-size:13px; color:var(--text-3); margin:2px 0 8px;">' +
-        'Swapping is free and it saves fractions: row 3 already had a 1 in ' + colWord(2) + '.</p>' +
-        step('R₃ + 8R₂', G3, 'clears column 2 below the new pivot', { rowLabels: true, hiRow: 2 }) +
-        '<p style="font-size:13px; color:var(--text-3); margin:2px 0 8px;">' +
-        'Row 3 was [0, −8, −13 │ −1360]. Add 8 × row 2 = [0, 8, 8 │ 960] to get [0, 0, −5 │ −400].</p>' +
-        step('(−1/5)R₃', G4, 'scale the last pivot to 1 — row echelon form', { rowLabels: true, hiRow: 2 }) +
-        '<p style="font-size:13px; color:var(--text-3); margin:2px 0 8px;">' +
-        'The last row now reads 0a + 0s + 1t = 80, so <strong>t = 80</strong> student tickets.</p>' +
-        step('R₂ − R₃', G5, 'clears above the third pivot', { rowLabels: true, hiRow: 1 }) +
-        step('R₁ − R₃', G6, 'clears above it in row 1 too', { rowLabels: true, hiRow: 0 }) +
-        step('R₁ − R₂', G7, 'reduced row echelon form', { rowLabels: true, hiRow: 0 }) +
-        '<p style="margin-top:12px;">Read the last matrix off row by row: <strong>a = 120, s = 40, t = 80</strong> ' +
-        '— 120 adult, 40 senior and 80 student tickets.</p>' +
-        '<p><strong>Check all three original equations:</strong><br>' +
-        '120 + 40 + 80 = 240 ✓ &nbsp;&nbsp; 22(120) + 14(40) + 9(80) = 2640 + 560 + 720 = 3920 ✓ &nbsp;&nbsp; ' +
-        '40 + 80 = 120 ✓</p>') +
-      keyline('You could have stopped at the fourth matrix. That is <strong>row echelon form</strong> — the ' +
-        'staircase with zeros beneath — and from there you <strong>back-substitute</strong>: the bottom row gives ' +
-        't = 80; the middle row says s + t = 120, so s = 40; the top row says a + s + t = 240, so a = 120. ' +
-        'Carrying on to <strong>reduced</strong> row echelon form (1s on the diagonal, zeros above <em>and</em> ' +
-        'below) means the answers are simply written in the last column with no back-substitution at all.') +
-
-      '<h3>Reading the final shape: one, none, or infinitely many</h3>' +
-      '<p>The elimination does more than find a solution — its final shape tells you how many solutions exist, ' +
-      'which is what exams ask most often.</p>' +
-      F.worked('a system with no solution',
-        '<p>A depot claims that its two van types together made 45 runs, and also that three times as many runs ' +
-        'of each type came to 150. With x and y runs:</p>' +
-        mono('&nbsp;x + &nbsp;y = &nbsp;45<br>3x + 3y = 150') +
-        step('start', [['1', '1', B, '45'], ['3', '3', B, '150']], '', { rowLabels: true }) +
-        step('R₂ − 3R₁', [['1', '1', B, '45'], ['0', '0', B, '15']], 'the last row says 0 = 15',
-          { rowLabels: true, hiRow: 1 }) +
-        '<p>Row 2 now reads 0x + 0y = 15, which is false for every x and y. The system is ' +
-        '<strong>inconsistent</strong>: <strong>no solution</strong>. The two claims contradict each other — ' +
-        '3 × 45 is 135, not 150.</p>') +
-      F.worked('a system with infinitely many solutions',
-        '<p>Same first claim, but the second is now consistent with it — four times as many runs came to 180:</p>' +
-        mono('&nbsp;x + &nbsp;y = &nbsp;45<br>4x + 4y = 180') +
-        step('start', [['1', '1', B, '45'], ['4', '4', B, '180']], '', { rowLabels: true }) +
-        step('R₂ − 4R₁', [['1', '1', B, '45'], ['0', '0', B, '0']], 'a row of all zeros',
-          { rowLabels: true, hiRow: 1 }) +
-        '<p>Row 2 reads 0 = 0 — true, but empty. The second equation was just the first one restated, so there is ' +
-        'only one real constraint on two unknowns. y is a <strong>free variable</strong>: pick any value, set ' +
-        'x = 45 − y, and you have a solution. <strong>Infinitely many solutions.</strong></p>') +
-      F.table(['A row in the final matrix', 'What it means', 'How many solutions'], [
-        ['a pivot in every variable column', 'every unknown is pinned down', '<strong>exactly one</strong>'],
-        ['[ 0 0 0 │ 0 ] — all zeros', 'a redundant equation, leaving a free variable',
-          '<strong>infinitely many</strong>'],
-        ['[ 0 0 0 │ 15 ] — zeros then non-zero', 'the row asserts 0 = 15, which is false',
-          '<strong style="color:' + RED + ';">none — inconsistent</strong>']
-      ]) +
-
-      F.trap('<p><strong>Confusing the two zero rows.</strong> [0 0 0 │ 0] and [0 0 0 │ 15] look almost identical ' +
-        'and mean opposite things. Zeros <em>all the way across, constant included</em> = a redundant equation = ' +
-        'infinitely many solutions. Zeros on the left with <em>anything non-zero</em> on the right = 0 = 15 = no ' +
-        'solution at all. Reading these the wrong way round is the standard error in this section.</p>' +
-        '<p style="margin-bottom:0;"><strong>Changing two rows in one step.</strong> Rᵢ + kRⱼ changes ' +
-        '<em>row i only</em>. Row j is the donor and comes through untouched. If both rows changed, you have done ' +
-        'two operations at once and lost track of the system.</p>') +
-      F.tip('<p>Work strictly one column at a time, left to right, and do not move on until every entry below the ' +
-        'current pivot is zero. Write the operation next to each new matrix exactly as you did it — “R₂ − 22R₁” — ' +
-        'because when the arithmetic goes wrong (and it will) you can find the step instead of restarting.</p>' +
-        '<p style="margin-bottom:0;">Use a swap to avoid fractions. If the pivot position holds an awkward number ' +
-        'and a row below it starts with 1, swap them first: swapping is free and it keeps every later step in ' +
-        'whole numbers.</p>');
-
-    add('s4', 'c959u4s4', html);
-
-    repre('s4', '2x + y = 5',
-      '<p style="margin-top:0;">Each row is one equation; each column is one unknown; the bar separates the ' +
-      'coefficients from the constants.</p>' +
-      mono('&nbsp;&nbsp;a + &nbsp;&nbsp;s + &nbsp;t = &nbsp;240 &nbsp;&nbsp;&nbsp;(tickets sold)<br>' +
-        '22a + 14s + 9t = 3920 &nbsp;&nbsp;&nbsp;(takings, £)<br>' +
-        '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;s + &nbsp;t = &nbsp;120 &nbsp;&nbsp;&nbsp;(non-adult tickets)') +
-      line([lab('becomes'), MX(G0, { rowLabels: true, caption: 'columns: a &nbsp; s &nbsp; t &nbsp;│&nbsp; constants' })]) +
-      '<p style="margin-bottom:0;">A missing term is a <strong>0</strong>, never a blank — the third equation has ' +
-      'no a in it, so its first entry is 0. Losing that zero is how columns get misaligned.</p>');
-  })();
-
-
-  // =====================================================================
-  // S5 — ELEMENTARY MATRICES & THE INVERTIBLE MATRIX THEOREM
-  // =====================================================================
-  (function s5(){
-    var I3 = [['1', '0', '0'], ['0', '1', '0'], ['0', '0', '1']];
-    var E1 = [['0', '0', '1'], ['0', '1', '0'], ['1', '0', '0']];        // R1 ↔ R3
-    var E2 = [['1', '0', '0'], ['0', '6', '0'], ['0', '0', '1']];        // 6R2
-    var E3 = [['1', '0', '0'], ['0', '1', '0'], ['2', '0', '1']];        // R3 + 2R1
-    var AW = [['12', '30', '18'], ['9', '24', '15'], ['20', '45', '28']];
-    var E1A = [['20', '45', '28'], ['9', '24', '15'], ['12', '30', '18']];   // verified
-    var E2A = [['12', '30', '18'], ['54', '144', '90'], ['20', '45', '28']]; // verified
-    var E3A = [['12', '30', '18'], ['9', '24', '15'], ['44', '105', '64']];  // verified
-    var B = bar();
-
-    // ---- "which test is cheapest" flow figure ------------------------
-    var s = '';
-    function box(x, y, w, h, t1, t2, col){
-      var o = F.rect(x, y, w, h, { rx: 9, stroke: col || 'var(--text-2)', w: 1.7, fill: 'var(--surface)' });
-      o += F.txt(x + w / 2, y + (t2 ? h / 2 - 2 : h / 2 + 4), t1, { size: 11.5, weight: 700, fill: col || 'var(--text)' });
-      if (t2) o += F.txt(x + w / 2, y + h / 2 + 15, t2, { size: 10, fill: 'var(--text-3)' });
-      return o;
-    }
-    s += box(170, 12, 220, 44, 'Is A invertible?', 'A must be square even to ask');
-    s += F.arrow(230, 56, 130, 82, { w: 1.6 });
-    s += F.arrow(330, 56, 430, 82, { w: 1.6 });
-    s += F.txt(146, 74, 'if 2 × 2', { size: 10, weight: 700, fill: 'var(--text-3)', anchor: 'end' });
-    s += F.txt(414, 74, 'if bigger', { size: 10, weight: 700, fill: 'var(--text-3)', anchor: 'start' });
-    s += box(30, 84, 200, 42, 'compute ad − bc', 'one subtraction', BLUE);
-    s += box(330, 84, 200, 42, 'row-reduce A', 'watch for a zero row', BLUE);
-    s += F.arrow(130, 126, 130, 150, { w: 1.5 });
-    s += F.arrow(430, 126, 430, 150, { w: 1.5 });
-    s += box(30, 150, 200, 44, 'det ≠ 0 → INVERTIBLE', null, GREEN);
-    s += box(330, 150, 200, 44, 'reduces to I → INVERTIBLE', null, GREEN);
-    s += F.txt(130, 210, 'or', { size: 11, weight: 700, fill: 'var(--text-3)' });
-    s += F.txt(430, 210, 'or', { size: 11, weight: 700, fill: 'var(--text-3)' });
-    s += box(30, 216, 200, 44, 'det = 0 → SINGULAR', null, RED);
-    s += box(330, 216, 200, 44, 'a zero row → SINGULAR', null, RED);
-    s += F.line(255, 172, 305, 172, { stroke: 'var(--text-3)', w: 1.2, dash: '4 3' });
-    s += F.txt(280, 166, 'these two', { size: 10, italic: true, fill: 'var(--text-3)' });
-    s += F.txt(280, 186, 'say the', { size: 10, italic: true, fill: 'var(--text-3)' });
-    s += F.txt(280, 198, 'same thing', { size: 10, italic: true, fill: 'var(--text-3)' });
-    s += F.line(255, 238, 305, 238, { stroke: 'var(--text-3)', w: 1.2, dash: '4 3' });
-    s += F.txt(280, 232, 'and so', { size: 10, italic: true, fill: 'var(--text-3)' });
-    s += F.txt(280, 252, 'do these', { size: 10, italic: true, fill: 'var(--text-3)' });
-    s += F.cap(280, 282, 'two routes, one answer — the theorem lets you take whichever is cheaper');
-
-    var html =
-      '<h3>An elementary matrix is one row operation, frozen</h3>' +
-      '<p>Take the identity matrix. Perform <em>exactly one</em> row operation on it. What you are left with is an ' +
-      '<strong>elementary matrix</strong> — and multiplying any matrix by it <strong>on the left</strong> performs ' +
-      'that same operation on that matrix. The row operation and the matrix are two ways of writing one thing.</p>' +
-      '<p>Here is the matrix everything below acts on — a haulier’s cost table, three depots by three routes:</p>' +
-      line([lab('A ='), MX(AW, { rowLabels: true, colLabels: true, caption: 'R = depot, C = route' })]) +
-      F.table(['Row operation', 'The elementary matrix E', 'E · A'], [
-        ['<strong>R₁ ↔ R₃</strong><br><span style="font-size:12.5px; color:var(--text-3);">swap rows 1 and 3</span>',
-          MX(E1) + '<div style="font-size:11.5px; color:var(--text-3);">I with its rows 1 and 3 swapped</div>',
-          MX(E1A) + '<div style="font-size:11.5px; color:var(--text-3);">depot rows 1 and 3 have traded places</div>'],
-        ['<strong>6R₂</strong><br><span style="font-size:12.5px; color:var(--text-3);">multiply row 2 by 6</span>',
-          MX(E2) + '<div style="font-size:11.5px; color:var(--text-3);">I with a 6 in the (2,2) position</div>',
-          MX(E2A) + '<div style="font-size:11.5px; color:var(--text-3);">only row 2 changed: 9→54, 24→144, 15→90</div>'],
-        ['<strong>R₃ + 2R₁</strong><br><span style="font-size:12.5px; color:var(--text-3);">add 2 × row 1 to row 3</span>',
-          MX(E3) + '<div style="font-size:11.5px; color:var(--text-3);">I with a 2 in the (3,1) position</div>',
-          MX(E3A) + '<div style="font-size:11.5px; color:var(--text-3);">row 3 only: 20+2(12)=44, 45+2(30)=105, 28+2(18)=64</div>']
-      ]) +
-      keyline('Read the position of the odd entry and you can read the operation. A <strong>2 in position (3,1)</strong> ' +
-        'means “row 3 gains 2 × row 1” — the row it changes is the row index, the row it borrows from is the column ' +
-        'index. Rows first, columns second, exactly as in section 1.') +
-      F.worked('why E · A does the operation — check one entry',
-        '<p>Take E₃ = ' + MX(E3) + ' and A = ' + MX(AW) + '. Entry (3,1) of the product is ' +
-        rowWord(3) + ' of E₃ dotted with ' + colWord(1) + ' of A:</p>' +
-        line([MX(E3, { hiRow: 2 }), op('·'), MX(AW, { hiCol: 0 }), op('→'),
-          '<span style="font-family:ui-monospace,Menlo,monospace; font-size:13.5px;">2·12 + 0·9 + 1·20 = 24 + 20 = <strong>44</strong></span>']) +
-        '<p>The 2 pulls in twice the first entry of column 1, the 1 keeps the third entry, and the 0 discards the ' +
-        'middle. That is “row 3 + 2 × row 1” written as arithmetic. Row 1 of E₃ is [1, 0, 0], which copies row 1 ' +
-        'of A through unchanged — which is why the other two rows are untouched.</p>') +
-
-      '<h3>Every elementary matrix is invertible — undo the operation</h3>' +
-      '<p>Each of the three operations can be reversed, so each elementary matrix has an inverse, and that inverse ' +
-      'is just the elementary matrix of the reversing operation.</p>' +
-      F.table(['E does', 'E⁻¹ does', 'E', 'E⁻¹'], [
-        ['R₁ ↔ R₃', 'R₁ ↔ R₃ (swap back)', MX(E1), MX(E1)],
-        ['6R₂', '(1/6)R₂', MX(E2), MX([['1', '0', '0'], ['0', '1/6', '0'], ['0', '0', '1']])],
-        ['R₃ + 2R₁', 'R₃ − 2R₁', MX(E3), MX([['1', '0', '0'], ['0', '1', '0'], ['−2', '0', '1']])]
-      ]) +
-      '<p>A swap is its own inverse — do it twice and you are back where you started. The other two just flip the ' +
-      'sign or take the reciprocal of the single off-identity entry.</p>' +
-
-      '<h3>Inverting a matrix by row reduction: the [A │ I] method</h3>' +
-      '<p>If a sequence of row operations turns A into I, then that same sequence — the same elementary matrices, ' +
-      'in the same order — turns I into A⁻¹. So write them side by side and reduce both halves at once.</p>' +
-      F.worked('invert the print shop matrix by row reduction',
-        '<p>A = ' + MX([['8', '5'], ['3', '2']]) + '. Augment it with the 2 × 2 identity:</p>' +
-        step('start', [['8', '5', B, '1', '0'], ['3', '2', B, '0', '1']], 'left half A, right half I', { rowLabels: true }) +
-        step('R₁ − 2R₂', [['2', '1', B, '1', '−2'], ['3', '2', B, '0', '1']], 'shrink the leading 8',
-          { rowLabels: true, hiRow: 0 }) +
-        step('R₂ − R₁', [['2', '1', B, '1', '−2'], ['1', '1', B, '−1', '3']], '', { rowLabels: true, hiRow: 1 }) +
-        step('R₁ − R₂', [['1', '0', B, '2', '−5'], ['1', '1', B, '−1', '3']], '', { rowLabels: true, hiRow: 0 }) +
-        step('R₂ − R₁', [['1', '0', B, '2', '−5'], ['0', '1', B, '−3', '8']], 'left half is now I',
-          { rowLabels: true, hiRow: 1 }) +
-        '<p>The left half has become the identity, so the right half is the inverse:</p>' +
-        line([lab('A⁻¹ ='), MX([['2', '−5'], ['−3', '8']])]) +
-        '<p>Which matches the formula answer from the previous section, (1/1)·' + MX([['2', '−5'], ['−3', '8']]) +
-        '. <strong>Verify:</strong></p>' +
-        line([MX([['8', '5'], ['3', '2']]), op('·'), MX([['2', '−5'], ['−3', '8']]), op('='),
-          MX([['1', '0'], ['0', '1']], { caption: 'I ✓' })]) +
-        '<p>For a 2 × 2 the formula is faster. For a 3 × 3 or bigger there is no formula worth memorising, and this ' +
-        'is the method.</p>') +
-      F.worked('what failure looks like',
-        '<p>The singular matrix from the previous section, augmented with I:</p>' +
-        step('start', [['15', '25', B, '1', '0'], ['9', '15', B, '0', '1']], '', { rowLabels: true }) +
-        step('5R₂ − 3R₁', [['15', '25', B, '1', '0'], ['0', '0', B, '−3', '5']], 'a row of zeros on the left',
-          { rowLabels: true, hiRow: 1 }) +
-        '<p>The left half can never become the identity, because row 2 is now all zeros there and no legal ' +
-        'operation will put a pivot back. The matrix is <strong>singular</strong> — and sure enough ' +
-        'det = 15·15 − 25·9 = 0. The two conditions failed together, which is the theorem below in miniature.</p>') +
-
-      '<h3>The Invertible Matrix Theorem</h3>' +
-      '<p>Because elimination is nothing but a chain of elementary matrices, E<sub>k</sub>…E₂E₁A = I whenever the ' +
-      'reduction succeeds — which makes A⁻¹ = E<sub>k</sub>…E₂E₁. That single fact ties every idea in this chapter ' +
-      'together. For a <strong>square</strong> matrix A, the following statements are all the same statement:</p>' +
-      F.table(['If A is invertible, all of these are true', 'If A is singular, all of these are true instead'], [
-        ['A⁻¹ exists', 'A⁻¹ does not exist'],
-        ['det A ≠ 0', 'det A = 0'],
-        ['A row-reduces to I', 'row reduction leaves a row of zeros'],
-        ['A has a pivot in every row and every column', 'at least one column has no pivot'],
-        ['A·x = b has exactly one solution, for every b', 'A·x = b has no solution, or infinitely many'],
-        ['A·x = 0 has only the trivial solution x = 0', 'A·x = 0 has non-zero solutions too'],
-        ['the rows are linearly independent', 'some row is a combination of the others'],
-        ['the columns are linearly independent', 'some column is a combination of the others'],
-        ['rank A = n (full rank)', 'rank A &lt; n']
-      ]) +
-      F.fig('one question, two prices — pick the cheaper test', 560, 292, 560, s) +
-      keyline('The practical value is that you may check <em>whichever condition is cheapest</em>. For a 2 × 2, ' +
-        'ad − bc takes five seconds. For a 4 × 4, row-reducing and watching for a zero row is far quicker than ' +
-        'expanding a determinant by hand. And the negations are equally interchangeable — if any one condition ' +
-        'fails, every one of them fails.') +
-      F.worked('using the theorem instead of computing',
-        '<p><em>“The 3 × 3 matrix M row-reduces to a form whose bottom row is all zeros. What is det M, and how ' +
-        'many solutions does M·x = b have?”</em></p>' +
-        '<p>No arithmetic is needed. A zero row means M does not reduce to I, so M is singular; therefore ' +
-        '<strong>det M = 0</strong>, and M·x = b has either <strong>no solution or infinitely many</strong> — ' +
-        'never exactly one. Which of the two it is depends on b, and only further reduction of the augmented ' +
-        'matrix will say.</p>' +
-        '<p><em>“A·x = 0 has a non-zero solution. Is A invertible?”</em> No. A homogeneous system always has the ' +
-        'trivial solution x = 0; having a second one puts you in the singular column of the table above.</p>') +
-
-      F.trap('<p><strong>Multiplying on the wrong side.</strong> E·A performs a <em>row</em> operation. ' +
-        'A·E performs a <em>column</em> operation, which is a different thing entirely. Row operations always ' +
-        'come from multiplying on the <strong>left</strong> — the same side the inverse goes on when you solve ' +
-        'A·x = b.</p>' +
-        '<p style="margin-bottom:0;"><strong>Assuming the theorem covers non-square matrices.</strong> Every ' +
-        'statement in it begins “for a square matrix”. A 3 × 4 matrix has no determinant and no inverse, whatever ' +
-        'its entries are, so none of the equivalences apply to it.</p>') +
-      F.tip('<p>Learn the theorem as <em>two columns, not nine facts</em>. Given any one statement, you can supply ' +
-        'the other eight. Exam items nearly always hand you one condition and ask for another: “det = 0, so how ' +
-        'many solutions?”, “reduces to I, so is it invertible?”, “A·x = 0 has only the trivial solution, so what ' +
-        'is the rank?”</p>' +
-        '<p style="margin-bottom:0;">Remember the one asymmetry: A·x = <strong>0</strong> can never be ' +
-        'inconsistent, because x = 0 always works. So for a homogeneous system the only question is whether that ' +
-        'trivial solution is the <em>only</em> one — and the answer is yes exactly when A is invertible.</p>');
-
-    add('s5', 'c959u4s5', html);
-
-    repre('s5', 'Each is the identity with ONE operation applied to it',
-      '<p style="margin-top:0;">Each one is the identity matrix with a <strong>single</strong> row operation ' +
-      'applied to it. Multiply on the left and it performs that operation on whatever it multiplies:</p>' +
-      F.table(['Operation', 'Elementary matrix', 'Where the change sits'], [
-        ['<strong>R₁ ↔ R₂</strong> — swap rows 1 and 2', MX([['0', '1', '0'], ['1', '0', '0'], ['0', '0', '1']]),
-          'rows 1 and 2 of I have traded places'],
-        ['<strong>5R₂</strong> — multiply row 2 by 5', MX([['1', '0', '0'], ['0', '5', '0'], ['0', '0', '1']]),
-          'the 1 in position (2,2) has become a 5'],
-        ['<strong>R₃ + 2R₁</strong> — add 2 × row 1 to row 3', MX([['1', '0', '0'], ['0', '1', '0'], ['2', '0', '1']]),
-          'a 2 sits in position (3,1): row 3 borrows from row 1']
-      ]) +
-      '<p style="margin-bottom:0;">Compare each with the identity ' + MX(I3) +
-      ' — exactly one thing has changed in each.</p>');
-  })();
-
-
-  // =====================================================================
-  // QUESTIONS — realistic contexts, one per section pool
-  // =====================================================================
-  function Q(key, list){ qAdded += F.addQ(K + key, list); }
-
-  Q('s1', [
-    {
-      id: 'mx_s1_1', topic: 'Reading aᵢⱼ',
-      text: 'A bakery records Monday sales as rows = branches (Riverside, Hillcrest) and columns = ' +
-        '(sourdough, bagels, croissants):' + MX(MON, { rowLabels: true, colLabels: true }) +
-        ' What is a₂₃?',
-      options: ['62 — Hillcrest croissants', '47 — Riverside croissants', '130 — Hillcrest bagels',
-        'It does not exist'],
-      correct: 0,
-      explain: 'The row index comes first. a₂₃ means row 2 (Hillcrest), then column 3 (croissants) = 62. ' +
-        'Reading it as column 2, row 3 is the classic error — and there is no row 3 here at all.'
-    },
-    {
-      id: 'mx_s1_2', topic: 'Dimensions',
-      text: 'A clinic builds a table showing, for each of its 4 nurses, the hours worked on each of the 7 days ' +
-        'of the week. Nurses run down the side and days across the top. What are the dimensions of that matrix?',
-      options: ['4 × 7', '7 × 4', '28 × 1', '11 × 11'],
-      correct: 0,
-      explain: 'Dimensions are always rows × columns. 4 nurses down the side means 4 rows; 7 days across means ' +
-        '7 columns. So 4 × 7.'
-    },
-    {
-      id: 'mx_s1_3', topic: 'Addition — defined or not',
-      text: 'Monday sales are stored as a 2 × 3 matrix (2 branches × 3 products). A supplier sends the same ' +
-        'information as a 3 × 2 matrix (3 products × 2 branches). What is the sum of the two matrices?',
-      options: ['Undefined — the dimensions differ', 'A 2 × 3 matrix', 'A 3 × 2 matrix', 'A 6 × 6 matrix'],
-      correct: 0,
-      explain: 'Addition is entry by entry, so both matrices must have identical dimensions. 2 × 3 and 3 × 2 are ' +
-        'different shapes, so no entry has a partner and the sum simply does not exist.'
-    },
-    {
-      id: 'mx_s1_4', topic: 'Matrix addition',
-      text: 'Monday sales ' + MX(MON) + ' and Tuesday sales ' + MX(TUE) +
-        ' use the same layout (rows = branches, columns = products). In the two-day total, how many bagels did ' +
-        'the Hillcrest branch sell — that is, the entry in row 2, column 2?',
-      options: ['247', '182', '211', '188'],
-      correct: 0,
-      explain: 'Row 2, column 2 in each matrix: 130 + 117 = 247. Row 1 column 2 would give 94 + 88 = 182, ' +
-        'which is the same product at the other branch.'
-    },
-    {
-      id: 'mx_s1_5', topic: 'Subtraction',
-      text: 'A shop opened with stock ' + MX(OPEN) + ' and sold ' + MX(MON) +
-        ' during the day, both laid out as rows = branches, columns = products. How many bagels are left at the ' +
-        'Riverside branch (row 1, column 2)?',
-      options: ['146', '150', '182', '240'],
-      correct: 0,
-      explain: 'Subtraction is entry by entry in matching positions: row 1, column 2 gives 240 − 94 = 146. ' +
-        'The 150 is row 2, column 2 — the same product at the other branch.'
-    },
-    {
-      id: 'mx_s1_6', topic: 'Scalar multiplication',
-      text: 'Two shop assistants worked these hours over two weeks (rows = assistant, columns = week): ' +
-        MX(HRS, { rowLabels: true, colLabels: true }) +
-        ' Everyone is paid £18 an hour. What does assistant 2 earn in week 1?',
-      options: ['£738', '£612', '£486', '£396'],
-      correct: 0,
-      explain: 'Scalar multiplication multiplies every entry by 18. Assistant 2, week 1 is row 2, column 1 = 41 ' +
-        'hours, so 18 × 41 = £738. The £486 comes from row 1 column 2, which is the other assistant in the other week.'
-    },
-    {
-      id: 'mx_s1_7', topic: 'Transpose',
-      text: 'A 2 × 3 sales matrix has branches down the side and products across the top. The manager transposes ' +
-        'it so that products run down the side instead. What are the dimensions of the transposed matrix, and what ' +
-        'was row 1 of the original?',
-      options: ['3 × 2, and row 1 of the original is now column 1',
-        '3 × 2, and row 1 of the original is now row 1',
-        '2 × 3, and the entries are unchanged',
-        '2 × 3, and row 1 of the original is now column 1'],
-      correct: 0,
-      explain: 'The transpose turns every row into the column of the same number, so an m × n matrix becomes ' +
-        'n × m: 2 × 3 becomes 3 × 2, and row 1 becomes column 1.'
-    },
-    {
-      id: 'mx_s1_8', topic: 'Symmetric matrices',
-      text: 'A logistics firm builds a table of driving distances between its 5 depots, with depots down the side ' +
-        'and the same 5 depots across the top. Which description fits that matrix?',
-      options: ['5 × 5, square and symmetric — the entry in row i, column j equals the one in row j, column i',
-        '5 × 5 and diagonal — every off-diagonal entry is zero',
-        '5 × 1, because there are only 5 depots',
-        '5 × 5 and upper triangular — everything below the diagonal is zero'],
-      correct: 0,
-      explain: 'Five depots on both axes gives a 5 × 5 square matrix, and the drive from depot 3 to depot 4 is the ' +
-        'same distance as the return, so aᵢⱼ = aⱼᵢ and the matrix equals its own transpose — it is symmetric.'
-    }
-  ]);
-
-  Q('s2', [
-    {
-      id: 'mx_s2_1', topic: 'Is the product defined?',
-      text: 'A firm holds a 5 × 3 matrix of units sold (5 stores × 3 products) and a 3 × 2 matrix of ' +
-        '(price, cost) for each product. Is the product of the two defined, and if so what shape is it?',
-      options: ['Yes — the result is 5 × 2', 'Yes — the result is 3 × 3', 'Yes — the result is 2 × 5',
-        'No — the dimensions do not allow it'],
-      correct: 0,
-      explain: 'Write (5 × 3)(3 × 2): the inner numbers are both 3, so the product exists, and the outer numbers ' +
-        'give the shape, 5 × 2 — revenue and cost for each of the 5 stores.'
-    },
-    {
-      id: 'mx_s2_2', topic: 'Undefined products',
-      text: 'A hospital has a 2 × 4 matrix of staff counts (2 wards × 4 shifts) and another 2 × 4 matrix of ' +
-        'overtime hours in the same layout. What is the matrix product of the first by the second?',
-      options: ['Undefined — 4 columns cannot meet 2 rows',
-        'A 2 × 4 matrix, multiplied entry by entry',
-        'A 4 × 4 matrix', 'A 2 × 2 matrix'],
-      correct: 0,
-      explain: '(2 × 4)(2 × 4): the inner numbers are 4 and 2, which differ, so the product is undefined. ' +
-        'Note that these two could be added (identical dimensions) — addition and multiplication have different rules.'
-    },
-    {
-      id: 'mx_s2_3', topic: 'Which row, which column',
-      text: 'S is a 3 × 3 matrix of units sold (rows = stores, columns = products) and P is a 3 × 2 matrix ' +
-        '(rows = products, columns = price and cost). Which calculation gives entry (3, 2) of S·P — store 3’s ' +
-        'cost of goods?',
-      options: ['Row 3 of S with column 2 of P', 'Column 3 of S with row 2 of P',
-        'Row 2 of S with column 3 of P', 'Row 3 of S with row 2 of P'],
-      correct: 0,
-      explain: 'Entry (i, j) of a product is always row i of the LEFT matrix dotted with column j of the RIGHT ' +
-        'matrix. Position (3,2) therefore uses row 3 of S and column 2 of P.'
-    },
-    {
-      id: 'mx_s2_4', topic: 'Computing one entry',
-      text: 'Units sold ' + MX(SOLD, { hiRow: 1 }) + ' (rows = stores, columns = jackets, boots, gloves) and ' +
-        'prices ' + MX(PRICE, { hiCol: 0 }) + ' (rows = products, columns = retail price, wholesale cost). ' +
-        'What is store 2’s revenue — entry (2, 1) of the product?',
-      options: ['£6,636', '£6,330', '£4,024', '£6,495'],
-      correct: 0,
-      explain: 'Row 2 of the sales matrix with column 1 of the price matrix: 36·85 + 27·120 + 14·24 = ' +
-        '3060 + 3240 + 336 = 6636. The £4,024 is entry (2,2), store 2’s cost of goods.'
-    },
-    {
-      id: 'mx_s2_5', topic: 'Computing one entry',
-      text: 'A courier’s two vans carry small, medium and large parcels ' + MX(VAN) +
-        ' (rows = van, columns = size), and each size has a weight in kg and a handling fee in £ ' + MX(PARCEL) +
-        ' (rows = size, columns = kg, fee). What handling fee does van 1 owe — entry (1, 2) of the product?',
-      options: ['£271', '£369', '£196', '£269'],
-      correct: 0,
-      explain: 'Row 1 of the parcel-count matrix with column 2 (the fee column): 14·2 + 9·5 + 22·9 = ' +
-        '28 + 45 + 198 = 271. The 369 is entry (1,1), van 1’s total weight in kg.'
-    },
-    {
-      id: 'mx_s2_6', topic: 'Non-commutativity',
-      text: 'Two 2 × 2 matrices describe successive adjustments to a production plan: A = ' +
-        MX([['6', '2'], ['1', '5']]) + ' and B = ' + MX([['4', '3'], ['7', '2']]) +
-        '. A·B has entry (1,1) equal to 38. What is entry (1,1) of B·A?',
-      options: ['27', '38', '24', 'B·A is undefined'],
-      correct: 0,
-      explain: 'For B·A, take row 1 of B with column 1 of A: 4·6 + 3·1 = 27, not 38. Both products exist here ' +
-        'because both matrices are square, but they are different matrices — A·B ≠ B·A.'
-    },
-    {
-      id: 'mx_s2_7', topic: 'Order and shape',
-      text: 'A is 2 × 3 (two vans by three parcel sizes) and B is 3 × 2 (three parcel sizes by two cost columns). ' +
-        'What can be said about A·B and B·A?',
-      options: ['A·B is 2 × 2 and B·A is 3 × 3 — both exist, but they are different sizes',
-        'Both are 2 × 2 and they are equal',
-        'A·B is 2 × 2 and B·A is undefined',
-        'Both are undefined'],
-      correct: 0,
-      explain: '(2 × 3)(3 × 2) has matching inner 3s and gives 2 × 2. (3 × 2)(2 × 3) has matching inner 2s and ' +
-        'gives 3 × 3. Reversing the order here does not merely change the entries, it changes the shape.'
-    },
-    {
-      id: 'mx_s2_8', topic: 'Powers of an adjacency matrix',
-      text: 'Four towns are joined by direct roads, recorded in the adjacency matrix ' +
-        MX([['0', '1', '1', '0'], ['1', '0', '1', '1'], ['1', '1', '0', '0'], ['0', '1', '0', '0']],
-          { rowLabels: true, colLabels: true }) +
-        ' where rows and columns are both Ashford, Belton, Corley, Denham. What does entry (1, 4) of M² count?',
-      options: ['The number of journeys from Ashford to Denham using exactly two roads',
-        'The number of direct roads from Ashford to Denham',
-        'The total number of roads leaving Ashford',
-        'The shortest distance from Ashford to Denham'],
-      correct: 0,
-      explain: 'Entry (i, j) of M² is row i of M dotted with column j of M, which counts the intermediate towns ' +
-        'joined to both — that is, the two-road journeys from i to j. Here that value is 1: Ashford → Belton → Denham.'
-    }
-  ]);
-
-  Q('s3', [
-    {
-      id: 'mx_s3_1', topic: 'Determinant',
-      text: 'A print shop’s machine-time matrix is ' + MX([['8', '5'], ['3', '2']]) +
-        ' — rows are press and cutter, columns are poster and banner. What is its determinant?',
-      options: ['1', '31', '−1', '16'],
-      correct: 0,
-      explain: 'det = ad − bc with the down-right diagonal added and the down-left one subtracted: ' +
-        '8·2 − 5·3 = 16 − 15 = 1. The 31 comes from adding the two products instead of subtracting.'
-    },
-    {
-      id: 'mx_s3_2', topic: 'Singular matrices',
-      text: 'A second workshop’s machine-time matrix is ' + MX([['15', '25'], ['9', '15']]) +
-        '. What does its determinant tell you?',
-      options: ['det = 0, so the matrix is singular and machine totals cannot pin down the production counts',
-        'det = 0, so the matrix is invertible and there is exactly one solution',
-        'det = 450, so the matrix is invertible',
-        'det = 60, so the matrix is invertible'],
-      correct: 0,
-      explain: '15·15 − 25·9 = 225 − 225 = 0. A zero determinant means singular: no inverse exists. Here row 2 is ' +
-        '0.6 × row 1, so the second machine gives no information the first did not.'
-    },
-    {
-      id: 'mx_s3_3', topic: 'The 2 × 2 inverse',
-      text: 'What is the inverse of ' + MX([['8', '5'], ['3', '2']]) +
-        ' (rows: 8, 5 then 3, 2)?',
-      options: ['rows (2, −5) and (−3, 8)', 'rows (2, 5) and (3, 8)',
-        'rows (−8, 5) and (3, −2)', 'It has no inverse'],
-      correct: 0,
-      explain: 'det = 8·2 − 5·3 = 1. Swap the main-diagonal entries 8 and 2, negate the other two, divide by 1. ' +
-        'Check it: 8·2 + 5·(−3) = 1 and 8·(−5) + 5·8 = 0, so the product is I.'
-    },
-    {
-      id: 'mx_s3_4', topic: 'Inverse with a non-unit determinant',
-      text: 'A joinery matrix is B = ' + MX([['12', '8'], ['9', '7']]) +
-        ' (rows: 12, 8 then 9, 7) with det B = 12. What is B⁻¹?',
-      options: ['(1/12) times the matrix with rows (7, −8) and (−9, 12)',
-        'the matrix with rows (7, −8) and (−9, 12), with no division',
-        '(1/12) times the matrix with rows (12, −8) and (−9, 7)',
-        '(1/12) times the matrix with rows (7, 8) and (9, 12)'],
-      correct: 0,
-      explain: 'Swap 12 and 7, negate 8 and 9, then divide by the determinant 12. Forgetting the ÷12 is the ' +
-        'common slip — the check would then give 12s down the diagonal instead of 1s.'
-    },
-    {
-      id: 'mx_s3_5', topic: 'Solving A·x = b',
-      text: 'Each poster takes 8 minutes on the press and 3 on the cutter; each banner takes 5 on the press and ' +
-        '2 on the cutter. The press ran 470 minutes and the cutter 180 minutes. Using A⁻¹ = ' +
-        MX([['2', '−5'], ['−3', '8']]) + ', how many posters and banners were made?',
-      options: ['40 posters and 30 banners', '30 posters and 40 banners',
-        '58 posters and 12 banners', 'The system has no unique solution'],
-      correct: 0,
-      explain: 'x = A⁻¹b. Row 1: 2·470 + (−5)·180 = 940 − 900 = 40 posters. Row 2: (−3)·470 + 8·180 = ' +
-        '−1410 + 1440 = 30 banners. Check: 8(40) + 5(30) = 470 ✓ and 3(40) + 2(30) = 180 ✓.'
-    },
-    {
-      id: 'mx_s3_6', topic: 'Solving A·x = b',
-      text: 'Each bookshelf uses 12 board-feet of oak and 9 minutes of sanding; each side table uses 8 board-feet ' +
-        'and 7 minutes. The workshop used 1,200 board-feet and 915 minutes. With B⁻¹ = (1/12)·' +
-        MX([['7', '−8'], ['−9', '12']]) + ', what was made?',
-      options: ['90 bookshelves and 15 side tables', '15 bookshelves and 90 side tables',
-        '75 bookshelves and 25 side tables', '100 bookshelves and 0 side tables'],
-      correct: 0,
-      explain: 'x = (1/12)(7·1200 − 8·915) = (8400 − 7320)/12 = 90 bookshelves; y = (1/12)(−9·1200 + 12·915) = ' +
-        '(−10800 + 10980)/12 = 15 side tables. Check: 12(90) + 8(15) = 1200 ✓.'
-    },
-    {
-      id: 'mx_s3_7', topic: 'Which side the inverse goes',
-      text: 'A system of two equations in two unknowns is written A·x = b, where A is the 2 × 2 coefficient matrix ' +
-        'and b is a column of constants. How is x recovered?',
-      options: ['x = A⁻¹·b — the inverse multiplies on the left',
-        'x = b·A⁻¹ — the inverse multiplies on the right',
-        'x = b ÷ A, dividing entry by entry',
-        'x = A·b'],
-      correct: 0,
-      explain: 'Multiply both sides on the left by A⁻¹: A⁻¹Ax = A⁻¹b, so Ix = A⁻¹b and x = A⁻¹b. ' +
-        'Matrix multiplication does not commute, and with b a column, b·A⁻¹ is not even a defined product.'
-    },
-    {
-      id: 'mx_s3_8', topic: 'Determinant of a triangular matrix',
-      text: 'After row-reducing, a 3 × 3 stock-transfer matrix has become ' +
-        MX([['7', '3', '5'], ['0', '2', '8'], ['0', '0', '6']]) + '. What is its determinant?',
-      options: ['84', '0', '15', '31'],
-      correct: 0,
-      explain: 'For a triangular matrix — all zeros on one side of the main diagonal — the determinant is just the ' +
-        'product of the diagonal entries: 7 · 2 · 6 = 84. Non-zero, so the matrix is invertible.'
-    }
-  ]);
-
-  Q('s4', [
-    {
-      id: 'mx_s4_1', topic: 'Identifying the row operation',
-      text: 'A fundraiser system is written as ' +
-        MX([['1', '1', '1', '│', '240'], ['22', '14', '9', '│', '3920'], ['0', '1', '1', '│', '120']],
-          { rowLabels: true }) + ' and the next matrix has row 2 equal to [0, −8, −13 │ −1360]. ' +
-        'Which row operation was performed?',
-      options: ['R₂ − 22R₁', 'R₁ − 22R₂', '22R₂', 'R₂ ↔ R₃'],
-      correct: 0,
-      explain: '22 × row 1 is [22, 22, 22 │ 5280]. Subtracting it from row 2 gives ' +
-        '[22−22, 14−22, 9−22 │ 3920−5280] = [0, −8, −13 │ −1360]. Only row 2 changes; row 1 is the untouched donor.'
-    },
-    {
-      id: 'mx_s4_2', topic: 'Reading the final matrix',
-      text: 'Elimination on a two-variable delivery system ends with the augmented matrix ' +
-        MX([['1', '1', '│', '45'], ['0', '0', '│', '15']], { rowLabels: true }) + '. What does this tell you?',
-      options: ['No solution — the last row asserts 0 = 15, which is impossible',
-        'Infinitely many solutions — the last row is redundant',
-        'Exactly one solution: x = 45, y = 15',
-        'Exactly one solution: x = 30, y = 15'],
-      correct: 0,
-      explain: 'Row 2 reads 0x + 0y = 15, which no values can satisfy. The system is inconsistent, so there is no ' +
-        'solution. A row of zeros with a ZERO constant would have meant something quite different.'
-    },
-    {
-      id: 'mx_s4_3', topic: 'Reading the final matrix',
-      text: 'A different delivery system reduces to ' + MX([['1', '1', '│', '45'], ['0', '0', '│', '0']],
-        { rowLabels: true }) + '. How many solutions does it have?',
-      options: ['Infinitely many — one equation, two unknowns, so y is a free variable',
-        'None — the second row is degenerate',
-        'Exactly one: x = 45, y = 0',
-        'Exactly two'],
-      correct: 0,
-      explain: 'Row 2 reads 0 = 0, a true but empty statement: the second equation was a restatement of the first. ' +
-        'One real constraint on two unknowns leaves a free variable — pick any y and set x = 45 − y.'
-    },
-    {
-      id: 'mx_s4_4', topic: 'Illegal operations',
-      text: 'While reducing a ticket-sales system, a student proposes four moves. Which one is NOT an elementary ' +
-        'row operation?',
-      options: ['Multiply row 2 by 0', 'Swap rows 1 and 3', 'Multiply row 2 by −4',
-        'Add 5 times row 1 to row 3'],
-      correct: 0,
-      explain: 'Scaling must be by a NON-ZERO constant. Multiplying a row by 0 turns an equation into 0 = 0 and ' +
-        'destroys information permanently, so it is not reversible and not allowed. Negative scalars are fine.'
-    },
-    {
-      id: 'mx_s4_5', topic: 'Carrying out an operation',
-      text: 'During the fundraiser elimination the matrix is ' +
-        MX([['1', '1', '1', '│', '240'], ['0', '1', '1', '│', '120'], ['0', '−8', '−13', '│', '−1360']],
-          { rowLabels: true }) + '. What is row 3 after applying R₃ + 8R₂?',
-      options: ['[0, 0, −5 │ −400]', '[0, 0, −5 │ −1360]', '[0, 8, 8 │ 960]', '[0, −8, −13 │ −400]'],
-      correct: 0,
-      explain: '8 × row 2 is [0, 8, 8 │ 960]. Adding it to row 3: [0, −8+8, −13+8 │ −1360+960] = [0, 0, −5 │ −400]. ' +
-        'Row 2 itself is unchanged — it is only the donor.'
-    },
-    {
-      id: 'mx_s4_6', topic: 'Reading off the solution',
-      text: 'A fundraiser sold adult, senior and student tickets. The augmented matrix reduces to ' +
-        MX([['1', '0', '0', '│', '120'], ['0', '1', '0', '│', '40'], ['0', '0', '1', '│', '80']],
-          { rowLabels: true }) + ' where the columns are adult, senior, student. How many senior tickets were sold?',
-      options: ['40', '120', '80', '240'],
-      correct: 0,
-      explain: 'In reduced row echelon form each row reads off directly. Row 2 says 0·adult + 1·senior + ' +
-        '0·student = 40, so 40 senior tickets. The 120 is row 1 (adult) and the 80 is row 3 (student).'
-    },
-    {
-      id: 'mx_s4_7', topic: 'Building the augmented matrix',
-      text: 'A cafe’s takings give the system: 3x + 5y = 61 and 7y = 42, where x is coffees and y is cakes. ' +
-        'Which augmented matrix represents it?',
-      options: ['rows [3, 5 │ 61] and [0, 7 │ 42]',
-        'rows [3, 5 │ 61] and [7, 0 │ 42]',
-        'rows [3, 7 │ 61] and [5, 0 │ 42]',
-        'rows [3, 5 │ 61] and [7, 42 │ 0]'],
-      correct: 0,
-      explain: 'Each column belongs to one unknown, so a missing term is written as 0, never left blank. The ' +
-        'second equation has no x, so its first entry is 0, giving the row [0, 7 │ 42].'
-    },
-    {
-      id: 'mx_s4_8', topic: 'Row echelon form',
-      text: 'What is true of a matrix that is in row echelon form?',
-      options: ['Each pivot lies strictly to the right of the pivot in the row above, and everything below a pivot is zero',
-        'Every entry above and below each pivot is zero and every pivot is 1',
-        'The matrix is square and symmetric',
-        'The last column is entirely zero'],
-      correct: 0,
-      explain: 'Row echelon form is the staircase: pivots step right as you go down, with zeros beneath them. ' +
-        'Adding the requirement that pivots equal 1 with zeros ABOVE them as well gives the stronger REDUCED row ' +
-        'echelon form, from which the solution can be read directly.'
-    }
-  ]);
-
-  Q('s5', [
-    {
-      id: 'mx_s5_1', topic: 'Recognising an elementary matrix',
-      text: 'Which 3 × 3 elementary matrix, multiplied on the left, swaps rows 1 and 3 of a depot cost table? ' +
-        '(Each option is given as its three rows.)',
-      options: ['rows (0, 0, 1), (0, 1, 0), (1, 0, 0)',
-        'rows (0, 1, 0), (1, 0, 0), (0, 0, 1)',
-        'rows (1, 0, 0), (0, 0, 1), (0, 1, 0)',
-        'rows (1, 0, 0), (0, 1, 0), (0, 0, 1)'],
-      correct: 0,
-      explain: 'An elementary matrix is the identity with that one operation already applied. Swapping rows 1 and ' +
-        '3 of I moves the leading 1 to position (1,3) and the trailing 1 to position (3,1). The second option ' +
-        'swaps rows 1 and 2; the last is I itself, which changes nothing.'
-    },
-    {
-      id: 'mx_s5_2', topic: 'Reading the operation off the matrix',
-      text: 'What does ' + MX([['1', '0', '0'], ['0', '6', '0'], ['0', '0', '1']]) +
-        ' do when it multiplies a 3 × 3 matrix on the left?',
-      options: ['Multiplies row 2 by 6', 'Multiplies column 2 by 6', 'Adds 6 times row 2 to row 1',
-        'Swaps rows 2 and 3'],
-      correct: 0,
-      explain: 'This is I with the (2,2) entry changed from 1 to 6. Left-multiplication performs the row ' +
-        'operation, so row 2 of the target is scaled by 6 and the other rows pass through unchanged.'
-    },
-    {
-      id: 'mx_s5_3', topic: 'Reading the operation off the matrix',
-      text: 'A haulier’s cost matrix is multiplied on the left by ' +
-        MX([['1', '0', '0'], ['0', '1', '0'], ['2', '0', '1']]) + '. Which row changes, and how?',
-      options: ['Row 3 becomes row 3 + 2 × row 1', 'Row 1 becomes row 1 + 2 × row 3',
-        'Column 1 becomes column 1 + 2 × column 3', 'Row 3 is multiplied by 2'],
-      correct: 0,
-      explain: 'The extra entry sits in position (3,1): the ROW index says which row is rewritten (row 3), and the ' +
-        'COLUMN index says which row it borrows from (row 1). Rows first, columns second — the same reading rule ' +
-        'as everywhere else in the chapter.'
-    },
-    {
-      id: 'mx_s5_4', topic: 'Inverting an elementary matrix',
-      text: 'E is the elementary matrix for the operation R₃ + 2R₁. What is E⁻¹?',
-      options: ['The elementary matrix for R₃ − 2R₁ — rows (1, 0, 0), (0, 1, 0), (−2, 0, 1)',
-        'E itself, because swapping twice returns you to the start',
-        'The elementary matrix for (1/2)R₃',
-        'E has no inverse'],
-      correct: 0,
-      explain: 'The inverse of an elementary matrix is the elementary matrix of the reversing operation. Adding ' +
-        '2 × row 1 is undone by subtracting it, so the 2 in position (3,1) becomes −2. Every elementary matrix is ' +
-        'invertible, which is what makes elimination reversible.'
-    },
-    {
-      id: 'mx_s5_5', topic: 'The [A | I] method',
-      text: 'To invert a matrix by row reduction you write [A │ I] and reduce. Halfway through, the left half has ' +
-        'produced a row of all zeros. What do you conclude?',
-      options: ['A is singular — it has no inverse, and det A = 0',
-        'You have made an arithmetic error; keep reducing',
-        'A is invertible and the right half is already A⁻¹',
-        'A must not have been square'],
-      correct: 0,
-      explain: 'A row of zeros on the left means the left half can never become the identity, so no inverse exists. ' +
-        'By the Invertible Matrix Theorem every other condition fails with it: det A = 0, the rows are dependent, ' +
-        'and A·x = b has no unique solution.'
-    },
-    {
-      id: 'mx_s5_6', topic: 'The Invertible Matrix Theorem',
-      text: 'A 4 × 4 matrix M of route costs has det M = 0. Which statement is therefore also true?',
-      options: ['M·x = b has either no solution or infinitely many — never exactly one',
-        'M row-reduces to the identity matrix',
-        'M·x = 0 has only the trivial solution x = 0',
-        'The columns of M are linearly independent'],
-      correct: 0,
-      explain: 'The theorem’s conditions stand or fall together. det M = 0 puts M in the singular column, so it ' +
-        'does not reduce to I, its rows and columns are dependent, and M·x = b cannot have a unique solution.'
-    },
-    {
-      id: 'mx_s5_7', topic: 'Homogeneous systems',
-      text: 'A network-flow model gives A·x = 0, where A is square. The engineer finds a non-zero solution. ' +
-        'What follows?',
-      options: ['A is singular — det A = 0, and there are infinitely many solutions',
-        'A is invertible, since a solution was found',
-        'The system is inconsistent',
-        'A must be a 2 × 2 matrix'],
-      correct: 0,
-      explain: 'A·x = 0 always has the trivial solution x = 0, so it can never be inconsistent. Having a SECOND, ' +
-        'non-zero solution is exactly the singular case: det A = 0 and the solution set is infinite.'
-    },
-    {
-      id: 'mx_s5_8', topic: 'Choosing the cheapest test',
-      text: 'You must decide whether a 2 × 2 matrix of machine times is invertible, under time pressure. ' +
-        'What is the quickest reliable check?',
-      options: ['Compute ad − bc and see whether it is non-zero',
-        'Row-reduce the full augmented matrix [A │ I]',
-        'Multiply A by its transpose and inspect the result',
-        'Check whether every entry is non-zero'],
-      correct: 0,
-      explain: 'For a 2 × 2 the determinant is one subtraction of two products, and det ≠ 0 settles invertibility ' +
-        'immediately. Row reduction is the better route for larger matrices. Having non-zero entries proves ' +
-        'nothing — the matrix with rows (15, 25) and (9, 15) is full of non-zeros and is singular.'
-    }
-  ]);
-
-  try {
-    if (window.console && console.log)
-      console.log('[c959 unit 4] appended', added, 'blocks, replaced', swapped, 'ascii blocks, added', qAdded, 'questions');
-  } catch (e) {}
-
- } catch(e){ if (window.console && console.warn) console.warn('c959 unit 4 textbook pass failed:', e); }
-})();
+/* [slim stage3] c959MatrixTextbook: inert since stage 1 (__FIG/__MX builders removed); matrix textbook content ships in content-C959.json */
 
 
 // ============ C959 CHAPTERS B — SEQUENCES, RELATIONS, GRAPHS, COUNTING, NUMBER THEORY ============
@@ -51432,171 +49999,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
 //
 // Everything is appended and keyed by marker, so nothing existing is replaced
 // and re-running changes nothing.
-(function wguGapB2(){
- try {
-  if (window.__wguGapB2) return; window.__wguGapB2 = true;
-  var F = window.__FIG;
-  if (!F || typeof SAMPLE_LESSON === 'undefined') return;
-  var n = 0;
-  function add(key, marker, html){
-    try { if (SAMPLE_LESSON[key]) { F.append(key, marker, html); n++; } } catch(e){}
-  }
-  function code(s){
-    return '<pre style="background:var(--surface-2); border:1px solid var(--border); ' +
-      'border-radius:8px; padding:11px 13px; overflow-x:auto; font-size:12.5px; ' +
-      'line-height:1.5; margin:10px 0;">' + s + '</pre>';
-  }
-  function outBox(s){
-    return '<div style="border-left:3px solid var(--accent); background:var(--surface-2); ' +
-      'padding:8px 12px; margin:8px 0 4px; font-family:ui-monospace,Menlo,monospace; ' +
-      'font-size:12.5px; white-space:pre-wrap;">' + s + '</div>' +
-      '<div style="font-size:11px; color:var(--text-3); font-style:italic; margin-bottom:10px;">' +
-      'actual output, captured from the JVM</div>';
-  }
-  // A compact two-column reference drawn as a figure.
-  function refFig(caption, rows){
-    var h = 34 + rows.length * 30;
-    var inner = rows.map(function(r, i){
-      var y = 22 + i * 30;
-      return F.rect(14, y, 250, 24, { rx: 5 }) +
-             F.txt(24, y + 17, r[0], { size: 11.5, mono: true, anchor: 'start', weight: 700 }) +
-             F.txt(280, y + 17, r[1], { size: 11, anchor: 'start', fill: 'var(--text-3)' });
-    }).join('');
-    return F.fig(caption, 600, h, 600, inner);
-  }
-
-  // user and group identifiers
-  add('C191/ch6/s1', 'wgub2_C191_ch6_s1',
-    refFig('the ids a Unix process carries', [['UID', 'User Identifier — which user owns the process'], ['GID', 'Group Identifier — the user\'s primary group'], ['root', 'UID 0, the superuser'], ['effective UID', 'the id actually used for permission checks'], ['setuid', 'run with the file owner\'s id, not the caller\'s'], ['why groups', 'grant access to several users without listing each']]) +
-    F.tip('<strong>GID is the Group Identifier</strong> and UID the User Identifier. Permission checks compare the process\'s <em>effective</em> ids against the file\'s owner and group — which is why <code>setuid</code> programs are security-sensitive: they deliberately run with the file owner\'s id instead of the caller\'s.'));
-
-  // security terms and the CIA triad
-  add('C191/ch6/s3', 'wgub2_C191_ch6_s3',
-    refFig('the vocabulary this section is tested on', [['CIA triad', 'Confidentiality, Integrity, Availability'], ['confidentiality', 'only authorised parties can read it'], ['integrity', 'data has not been altered undetectably'], ['availability', 'the system is there when it is needed'], ['phishing', 'tricks a user into handing over credentials'], ['security patch', 'fixes a known vulnerability']]) +
-    F.tip('The <strong>CIA triad is Confidentiality, Integrity and Availability</strong> — the three core security goals, and a near-certain exam item. Note that <strong>phishing</strong> attacks the <em>person</em>, not the software, which is why patching cannot stop it; <strong>patches</strong> close known vulnerabilities in the code, and only work if they are actually applied.'));
-
-  // why bubble sort is taught
-  add('C949/ch4/s1', 'wgub2_C949_ch4_s1',
-    refFig('bubble sort\'s place in the curriculum', [['time', 'O(n²) average and worst'], ['space', 'O(1) — sorts in place'], ['stable', 'yes — equal elements keep their order'], ['best case', 'O(n) with an early-exit swap flag'], ['in practice', 'not used — merge/quick/Timsort win easily'], ['so why teach it', 'it is the simplest sort to understand and trace']]) +
-    F.tip('Bubble sort is taught <strong>because it is simple to learn</strong>, not because anyone ships it. If a question asks why you would use bubble sort in production, the honest answer is that you would not — its value is pedagogical, as the easiest sort to trace by hand.'));
-
-  // combining benchmark scores
-  add('C952/ch1/s4', 'wgub2_C952_ch1_s4',
-    refFig('which mean for which job', [['arithmetic mean', 'for raw times — total time / n'], ['geometric mean', 'for RATIOS and speedups'], ['harmonic mean', 'for rates, e.g. MIPS or throughput'], ['geometric = ', 'nth root of the product'], ['why it wins', 'no single benchmark dominates by magnitude'], ['property', 'independent of which machine is the reference']]) +
-    F.tip('For combining benchmark scores across a suite, use the <strong>geometric mean</strong>: it weights ratio improvements equally, so one benchmark with huge absolute numbers cannot dominate the summary. It is the industry standard for benchmark suites (SPEC among them) precisely because the result does not change when you change the reference machine.'));
-
-  // privilege levels
-  add('C952/ch5/s4', 'wgub2_C952_ch5_s4',
-    refFig('user mode and kernel mode', [['kernel mode', 'every instruction allowed, all memory reachable'], ['user mode', 'restricted — no privileged instructions'], ['enforced by', 'the HARDWARE, via a mode bit'], ['crossing up', 'trap, system call, interrupt or exception'], ['crossing down', 'the kernel returns to user mode'], ['the point', 'a user process cannot corrupt the OS']]) +
-    F.tip('<strong>Privilege levels are user mode versus kernel mode</strong>: kernel mode can do everything, user mode is restricted, and the split is enforced in <em>hardware</em> rather than by the OS asking nicely. Any transition into the kernel goes through a controlled entry point — a system call, interrupt or exception — which is what keeps a user process from doing as it likes.'));
-
-  // where parallel computing is heading
-  add('C952/ch8/s3', 'wgub2_C952_ch8_s3',
-    refFig('the trend is specialisation', [['more cores', 'single-thread speed stopped scaling'], ['heterogeneous', 'CPU + GPU + accelerators together'], ['GPU', 'throughput on wide parallel work'], ['TPU / NPU', 'chips built for tensor and neural workloads'], ['FPGA', 'reconfigurable hardware for a specific pipeline'], ['domain-specific', 'architecture designed around one problem class']]) +
-    F.tip('The direction of travel is <strong>heterogeneous computing — CPU plus GPU plus specialised accelerators — with more cores and domain-specific architectures</strong>. The driver is that general-purpose single-thread performance stopped improving, so gains now come from parallelism and from silicon designed for one kind of work.'));
-
-  // the Erdős–Szekeres theorem
-  add('C960/ch3/s2', 'wgub2_C960_ch3_s2',
-    refFig('a sophisticated use of the pigeonhole principle', [['claim', 'any n²+1 distinct reals contain a monotone subsequence of length n+1'], ['the labels', 'to each position assign (longest increasing, longest decreasing) ending there'], ['how many labels', 'if both are ≤ n there are only n² possible pairs'], ['the pigeons', 'n²+1 positions into n² pairs — two must share a pair'], ['the contradiction', 'two positions with the same pair cannot be compared either way'], ['conclusion', 'some coordinate must exceed n']]) +
-    F.tip('<strong>Erdős–Szekeres</strong>: any sequence of n²+1 distinct reals has a monotone subsequence of length n+1. The proof is the pigeonhole principle applied to the pair (longest increasing run ending here, longest decreasing run ending here) — n²+1 positions but only n² possible pairs if both stayed at n or below.'));
-
-  // the Tower of Hanoi recurrence
-  add('C960/ch3/s4', 'wgub2_C960_ch3_s4',
-    refFig('solving Hₙ = 2Hₙ₋₁ + 1 by iteration', [['H₁', '1'], ['H₂ = 2(1)+1', '3'], ['H₃ = 2(3)+1', '7'], ['H₄ = 2(7)+1', '15'], ['the pattern', '1, 3, 7, 15 — each one less than a power of 2'], ['closed form', 'Hₙ = 2ⁿ − 1']]) +
-    F.worked('Checking the closed form against the recurrence', code('for (int n = 1; n &lt;= 6; n++) {\n    System.out.println("n=" + n + "  recurrence=" + hanoiRec(n) + "  2^n-1=" + hanoiClosed(n));\n}\nboolean allMatch = true;\nfor (int n = 0; n &lt;= 30; n++) if (hanoiRec(n) != hanoiClosed(n)) allMatch = false;\nSystem.out.println("agree for n = 0..30: " + allMatch);') + outBox('n=1  recurrence=1  2^n-1=1\nn=2  recurrence=3  2^n-1=3\nn=3  recurrence=7  2^n-1=7\nn=4  recurrence=15  2^n-1=15\nn=5  recurrence=31  2^n-1=31\nn=6  recurrence=63  2^n-1=63\nagree for n = 0..30: true') + '<ol><li>Unrolling gives 1, 3, 7, 15, 31, 63 — each one short of the next power of two.</li><li>That is the signature of <strong>Hₙ = 2ⁿ − 1</strong>, and the loop confirms the two definitions agree all the way to n = 30.</li><li>The intuition: moving n disks costs two full moves of n−1 disks plus the single largest disk in between.</li></ol>') +
-    F.tip('The <strong>Tower of Hanoi recurrence Hₙ = 2Hₙ₋₁ + 1 solves to Hₙ = 2ⁿ − 1</strong>. Solve it by iteration — write out the first four terms, spot that each is one less than a power of two, then confirm by induction. It is the standard worked example for solving a linear recurrence with a constant term.'));
-
-  // why real RSA needs padding
-  add('C960/ch5/s3', 'wgub2_C960_ch5_s3',
-    refFig('textbook RSA versus the real thing', [['textbook RSA', 'c = m^e mod n, nothing else'], ['deterministic', 'the same message always gives the same ciphertext'], ['so', 'an attacker can simply encrypt guesses and compare'], ['small m, small e', 'm^e may be less than n — plain root recovers it'], ['malleable', 'multiply ciphertexts and the plaintexts multiply'], ['the fix', 'randomised padding such as OAEP']]) +
-    F.tip('<strong>Real-world RSA needs padding — OAEP is the standard choice.</strong> Textbook RSA is deterministic and malleable, so identical messages encrypt identically and an attacker can test guesses offline. Padding adds randomness and structure, which is what makes the scheme secure in practice.'));
-
-  // generating a tracking number
-  add('D288/ch4/s2', 'wgub2_D288_ch4_s2',
-    refFig('identifiers in the checkout flow', [['UUID', 'random 128-bit unique identifier'], ['why not the PK', 'sequential ids are guessable and leak volume'], ['independent of the DB', 'generated before the row is written'], ['Java', 'UUID.randomUUID().toString()'], ['collision risk', 'negligible for practical purposes'], ['use for', 'order tracking numbers, public-facing references']]) +
-    F.worked('A tracking number that reveals nothing', code('import java.util.UUID;\n\nString tracking = UUID.randomUUID().toString();\nSystem.out.println("length: " + tracking.length());\nSystem.out.println("hyphen groups: " + tracking.split("-").length);\nSystem.out.println("two calls differ: " +\n    !UUID.randomUUID().toString().equals(UUID.randomUUID().toString()));\nSystem.out.println("version digit: " + tracking.charAt(14));') + outBox('length: 36\nhyphen groups: 5\ntwo calls differ: true\nversion digit: 4') + '<ol><li>A UUID string is 36 characters — 32 hex digits in five hyphen-separated groups.</li><li>Two calls never realistically collide, so no coordination with the database is needed to guarantee uniqueness.</li><li>The version digit is 4, marking a random (v4) UUID. Because it carries no sequence, a customer cannot guess another order\'s number or infer how many orders exist.</li></ol>') +
-    F.tip('For an order-tracking number in the D288 checkout flow, use a <strong>UUID</strong>. The reason is not just uniqueness — a sequential database id would let a customer guess neighbouring orders and read your order volume off the number.'));
-
-  // documenting the API
-  add('D288/ch5/s4', 'wgub2_D288_ch5_s4',
-    refFig('springdoc-openapi in a Boot project', [['OpenAPI', 'the specification (formerly Swagger)'], ['springdoc-openapi', 'the library that generates it for Spring Boot'], ['dependency', 'springdoc-openapi-starter-webmvc-ui'], ['generated from', 'your controllers and annotations'], ['/v3/api-docs', 'the machine-readable JSON spec'], ['/swagger-ui.html', 'the interactive documentation page']]) +
-    F.tip('Document a Spring Boot API with <strong>OpenAPI/Swagger via springdoc-openapi</strong>: add the <code>springdoc-openapi-starter-webmvc-ui</code> dependency and the docs are generated from your existing controller annotations. Visiting <code>/swagger-ui.html</code> gives a page where each endpoint can be tried interactively — useful evidence for a performance assessment.'));
-
-  // citing sources in a performance assessment
-  add('D288/ch7/s3', 'wgub2_D288_ch7_s3',
-    refFig('what has to be disclosed', [['tutorial code', 'cite it, even a few adapted lines'], ['documentation examples', 'cite it'], ['Stack Overflow answers', 'cite it'], ['AI-generated code', 'disclose it — WGU permits use with disclosure'], ['the standing rule', 'you must be able to explain every line you submit'], ['not citing', 'is an academic integrity violation, not a style slip']]) +
-    F.tip('Cite <strong>any code or ideas taken from tutorials, documentation or AI tools</strong> in your references. WGU allows AI as a tool but requires disclosure — and, separately, requires that you understand what you submitted. Code you cannot explain is a problem at evaluation regardless of where it came from.'));
-
-  // no framework decides for you
-  add('D333/ch1/s2', 'wgub2_D333_ch1_s2',
-    refFig('what an ethical framework can and cannot do', [['utilitarian', 'weigh total consequences'], ['deontological', 'duties and rules, regardless of outcome'], ['virtue ethics', 'what a person of good character would do'], ['what they give', 'a structured way to see the problem'], ['what they do not', 'a single answer that settles every dilemma'], ['in practice', 'apply several; where they disagree is the real issue']]) +
-    F.tip('<strong>No framework solves all dilemmas.</strong> Frameworks structure the reasoning — they do not remove the judgement. The useful move on an exam question is to apply more than one and say where they diverge, because that divergence is precisely what makes the case a dilemma.'));
-
-  // identity theft
-  add('D333/ch5/s3', 'wgub2_D333_ch5_s3',
-    refFig('the term, and the duty around it', [['identity theft', 'use of someone else\'s identity, typically for fraud'], ['the raw material', 'name, national id number, date of birth, account details'], ['how it is obtained', 'breaches, phishing, discarded records'], ['harm', 'financial loss plus long recovery for the victim'], ['the developer\'s duty', 'collect less, encrypt it, and disclose breaches'], ['PII', 'the umbrella term for this data']]) +
-    F.tip('<strong>Identity theft is the use of someone else\'s identity</strong> — normally to obtain credit or services fraudulently. The professional obligation that follows is data minimisation: the PII you never collected is the PII that cannot be stolen from you.'));
-
-  // inquiry and advocacy
-  add('D459/ch5/s2', 'wgub2_D459_ch5_s2',
-    refFig('the two moves in a working conversation', [['advocacy', 'asserting your view and the reasoning for it'], ['inquiry', 'asking after someone else\'s view and reasoning'], ['the common failure', 'professionals over-use advocacy'], ['result', 'positions harden, assumptions stay untested'], ['balance', 'state your reasoning, then genuinely ask about theirs'], ['source', 'Senge, The Fifth Discipline']]) +
-    F.tip('Productive dialogue requires <strong>balancing inquiry (asking) with advocacy (asserting)</strong>. Senge\'s observation is that trained professionals are rewarded for advocacy and therefore over-use it; adding real inquiry — exploring the other person\'s mental model rather than rebutting their conclusion — is what turns a debate into collective learning.'));
-
-  // systems thinking in software
-  add('D459/ch7/s1', 'wgub2_D459_ch7_s1',
-    refFig('why software is systems-thinking territory', [['many components', 'services, libraries, data stores'], ['dependencies', 'changes propagate along them'], ['emergent behaviour', 'the system does things no component does'], ['feedback loops', 'load, retries, caching, on-call fatigue'], ['delays', 'cause and effect separated in time'], ['technical debt', 'a STOCK that accumulates']]) +
-    F.tip('Two framings worth having ready. Systems thinking matters in software because <strong>software systems are complex, with many components, dependencies and emergent behaviours</strong> — microservices and distributed systems especially. And <strong>technical debt behaves like a stock</strong>: shortcuts add to it, its interest is paid in reduced velocity, and slower delivery invites more shortcuts — a reinforcing trap.'));
-
-  // modal verbs in requirements
-  add('D480/ch2/s2', 'wgub2_D480_ch2_s2',
-    refFig('what each modal verb commits you to', [['shall', 'MANDATORY — the requirement must be met'], ['should', 'recommended, but not binding'], ['may', 'optional, permitted'], ['will', 'a statement of fact or intent, not a requirement'], ['why it matters', 'only "shall" is contractually testable'], ['source', 'the convention in IEEE-style requirement specs']]) +
-    F.tip('<strong>"Shall" indicates mandatory functionality.</strong> The distinction is contractual, not stylistic: "shall" creates a requirement that must be verified, "should" is a recommendation, and "may" is optional. A requirement written with "should" cannot be failed at acceptance.'));
-
-  // scope alignment
-  add('D480/ch2/s4', 'wgub2_D480_ch2_s4',
-    refFig('keeping scope tied to the business need', [['business requirement', 'the outcome the organisation wants'], ['scope', 'the work agreed to deliver it'], ['alignment', 'every scope item traces to a business requirement'], ['scope creep', 'work added with no such trace'], ['gold plating', 'extra polish nobody asked for'], ['the test', 'which requirement does this item serve?']]) +
-    F.tip('<strong>Scope should align with business requirements.</strong> The practical form of that rule is traceability: every item in scope points at a stated requirement, and anything that cannot be traced is either scope creep or gold plating.'));
-
-  // the MVC pattern
-  add('D480/ch3/s2', 'wgub2_D480_ch3_s2',
-    refFig('Model-View-Controller', [['Model', 'the data and the business rules'], ['View', 'the presentation the user sees'], ['Controller', 'handles input, drives model and view'], ['why split', 'presentation changes without touching the rules'], ['testability', 'the model is testable with no UI at all'], ['relatives', 'MVP and MVVM vary who mediates']]) +
-    F.tip('<strong>MVC is Model-View-Controller.</strong> The benefit to state is separation of concerns: business logic lives in the model and can be tested with no interface present, so the presentation can be replaced without disturbing the rules.'));
-
-  // hexagonal architecture
-  add('D480/ch3/s3', 'wgub2_D480_ch3_s3',
-    refFig('ports and adapters', [['other name', 'ports and adapters'], ['the core', 'domain logic, with no framework or I/O in it'], ['port', 'an interface the core defines in its own terms'], ['adapter', 'an implementation that talks to the outside'], ['dependency direction', 'everything points INWARD at the core'], ['payoff', 'swap the database or the UI without touching the domain']]) +
-    F.tip('<strong>Hexagonal architecture is ports and adapters.</strong> The domain defines the interfaces (ports) it needs in its own vocabulary, and infrastructure supplies implementations (adapters). Because all dependencies point inward, the database, the web framework and the message queue are all replaceable details.'));
-
-  // delimiters in prompts
-  add('D685/ch2/s2', 'wgub2_D685_ch2_s2',
-    refFig('separating instructions from content', [['delimiters', 'tags or markers that fence off a block'], ['common forms', 'triple quotes, triple backticks, XML-style tags'], ['what they fix', 'the model confusing content with instructions'], ['prompt injection', 'text inside the block trying to give orders'], ['also', 'makes multi-part prompts parseable and consistent'], ['pair with', 'saying explicitly what the delimited block is']]) +
-    F.tip('<strong>Use delimiters — tags or markers such as triple quotes — to separate context from instructions.</strong> Without them a model cannot reliably tell your instruction from the user text you pasted, which is both a quality problem and the opening for prompt injection.'));
-
-  // the ostrich algorithm
-  add('D686/ch3/s4', 'wgub2_D686_ch3_s4',
-    refFig('the four ways to handle deadlock', [['prevention', 'break one of the four Coffman conditions by design'], ['avoidance', 'check before granting — e.g. Banker\'s algorithm'], ['detection and recovery', 'let it happen, find it, kill or roll back'], ['the ostrich algorithm', 'ignore it — head in the sand'], ['who does that', 'Linux and most general-purpose systems'], ['why', 'deadlocks are rare; the prevention cost is not worth it']]) +
-    F.tip('The <strong>ostrich algorithm means ignoring deadlock</strong> — the name is the joke about burying your head in the sand. It is the pragmatic choice most general-purpose operating systems make, Linux included, because deadlocks are rare enough that the performance and complexity cost of prevention or avoidance is not repaid.'));
-
-  // garbage in, garbage out
-  add('D682/ch2/s1', 'wgub2_D682_ch2_s1',
-    refFig('data quality bounds model quality', [['garbage in', 'garbage out'], ['mislabelled data', 'the model learns the mistakes'], ['unrepresentative data', 'it fails on whoever is missing'], ['leakage', 'great scores in testing, useless in production'], ['no algorithm fixes it', 'a better model fits the bad data better'], ['where the time goes', 'most ML effort is data work']]) +
-    F.tip('<strong>Garbage in, garbage out.</strong> The point for an exam answer is that model choice cannot compensate for bad data — a more powerful model fits the flawed data more faithfully. If a question offers "use a more complex model" against "fix the data", the data is the answer.'));
-
-  // convex loss surfaces
-  add('D682/ch3/s2', 'wgub2_D682_ch3_s2',
-    refFig('why convexity matters to gradient descent', [['convex', 'one basin — any local minimum IS global'], ['so descent', 'converges to the global minimum, given a sane step size'], ['examples', 'linear and logistic regression, SVM with hinge loss'], ['non-convex', 'many basins and saddle points'], ['deep networks', 'non-convex — which is why init and optimiser matter'], ['step size', 'too large still diverges, convex or not']]) +
-    F.tip('For a <strong>convex</strong> loss surface with a suitable learning rate, gradient descent <strong>converges toward the global minimum, because any local minimum is global</strong>. Deep networks are non-convex, which is exactly why initialisation, momentum and adaptive optimisers exist — and why two training runs can land in different places.'));
-
-  // vanishing gradients
-  add('D682/ch3/s3', 'wgub2_D682_ch3_s3',
-    refFig('why deep sigmoid networks train badly', [['backprop', 'multiplies derivatives layer by layer'], ['sigmoid derivative', 'at most 0.25'], ['ten layers', '0.25^10 ≈ 0.000001 — effectively zero'], ['the name', 'VANISHING GRADIENTS — the signal vanishes going back'], ['fix: ReLU', 'derivative 1 for positive inputs'], ['fix: residuals', 'a shortcut path gradients survive along']]) +
-    F.worked('How fast the gradient disappears', code('double sig = 0.25, relu = 1.0;\nfor (int layers = 2; layers &lt;= 20; layers += 6) {\n    System.out.printf("%2d layers  sigmoid %.10f   relu %.1f%n",\n        layers, Math.pow(sig, layers), Math.pow(relu, layers));\n}') + outBox(' 2 layers  sigmoid 0.0625000000   relu 1.0\n 8 layers  sigmoid 0.0000152588   relu 1.0\n14 layers  sigmoid 0.0000000037   relu 1.0\n20 layers  sigmoid 0.0000000000   relu 1.0') + '<ol><li>The sigmoid\'s derivative peaks at 0.25, so each layer multiplies the gradient by at most a quarter.</li><li>By 20 layers the surviving signal is around 10⁻¹², so the early layers receive effectively nothing and never move.</li><li>ReLU\'s derivative is 1 for positive inputs, so the product does not shrink — that single fact is most of why ReLU replaced sigmoid in deep networks.</li></ol>') +
-    F.tip('Very deep networks with sigmoid activations train poorly because <strong>repeated small derivatives shrink the gradient toward zero in the early layers — the <em>vanishing gradient</em> problem</strong>. The three standard fixes are ReLU activations, careful initialisation, and residual connections that give gradients a short path back. The mirror-image failure, where derivatives above 1 multiply up instead, is called the <em>exploding gradient</em> problem.'));
-
-  window.__wguGapB2Stats = { blocks: n };
-  try { console.log('[d286 b2] blocks added:', n); } catch(e){}
- } catch(e){ if (window.console && console.warn) console.warn('d286 b2 failed:', e); }
-})();
+/* [slim stage3] wguGapB2: inert since stage 1 (__FIG removed); gap content ships in the course files */
 
 
 // ============ D286 M1: WORKED EXAMPLES, FIGURES, TRAPS, TIPS ============
@@ -54448,7 +52851,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   // Backstop: a few controls (the pomodoro fab) are created lazily on certain
   // screens, and a mutation can land while an earlier sync is still running.
   // sync() is cheap and idempotent, so a slow poll costs nothing.
-  try { setInterval(sync, 1200); } catch (e) {}
+  try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(sync, 2, 'ui'); } catch (e) {}
   sync();
 
   try { window.__navDock = { sync: sync, host: pickHost, dock: function(){ return dock; } }; } catch (e) {}
@@ -55337,7 +53740,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     new MutationObserver(schedule).observe(document.body,
       { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
   } catch (e) {}
-  try { setInterval(apply, 1200); } catch (e) {}
+  try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(apply, 2, 'ui'); } catch (e) {}
 
   try { window.__annoToolbarFit = { apply: apply, state: last, zoom: bodyZoom }; } catch (e) {}
 })();
@@ -55459,7 +53862,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] });
   } catch (e) {}
   // a slow backstop for any path that changes the zoom some other way
-  try { setInterval(sync, 1500); } catch (e) {}
+  try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(sync, 2, 'ui'); } catch (e) {}
 
   try { window.__pageHeightFit = { zoom: bodyZoom }; } catch (e) {}
 })();
@@ -55577,7 +53980,7 @@ try {
   new MutationObserver(function(){ tick(); })
     .observe(document.body, { childList: true, subtree: true });
 } catch (e) {}
-try { setInterval(tick, 1500); } catch (e) {}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(tick, 2, 'ui'); } catch (e) {}
 })();
 
 
@@ -55750,7 +54153,7 @@ function schedule(){ try { requestAnimationFrame(tick); } catch (e) { tick(); } 
 schedule();
 try { window.addEventListener('resize', schedule); } catch (e) {}
 try { window.addEventListener('orientationchange', function(){ setTimeout(tick, 160); }); } catch (e) {}
-try { setInterval(tick, 900); } catch (e) {}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(tick, 1, 'ui'); } catch (e) {}
 try { window.__annoToolbarRoom = { tick: tick }; } catch (e) {}
 })();
 
@@ -55866,13 +54269,13 @@ if (typeof window.render === 'function') {
 // last-resort watchdog: two consecutive blank checks and we rebuild
 var blankStreak = 0;
 try {
-  setInterval(function(){
+  (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
     if (recovering) return;
     if (appIsBlank() && !mayBeEmpty()) {
       blankStreak++;
       if (blankStreak >= 2) { blankStreak = 0; recover('watchdog: screen stayed blank'); }
     } else blankStreak = 0;
-  }, 2500);
+  }, 3, 'ui');
 } catch (e) {}
 
 try { window.__renderGuardApi = { recover: recover, appIsBlank: appIsBlank }; } catch (e) {}
@@ -55978,7 +54381,7 @@ try {
     if (t) return;
     t = setTimeout(function(){ t = null; save(); }, 700);
   }, { passive: true });
-  setInterval(save, 5000);
+  (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(save, 5, 'ui');
   // SAVE ON EVERY NAVIGATION. Without this the newest snapshot could be up to
   // five seconds old (the heartbeat), so a reload arriving just after she
   // opened a page restored the one BEFORE it - reported as "it's taking me
@@ -56457,7 +54860,7 @@ function persist(){
 }
 
 sample();
-setInterval(function(){ sample(); persist(); }, 20000);
+(window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){ sample(); persist(); }, 20, 'ui');
 
 // A clean exit sets the flag; a crash never gets the chance.
 function markClean(){ try { persist(); localStorage.setItem(CLEAN, '1'); } catch (e) {} }
@@ -56687,7 +55090,7 @@ function wire(){
 }
 wire();
 try { document.addEventListener('click', function(){ setTimeout(wire, 120); setTimeout(wire, 500); }, true); } catch (e) {}
-try { setInterval(wire, 2000); } catch (e) {}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(wire, 2, 'ui'); } catch (e) {}
 })();
 
 
@@ -57256,298 +55659,13 @@ place();
 })();
 
 
-(function dropSource(){
-/* The app is one 33MB file. After the browser has read that file and run it,
- * the code is compiled and live - but the SOURCE TEXT is still sitting in the
- * page as a DOM text node, 32.4MB of it, for the rest of the session. Nothing
- * ever reads it again.
- *
- * Measured here: clearing it takes the document from 33.1MB of text to 0.7MB,
- * and the app carries on exactly as before - lessons render, quizzes render,
- * ink draws and saves.
- *
- * This is not the whole memory problem (the JS heap is a separate 125MB and is
- * untouched by this), but it is 32MB of pure dead weight on a device that has
- * been killing the app for running out of room, and it costs nothing to give
- * back.
- *
- * Deliberately careful about WHEN: one piece of startup code builds a
- * background compressor by reading the lz-string script tag's text. That tag
- * is small and is never touched here - only inline scripts over 1MB are - but
- * this still waits until well after boot and until the pen is idle, so it can
- * never interrupt anything.
- */
-if (typeof document === 'undefined') return;
-if (window.__dropSource) return; window.__dropSource = true;
-
-function penIsBusy(){
-  try { if (typeof ganno !== 'undefined' && ganno && ganno.drawing) return true; } catch (e) {}
-  return false;
-}
-
-function drop(){
-  var freed = 0;
-  try {
-    var tags = document.getElementsByTagName('script');
-    for (var i = 0; i < tags.length; i++) {
-      var t = tags[i];
-      if (t.src) continue;                       // external files own their own text
-      var n = (t.textContent || '').length;
-      if (n <= 1048576) continue;                // leave the small ones alone - lz-string lives there
-      t.textContent = '';
-      freed += n;
-    }
-  } catch (e) {}
-  try { window.__srcFreedMB = Math.round(freed / 1048576 * 10) / 10; } catch (e) {}
-  return freed;
-}
-
-function later(){
-  if (penIsBusy()) { setTimeout(later, 4000); return; }
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(function(){ drop(); }, { timeout: 4000 });
-  else drop();
-}
-
-/* DISABLED - and it stays disabled until it can be proven on HER browser.
- *
- * The very first report after this shipped showed the app killed 86 seconds
- * after launch, in the foreground. Every report before it survived between 6
- * and 90 minutes. That is a step change, and this was the only new thing
- * touching memory.
- *
- * The saving was measured in Chromium, where dropping the script text takes
- * the document from 33.1MB to 0.7MB. Safari is a different engine:
- * JavaScriptCore keeps its own copy of a script's source text for
- * Function.prototype.toString and for lazily compiling functions that have not
- * run yet. On her iPad the DOM copy may well be freed while JSC's copy stays -
- * no saving - and releasing a 32MB text node mid-session is not free either.
- *
- * So the measured gain is unproven on the device that matters and the possible
- * harm is severe and immediate. That is not a trade to make days before an
- * exam. Correlation is not proof, but the asymmetry decides it.
- *
- * To re-enable: prove it on a real iPad first - document text before/after AND
- * time-to-crash across several sessions - not on a desktop browser.
- */
-window.__dropSourceDisabled = true;
-if (false) setTimeout(later, 12000);
-})();
+/* [slim stage3] dropSource: was already disabled; moot since the split build - no giant inline source text left to drop */
 
 
-(function leanContent(){
-/* Measured, after being wrong about this twice:
- *
- *   sitting on Today                      124.6 MB
- *   long lesson open, no ink              126.1 MB   (+1.5)
- *   same lesson with 113 strokes          126.2 MB   (+0.1)
- *   after scrolling the whole page        126.1 MB
- *   pen off, overlay gone                 126.2 MB
- *
- * The page she keeps dying on costs 1.6MB of a 125MB baseline. The annotation
- * overlay costs 0.1MB. Neither is the problem - the BASELINE is. The app is
- * ~125MB of JS plus ~33MB of document text before she touches anything, and it
- * dies whenever her iPad cannot spare that. Which screen she is on is
- * incidental: it is a lesson page every time because that is where she spends
- * her time.
- *
- * Of that 125MB, content is 53MB: 36.7MB of lesson text and 16.6MB of
- * questions, both measured by releasing them and forcing a collection. She is
- * studying four courses. The app holds all fifty-six.
- *
- * So: the lesson TEXT for courses she is not studying is released after boot.
- * Measured at 23.8MB, 19% of the heap. Questions are left completely alone, so
- * every quiz, every score and every readiness figure stays exactly right.
- *
- * Unlike the source-text release that was tried and reverted, this one is not
- * an engine-specific bet: dropping live JS objects frees memory in every
- * engine, WebKit included.
- *
- * Nothing is lost. The lessons are still in the file - a reload brings them all
- * back, and opening a released course offers exactly that, in plain words,
- * rather than pretending the lesson does not exist.
- */
-if (typeof document === 'undefined') return;
-if (window.__leanContent) return; window.__leanContent = true;
-
-var RELEASED = Object.create(null);      // courseId -> true
-var OFF_KEY = 'leanOff';
-
-// OPT-IN, deliberately. Releasing these lessons frees a measured 22.8MB, but
-// flashcards for a released course go to zero with no explanation - C949 went
-// from 43 sections of cards to none. Her four exam courses are untouched
-// either way. That trade is hers to make, in full knowledge, not one to make
-// for her silently, so this does nothing until she turns it on.
-function disabled(){
-  try { if (sessionStorage.getItem(OFF_KEY) === '1') return true; } catch (e) {}
-  try { return !(store && store.leanContent === true); } catch (e) {}
-  return true;
-}
-
-// Courses she is actually using: marked active, carrying an exam date, holding
-// any progress, or open right now. Everything else is fair game.
-function keepSet(){
-  var keep = Object.create(null);
-  try {
-    var st = (store && store.courseState) || {};
-    for (var c in st) if (st[c] === 'active') keep[c] = true;
-  } catch (e) {}
-  try {
-    var ex = (store && (store.examDates || store.examDate)) || {};
-    for (var c2 in ex) if (ex[c2]) keep[c2] = true;
-  } catch (e) {}
-  try {
-    var h = (store && store.quizHistory) || [];
-    for (var i = 0; i < h.length; i++) if (h[i] && h[i].courseId) keep[h[i].courseId] = true;
-  } catch (e) {}
-  try { if (typeof view === 'object' && view && view.courseId) keep[view.courseId] = true; } catch (e) {}
-  try { for (var k in (store && store.gannoInkIndex) || {}) { var cid = String(k).split('/')[0]; if (cid) keep[cid] = true; } } catch (e) {}
-  // Any course whose flashcards she has already been reviewing stays loaded,
-  // so a deck she is part-way through can never quietly empty out.
-  try {
-    var fc = (store && (store.cardState || store.flashcards || store.sm2)) || {};
-    for (var f in fc) { var c3 = String(f).split('/')[0]; if (c3 && COURSES[c3]) keep[c3] = true; }
-  } catch (e) {}
-  return keep;
-}
-
-function release(){
-  if (disabled()) return 0;
-  var keep = keepSet();
-  var kept = 0; for (var _k in keep) kept++;
-  var total = 0; try { total = Object.keys(COURSES).length; } catch (e) { return 0; }
-  // If she is using most of the app, there is nothing worth releasing and the
-  // trade-off stops being worth it.
-  if (!kept || kept >= total) return 0;
-
-  var dropped = 0;
-  try {
-    for (var key in SAMPLE_LESSON) {
-      var cid = key.slice(0, key.indexOf('/'));
-      if (!cid || keep[cid]) continue;
-      delete SAMPLE_LESSON[key];
-      RELEASED[cid] = true;
-      dropped++;
-    }
-  } catch (e) {}
-  try { window.__leanDropped = dropped; window.__leanKept = Object.keys(keep); } catch (e) {}
-  return dropped;
-}
-
-// A released course's lesson does not silently read as "coming soon" - it says
-// what happened and offers to bring everything back.
-function notice(courseId){
-  var name = courseId;
-  try { if (COURSES[courseId] && COURSES[courseId].name) name = COURSES[courseId].name; } catch (e) {}
-  return { body:
-    '<div class="lean-notice" style="padding:18px; border:1px solid var(--border-strong); border-radius:14px; background:var(--surface);">'
-  + '<p style="margin:0 0 8px; font-weight:700; font-size:15px;">This course’s lessons aren’t loaded right now</p>'
-  + '<p style="margin:0 0 14px; color:var(--text-2); line-height:1.55; font-size:14px;">'
-  + 'To keep the app from running out of memory on your iPad, it only keeps the lesson text for the courses you’re studying. '
-  + 'Nothing has been deleted — every lesson is still here. Loading them back takes a few seconds.</p>'
-  + '<button data-lean-load style="min-height:42px; padding:0 18px; border-radius:999px; cursor:pointer; '
-  + 'background:var(--accent); border:none; color:#fff; font-size:14px; font-weight:700;">Load every course again</button>'
-  + '<p style="margin:9px 0 0; font-size:12px; color:var(--text-4);">This turns Exam mode off and keeps it off.</p>'
-  + '</div>' };
-}
-
-try {
-  if (typeof getLesson === 'function' && !window.__leanLessonWrapped) {
-    window.__leanLessonWrapped = true;
-    var _getLesson = getLesson;
-    getLesson = function(courseId, chId, secId){
-      var v = _getLesson.apply(this, arguments);
-      if (!v && RELEASED[courseId]) return notice(courseId);
-      return v;
-    };
-  }
-} catch (e) {}
-
-// "Load <course>" brings the whole app back for the rest of this session.
-document.addEventListener('click', function(e){
-  var btn = e.target && e.target.closest && e.target.closest('[data-lean-load]');
-  if (!btn) return;
-  e.preventDefault();
-  btn.disabled = true;
-  btn.textContent = 'Loading…';
-  try { sessionStorage.setItem(OFF_KEY, '1'); } catch (er) {}
-  try { store.leanContent = false; saveStore(); } catch (er) {}
-  setTimeout(function(){ try { location.reload(); } catch (er) {} }, 60);
-}, true);
-
-window.__leanStatus = function(){
-  return { dropped: window.__leanDropped || 0, kept: window.__leanKept || [],
-           released: Object.keys(RELEASED), off: disabled() };
-};
-
-// After boot, once, out of the way of anything the app is still doing.
-setTimeout(function(){
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(function(){ release(); }, { timeout: 5000 });
-  else release();
-}, 9000);
-})();
+/* [slim stage3] leanContent (Exam mode): obsolete - only the four exam courses ship, loaded per course on demand; releasing lessons could break their lazy loading */
 
 
-(function leanToggle(){
-/* The Exam-mode switch, put where she already found the diagnostic button:
- * the gear sheet, right under Export backup.
- *
- * It states the trade in the button itself rather than hiding it in a help
- * page, because the trade is real: it frees a measured 22.8MB by dropping the
- * lesson TEXT of courses she is not studying, and while it is on, flashcards
- * and search for those courses come up empty. Her exam courses, every
- * question, every score and all her annotations are untouched either way.
- */
-if (typeof document === 'undefined') return;
-if (window.__leanToggle) return; window.__leanToggle = true;
-
-function label(){
-  var on = false;
-  try { on = !!(store && store.leanContent === true); } catch (e) {}
-  return on
-    ? '● Exam mode: ON — only your active courses are loaded'
-    : '○ Exam mode: off — all 56 courses loaded';
-}
-
-function inject(){
-  try {
-    var anchor = document.querySelector('.pomo-sheet [data-act="export"], .pomo-card [data-act="export"]');
-    if (!anchor || !anchor.parentNode) return;
-    if (anchor.parentNode.querySelector('[data-act="lean-toggle"]')) return;
-
-    var btn = document.createElement('button');
-    btn.className = 'pomo-btn';
-    btn.setAttribute('data-act', 'lean-toggle');
-    btn.style.cssText = 'width:100%; justify-content:flex-start; text-align:left; margin-bottom:4px;';
-    btn.textContent = label();
-
-    var note = document.createElement('p');
-    note.style.cssText = 'margin:0 0 10px; font-size:11.5px; line-height:1.45; color:var(--text-4);';
-    note.textContent = 'Frees about 23 MB of memory, which may help with the crashing. While it is on, '
-                     + 'flashcards and search only cover the courses you are studying. Your questions, '
-                     + 'scores and handwriting are never affected.';
-
-    btn.addEventListener('click', function(){
-      var now = false;
-      try { now = !(store && store.leanContent === true); store.leanContent = now; saveStore(); } catch (e) {}
-      try { if (now) sessionStorage.removeItem('leanOff'); } catch (e) {}
-      btn.textContent = label();
-      try { if (typeof toast === 'function') toast(now ? 'Exam mode on — reopening to free the memory' : 'Exam mode off — reloading every course'); } catch (e) {}
-      setTimeout(function(){ try { location.reload(); } catch (e) {} }, 700);
-    });
-
-    anchor.parentNode.insertBefore(btn, anchor.nextSibling);
-    anchor.parentNode.insertBefore(note, btn.nextSibling);
-  } catch (e) {}
-}
-
-// The sheet is built fresh each time it opens, so watch for it.
-try {
-  var mo = new MutationObserver(function(){ inject(); });
-  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
-} catch (e) {}
-document.addEventListener('click', function(){ setTimeout(inject, 120); }, true);
-inject();
-})();
+/* [slim stage3] leanToggle: Exam mode switch removed along with leanContent */
 
 (function focusedContent(){
 /* FOCUSED BUILD - the four courses she has exams for, loaded lazily.
@@ -58708,7 +56826,7 @@ if (typeof render === 'function' && !render.__saveTestWrapped) {
   };
   render.__saveTestWrapped = true;
 }
-setInterval(inject, 1500);   // belt and braces: results screens reached without render()
+(window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(inject, 2, 'ui');   // belt and braces: results screens reached without render()
 } catch (e) { if (window.console) console.error('[testExport]', e); }
 })();
 
@@ -58951,7 +57069,7 @@ if (typeof gannoUpdateRoute === 'function' && !gannoUpdateRoute.__inkWin) {
   gannoUpdateRoute.__inkWin = true;
 }
 // steady guard: catches late content growth and anything the hooks missed
-try { setInterval(function(){ apply(false); }, 900); } catch(e){}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){ apply(false); }, 1, 'ink'); } catch(e){}
 try { setTimeout(function(){ apply(true); }, 400); } catch(e){}
 })();
 
@@ -59099,7 +57217,7 @@ try {
     g.__memWrapped = true; window.go = g;
   }
 } catch (e) {}
-try { setInterval(enforce, 1000); } catch (e) {}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(enforce, 1, 'always'); } catch (e) {}
 try { setTimeout(enforce, 500); } catch (e) {}
 window.__memReliefState = function(){
   var c = document.getElementById('particles-canvas');
@@ -59215,7 +57333,7 @@ try {
       if (root && root !== ro.__target) { try { ro.disconnect(); } catch (e) {} ro.observe(root); ro.__target = root; }
     };
     attach();
-    setInterval(attach, 1500);
+    (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(attach, 2, 'ui');
   }
 } catch (e) {}
 try { window.addEventListener('load', function(){ setTimeout(schedule, 300); }); } catch (e) {}
