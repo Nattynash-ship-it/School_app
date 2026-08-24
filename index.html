@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.483">
+<meta name="app-build" content="18.484">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -57897,6 +57897,201 @@ try {
 } catch (e) {}
 document.addEventListener('click', function(){ setTimeout(inject, 120); }, true);
 inject();
+})();
+
+
+(function weakSections(){
+/* "When taking the practice tests indicate the weakest sections and allow to
+ * redo."
+ *
+ * A practice test draws its 50 questions from all over the course, and the
+ * results screen only ever said "62%" plus a by-topic bar. Neither tells her
+ * where to go next: "topic" is the question's own label, not a place in the
+ * app she can open and study.
+ *
+ * Every question belongs to a real section, and the manifest already carries
+ * that mapping (it is the per-section question-id index the progress maths
+ * uses), so a sim question can be traced back to the exact section it came
+ * from WITHOUT loading any course content.
+ *
+ * So after a practice test the weakest sections are listed worst-first, each
+ * with the score she got there and a button that opens that section's own
+ * practice - plus one button that re-asks only the questions she got wrong.
+ *
+ * Only shown when the test actually spans several sections; on a single
+ * section quiz the breakdown would just restate the score.
+ */
+if (typeof document === 'undefined') return;
+if (typeof renderResults !== 'function') return;
+if (window.__weakSections) return; window.__weakSections = true;
+
+var RX = null;   // question id -> "cid/ch/sec", built once from the manifest
+function reverseIndex(){
+  if (RX) return RX;
+  RX = Object.create(null);
+  try {
+    var meta = window.__packMeta || {};
+    for (var cid in meta) {
+      var byKey = meta[cid] || {};
+      for (var key in byKey) {
+        var ids = byKey[key] || [];
+        for (var i = 0; i < ids.length; i++) if (!RX[ids[i]]) RX[ids[i]] = key;
+      }
+    }
+  } catch (e) {}
+  return RX;
+}
+
+// Drill and simulation chapters are shuffled copies, not places to study -
+// a question's home is its real section.
+var SYNTH = /^(pa_sim|oa_sim|pa_fresh|weak_drill|review_missed|hard_drill|challenge|aistote|exam|oa|pa|concepts|cheat)$/;
+
+function sectionTitle(cid, chId, secId){
+  try {
+    var c = COURSES[cid]; if (!c) return null;
+    for (var i = 0; i < (c.chapters || []).length; i++) {
+      var ch = c.chapters[i];
+      if (ch.id !== chId) continue;
+      for (var j = 0; j < (ch.sections || []).length; j++) {
+        if (ch.sections[j].id === secId) {
+          return { chapter: ch.title || chId, section: ch.sections[j].title || secId };
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function tally(st){
+  var rx = reverseIndex(), rows = {}, missed = [], spans = {};
+  for (var i = 0; i < st.questions.length; i++) {
+    var q = st.questions[i]; if (!q) continue;
+    var ok = !!(st.answers[i] && st.answers[i].correct);
+    var key = rx[String(q.id)] || null;
+    if (key) {
+      var p = key.split('/');
+      if (SYNTH.test(p[1])) key = null;      // came from a drill copy - no home to send her to
+    }
+    if (!key) key = '_other';
+    spans[key] = 1;
+    if (!rows[key]) rows[key] = { key: key, c: 0, t: 0, wrong: [] };
+    rows[key].t++;
+    if (ok) rows[key].c++; else { rows[key].wrong.push(q); missed.push(q); }
+  }
+  var list = [];
+  for (var k in rows) list.push(rows[k]);
+  // Worst first: lowest accuracy, then most wrong answers.
+  list.sort(function(a, b){
+    var pa = a.c / a.t, pb = b.c / b.t;
+    if (pa !== pb) return pa - pb;
+    return b.wrong.length - a.wrong.length;
+  });
+  return { list: list, missed: missed, spread: Object.keys(spans).length };
+}
+
+function bar(pct, color){
+  return '<div style="height:7px;border-radius:999px;background:var(--surface-3,rgba(128,128,128,.25));overflow:hidden;">'
+       + '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:999px;"></div></div>';
+}
+
+function build(st){
+  var t = tally(st);
+  // One section (or one unknown bucket) means there is nothing to compare.
+  if (t.spread < 2) return null;
+  var weak = t.list.filter(function(r){ return r.c < r.t; });
+  if (!weak.length) return null;
+  weak = weak.slice(0, 6);
+
+  var box = document.createElement('div');
+  box.className = 'results-section weak-sections';
+  box.style.cssText = 'margin-top:1.5rem;';
+
+  var html = '<h3 style="margin-bottom:4px;">Where to study next</h3>'
+    + '<p style="margin:0 0 12px;font-size:12.5px;line-height:1.5;color:var(--text-3);">'
+    + 'The sections these questions came from, weakest first.</p>';
+
+  for (var i = 0; i < weak.length; i++) {
+    var r = weak[i];
+    var pct = Math.round(100 * r.c / r.t);
+    var color = pct >= 80 ? 'var(--accent)' : pct >= 60 ? 'var(--warning,#f59e0b)' : 'var(--danger,#ef4444)';
+    var name, sub = '', canOpen = false, p = r.key.split('/');
+    if (r.key === '_other') {
+      name = 'Mixed practice questions';
+      sub = 'not tied to one section';
+    } else {
+      var ttl = sectionTitle(p[0], p[1], p[2]);
+      name = ttl ? ttl.section : (p[1] + ' / ' + p[2]);
+      sub = ttl ? ttl.chapter : p[0];
+      canOpen = !!ttl;
+    }
+    html += '<div style="padding:11px 0;border-top:1px solid var(--border);">'
+      + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px;">'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:14px;font-weight:650;line-height:1.3;">' + esc(name) + '</div>'
+      + '<div style="font-size:11.5px;color:var(--text-4);margin-top:2px;">' + esc(sub) + '</div>'
+      + '</div>'
+      + '<div style="font-size:13px;font-weight:700;color:' + color + ';white-space:nowrap;font-variant-numeric:tabular-nums;">'
+      + r.c + '/' + r.t + '</div></div>'
+      + bar(pct, color)
+      + (canOpen
+          ? '<button data-weak-open="' + esc(r.key) + '" style="margin-top:9px;padding:8px 14px;border-radius:999px;'
+            + 'background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-size:12.5px;'
+            + 'font-weight:650;cursor:pointer;">Practice this section</button>'
+          : '')
+      + '</div>';
+  }
+
+  if (t.missed.length) {
+    html += '<button data-weak-redo style="margin-top:14px;width:100%;padding:13px;border-radius:10px;'
+      + 'background:var(--accent);border:none;color:var(--accent-text,#fff);font-size:14px;font-weight:700;cursor:pointer;">'
+      + 'Redo the ' + t.missed.length + ' question' + (t.missed.length === 1 ? '' : 's') + ' I missed</button>'
+      + '<p style="margin:8px 0 0;font-size:11.5px;line-height:1.45;color:var(--text-4);">'
+      + 'Asks those questions again, in a new order. Your score on this test is already saved.</p>';
+  }
+
+  box.innerHTML = html;
+
+  box.querySelectorAll('[data-weak-open]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var p = b.getAttribute('data-weak-open').split('/');
+      go({ name: 'quiz', courseId: p[0], chId: p[1], secId: p[2], mode: 'practice' });
+    });
+  });
+  var redo = box.querySelector('[data-weak-redo]');
+  if (redo) redo.addEventListener('click', function(){
+    var qs = t.missed.slice();
+    for (var i = qs.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var tmp = qs[i]; qs[i] = qs[j]; qs[j] = tmp; }
+    go({ name: 'quiz', courseId: st.courseId, chId: '_weakness', secId: '_session',
+         mode: 'weakness', questions: qs, sessionId: 'redo-' + Date.now() });
+  });
+  return box;
+}
+
+var _rr = renderResults;
+renderResults = function(v){
+  var el = _rr.apply(this, arguments);
+  try {
+    var st = v && v.state;
+    if (el && st && st.questions && st.answers && st.questions.length) {
+      var box = build(st);
+      if (box) {
+        // Sits directly above the per-question review, where she is already
+        // looking for what went wrong.
+        // The per-question review is its own .results-section headed
+        // "Review - ..."; this goes immediately above it.
+        var review = null, secs = el.querySelectorAll('.results-section');
+        for (var si = 0; si < secs.length; si++) {
+          var h = secs[si].querySelector('h3');
+          if (h && /^Review/.test((h.textContent || '').trim())) { review = secs[si]; break; }
+        }
+        if (review && review.parentNode) review.parentNode.insertBefore(box, review);
+        else (el.querySelector('.results-section') || el).appendChild(box);
+      }
+    }
+  } catch (e) {}
+  return el;
+};
+window.__weakSectionsBuild = build;
 })();
 
 </script>
