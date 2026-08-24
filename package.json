@@ -6,6 +6,7 @@
     "@anthropic-ai/sdk": "latest"
   },
   "scripts": {
-    "export:classes": "node scripts/export-classes.mjs"
+    "export:classes": "node scripts/export-classes.mjs",
+    "dev": "node scripts/dev-server.mjs"
   }
 }
