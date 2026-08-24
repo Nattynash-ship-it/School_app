@@ -4,5 +4,8 @@
   "description": "Study Hub - static PWA plus one Netlify Function for the AI study helper",
   "dependencies": {
     "@anthropic-ai/sdk": "latest"
+  },
+  "scripts": {
+    "export:classes": "node scripts/export-classes.mjs"
   }
 }

@@ -1,0 +1,33 @@
+{
+  "generated": "2026-08-24",
+  "classes": [
+    {
+      "code": "C959",
+      "name": "Discrete Math I",
+      "color": "teal",
+      "assignments": [],
+      "exams": []
+    },
+    {
+      "code": "D286",
+      "name": "Java Fundamentals",
+      "color": "blue",
+      "assignments": [],
+      "exams": []
+    },
+    {
+      "code": "D684",
+      "name": "Introduction to Computer Science",
+      "color": "green",
+      "assignments": [],
+      "exams": []
+    },
+    {
+      "code": "D197",
+      "name": "Version Control",
+      "color": "purple",
+      "assignments": [],
+      "exams": []
+    }
+  ]
+}

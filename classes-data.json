@@ -1,0 +1,16 @@
+{
+  "_comment": "Which courses are my current classes, plus exam/assignment dates. Edit this file, then run: npm run export:classes. Dates YYYY-MM-DD, times HH:MM (24h). An exam needs a date (and optionally a time and name); an assignment needs a name and dueDate.",
+  "classes": ["C959", "D286", "D684", "D197"],
+  "exams": {
+    "C959": [],
+    "D286": [],
+    "D684": [],
+    "D197": []
+  },
+  "assignments": {
+    "C959": [],
+    "D286": [],
+    "D684": [],
+    "D197": []
+  }
+}
