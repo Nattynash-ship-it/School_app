@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v650';
+const CACHE = 'study-hub-v651';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -16,7 +16,11 @@ self.addEventListener('install', (event) => {
       Promise.all([
         cache.add(new Request('/', { cache: 'reload' })).catch(() => null),
         cache.add(new Request('/index.html', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-pack.json', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-manifest.json', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-C959.json', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-D286.json', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-D684.json', { cache: 'reload' })).catch(() => null),
+        cache.add(new Request('/content-D197.json', { cache: 'reload' })).catch(() => null),
       ])
     )
   );
@@ -93,11 +97,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // CONTENT PACK: the 12MB course-content file. Its URL carries the app build
-  // as a query (?v=18.xxx), so a new deploy is a new URL - cache-first is safe
-  // and avoids re-downloading 12MB on every launch. Old entries die with the
-  // old cache when CACHE bumps.
-  if (url.pathname.endsWith('/content-pack.json')) {
+  // COURSE CONTENT: the manifest plus one file per course (and the legacy
+  // content-pack.json). URLs carry the app build as a query (?v=18.xxx), so a
+  // new deploy is a new URL - cache-first is safe and avoids re-downloading
+  // megabytes on every launch. Old entries die with the old cache when CACHE
+  // bumps.
+  if (/^\/content-[\w-]+\.json$/.test(url.pathname)) {
     // ignoreSearch: the install step precaches the plain URL while the app
     // requests ?v=<build>. Safe within one cache generation - every deploy
     // bumps CACHE which deletes the old cache wholesale, so a stale pack can

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.478">
+<meta name="app-build" content="18.479">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -34042,8 +34042,28 @@ function sectionMastery(courseId, chId, secId) {
   if (_rdyCache[ck]) return _rdyCache[ck];
 
   let qs = [];
-  try { qs = getQuestions(courseId, chId, secId) || []; } catch (e) { qs = []; }
-  let total = qs.length;
+  let metaIds = null;
+  // Progress math must never force a course file to load. Before the course
+  // is hydrated, the manifest's per-section question-id index answers "how
+  // many questions, which ids" - identical numbers, none of the content. The
+  // real pool is used once the course is hydrated, a _sim chapter deals fresh
+  // papers (never metered here), and her own imported questions always win.
+  try {
+    if (window.__packMeta && window.__packMeta[courseId] &&
+        !/_sim$/.test(String(chId)) &&
+        window.__hydratedCourses && window.__hydratedCourses().indexOf(courseId) === -1 &&
+        !(store.customQuestions && store.customQuestions[ck])) {
+      const mi = window.__packMeta[courseId][ck];
+      if (Array.isArray(mi) && mi.length) metaIds = mi;
+    }
+  } catch (e) { metaIds = null; }
+  let total;
+  if (metaIds) {
+    total = metaIds.length;
+  } else {
+    try { qs = getQuestions(courseId, chId, secId) || []; } catch (e) { qs = []; }
+    total = qs.length;
+  }
 
   // A section she has answered questions in cannot really have an empty pool -
   // that combination means the course content had not arrived when something
@@ -34089,7 +34109,7 @@ function sectionMastery(courseId, chId, secId) {
     return empty;
   }
 
-  const ids = new Set(qs.map(q => String(q.id)));
+  const ids = metaIds ? new Set(metaIds.map(String)) : new Set(qs.map(q => String(q.id)));
   const hist = (store.quizHistory || []).filter(h =>
     h && h.courseId === courseId && h.chId === chId && h.secId === secId &&
     h.qId && ids.has(String(h.qId)));
@@ -57559,13 +57579,31 @@ var SRC = {};
  * as source on every launch - the single biggest lump of process memory.
  * SRC entries: undefined = not loaded yet, string = ready, null = consumed.
  */
-var PACK_NAMES = ['l_C959','q_C959','s_C959','l_D286','q_D286','s_D286','l_D684','q_D684','s_D684','l_D197','q_D197','s_D197'];
-var PACK_URL = '/content-pack.json?v=' + encodeURIComponent((document.querySelector('meta[name=app-build]') || {}).content || '0');
-var packLoaded = false;
-function packAbsorb(p){
-  if (!p || typeof p !== 'object') return false;
-  for (var i = 0; i < PACK_NAMES.length; i++) { if (typeof p[PACK_NAMES[i]] !== 'string') return false; }
-  for (var j = 0; j < PACK_NAMES.length; j++) { if (SRC[PACK_NAMES[j]] === undefined) SRC[PACK_NAMES[j]] = p[PACK_NAMES[j]]; }
+/* STAGE 2: content ships in one small manifest plus one file PER COURSE.
+ * The manifest (~200KB) carries chapter structure and the question-id list of
+ * every section, so the home screen computes progress for all four courses
+ * without loading a single lesson. A course's content file (1-6MB) is fetched
+ * and parsed only when she actually opens that course. The 12.9MB
+ * all-courses pack used to sit in memory as strings from boot; now at most
+ * the active course's file does. */
+var FOCUS_CIDS = ['C959','D286','D684','D197'];
+var BUILD_V = encodeURIComponent((document.querySelector('meta[name=app-build]') || {}).content || '0');
+var MANIFEST_URL = '/content-manifest.json?v=' + BUILD_V;
+function courseUrl(cid){ return '/content-' + cid + '.json?v=' + BUILD_V; }
+var SRCC = {};              // cid -> { l: str|null(consumed), q: str|null }
+var packLoaded = false;     // kept name: "manifest absorbed"
+window.__packMeta = null;   // cid -> { 'CID/ch/sec': [question ids] }
+
+function packAbsorb(m){     // kept name: absorbs the MANIFEST
+  if (!m || typeof m !== 'object') return false;
+  for (var i = 0; i < FOCUS_CIDS.length; i++) { if (typeof m['s_' + FOCUS_CIDS[i]] !== 'string') return false; }
+  try {
+    for (var j = 0; j < FOCUS_CIDS.length; j++) {
+      var cid = FOCUS_CIDS[j];
+      if (typeof COURSES !== 'undefined' && COURSES[cid]) COURSES[cid].chapters = JSON.parse(m['s_' + cid]);
+    }
+  } catch (eS) { if (window.console && console.warn) console.warn('structure absorb failed:', eS); return false; }
+  if (m.qids && typeof m.qids === 'object') window.__packMeta = m.qids;
   packLoaded = true;
   // Chapter structure now travels with the content. The modules that used to
   // build these chapters in code at every launch are gone; the pack is the
@@ -57591,44 +57629,82 @@ function packAbsorb(p){
   return true;
 }
 var _packSyncAt = 0;
-function packLoadSync(){
+function packLoadSync(){    // kept name: sync manifest fetch, throttled
   if (packLoaded) return;
   var _now = Date.now();
   if (_now - _packSyncAt < 3000) return;
   _packSyncAt = _now;
   try {
     var x = new XMLHttpRequest();
-    x.open('GET', PACK_URL, false);
+    x.open('GET', MANIFEST_URL, false);
     x.send();
     if (x.status === 200) packAbsorb(JSON.parse(x.responseText));
   } catch (e) {}
   if (!packLoaded) window.__packMissed = true;
 }
+function courseAbsorb(cid, p){
+  if (!p || typeof p.l !== 'string' || typeof p.q !== 'string') return false;
+  if (!SRCC[cid]) SRCC[cid] = {};
+  if (SRCC[cid].l === undefined) SRCC[cid].l = p.l;
+  if (SRCC[cid].q === undefined) SRCC[cid].q = p.q;
+  return true;
+}
+var _courseSyncAt = {};
+function courseLoadSync(cid){
+  if (SRCC[cid] && SRCC[cid].l !== undefined) return;
+  var _now = Date.now();
+  if (_courseSyncAt[cid] && _now - _courseSyncAt[cid] < 3000) return;
+  _courseSyncAt[cid] = _now;
+  try {
+    var x = new XMLHttpRequest();
+    x.open('GET', courseUrl(cid), false);
+    x.send();
+    if (x.status === 200) courseAbsorb(cid, JSON.parse(x.responseText));
+  } catch (e) {}
+  if (!SRCC[cid] || SRCC[cid].l === undefined) window.__packMissed = true;
+}
+window.__courseWarm = function(cid){
+  if (FOCUS_CIDS.indexOf(cid) === -1) return;
+  if (SRCC[cid] && SRCC[cid].l !== undefined) return;
+  try {
+    fetch(courseUrl(cid)).then(function(r){ return r.json(); })
+      .then(function(p){ courseAbsorb(cid, p); }).catch(function(){});
+  } catch (e) {}
+};
 try {
-  fetch(PACK_URL).then(function(r){ return r.json(); }).then(function(p){
+  fetch(MANIFEST_URL).then(function(r){ return r.json(); }).then(function(p){
     if (!packAbsorb(p)) {
-      return fetch(new Request(PACK_URL, { cache: 'reload' })).then(function(r){ return r.json(); }).then(packAbsorb);
+      return fetch(new Request(MANIFEST_URL, { cache: 'reload' })).then(function(r){ return r.json(); }).then(packAbsorb);
     }
   }).catch(function(){
     setTimeout(function(){
-      try { fetch(PACK_URL).then(function(r){ return r.json(); }).then(packAbsorb).catch(function(){}); } catch (e) {}
+      try { fetch(MANIFEST_URL).then(function(r){ return r.json(); }).then(packAbsorb).catch(function(){}); } catch (e) {}
     }, 4000);
   });
+  // Warm the course she was last in, so her first lesson tap parses instantly.
+  setTimeout(function(){
+    try {
+      var last = (typeof store !== 'undefined' && store && store.currentCourse) || null;
+      if (last) window.__courseWarm(last);
+    } catch (e) {}
+  }, 3500);
 } catch (e) {}
 var KEYS = {"C959":{"l":["C959/aistote/s1","C959/ch1/s1","C959/ch1/s2","C959/ch1/s3","C959/ch1/s4","C959/ch2/s1","C959/ch2/s2","C959/ch2/s3","C959/ch3/s1","C959/ch3/s2","C959/ch3/s3","C959/ch3/s4","C959/ch3/s5","C959/ch3/s6","C959/ch3/s7","C959/ch3/s8","C959/ch4/s1","C959/ch4/s2","C959/ch4/s3","C959/ch4/s4","C959/ch4/s5","C959/ch4/s6","C959/ch4/s7","C959/ch4/s8","C959/ch6/s1","C959/ch6/s2","C959/ch6/s3","C959/ch6/s4","C959/ch6/s5","C959/ch6/s6","C959/ch6/s7","C959/ch6/s8","C959/ch6/s9","C959/ch7/s1","C959/ch7/s2","C959/ch7/s3","C959/ch_graph/s1","C959/ch_graph/s2","C959/ch_graph/s3","C959/ch_graph/s4","C959/ch_graph/s5","C959/ch_graph/s6","C959/ch_graph/s7","C959/ch_matrix/s1","C959/ch_matrix/s2","C959/ch_matrix/s3","C959/ch_matrix/s4","C959/ch_matrix/s5","C959/challenge/s1","C959/challenge/s2","C959/cheat/s1","C959/cheat/s2","C959/cheat/s3","C959/cheat/s4","C959/cheat/s5","C959/cheat/s6","C959/cheat/s7","C959/concepts/s1","C959/concepts/s10","C959/concepts/s11","C959/concepts/s12","C959/concepts/s13","C959/concepts/s14","C959/concepts/s15","C959/concepts/s2","C959/concepts/s3","C959/concepts/s4","C959/concepts/s5","C959/concepts/s6","C959/concepts/s7","C959/concepts/s8","C959/concepts/s9","C959/hard_drill/sim","C959/oa/s1","C959/oa/s2","C959/oa_sim/sim","C959/pa_fresh/sim","C959/pa_sim/sim","C959/review_missed/sim","C959/solving/sv1","C959/solving/sv2","C959/solving2/sv1","C959/solving2/sv2","C959/solving2/sv3","C959/solving2/sv4","C959/solving_only/sim","C959/userdocs/add","C959/weak_drill/sim","C959/worked/w1","C959/worked/w2","C959/worked/w3","C959/worked/w4","C959/worked/w5","C959/worked/w6","C959/worked/w7","C959/worked/w8"],"q":["C959/ch1/s1","C959/ch1/s2","C959/ch1/s3","C959/ch1/s4","C959/ch2/s1","C959/ch2/s2","C959/ch2/s3","C959/ch3/s1","C959/ch3/s2","C959/ch3/s3","C959/ch3/s4","C959/ch3/s5","C959/ch3/s6","C959/ch3/s7","C959/ch3/s8","C959/ch4/s1","C959/ch4/s2","C959/ch4/s3","C959/ch4/s4","C959/ch4/s5","C959/ch4/s6","C959/ch4/s7","C959/ch4/s8","C959/ch6/s1","C959/ch6/s2","C959/ch6/s3","C959/ch6/s4","C959/ch6/s5","C959/ch6/s6","C959/ch6/s7","C959/ch6/s8","C959/ch6/s9","C959/ch7/s1","C959/ch7/s2","C959/ch7/s3","C959/ch_graph/s1","C959/ch_graph/s2","C959/ch_graph/s3","C959/ch_graph/s4","C959/ch_graph/s5","C959/ch_graph/s6","C959/ch_graph/s7","C959/ch_matrix/s1","C959/ch_matrix/s2","C959/ch_matrix/s3","C959/ch_matrix/s4","C959/ch_matrix/s5","C959/challenge/s1","C959/challenge/s2","C959/cheat/s1","C959/cheat/s2","C959/cheat/s3","C959/cheat/s4","C959/cheat/s5","C959/cheat/s6","C959/cheat/s7","C959/final/exam","C959/oa_sim/sim","C959/pa_fresh/sim","C959/pa_sim/sim","C959/solving/sv1","C959/solving/sv2","C959/solving2/sv1","C959/solving2/sv2","C959/solving2/sv3","C959/solving2/sv4"]},"D286":{"l":["D286/aistote/s1","D286/ch1/s1","D286/ch1/s2","D286/ch1/s3","D286/ch2/s1","D286/ch2/s2","D286/ch2/s3","D286/ch3/s1","D286/ch3/s2","D286/ch3/s3","D286/ch4/s1","D286/ch4/s2","D286/ch4/s3","D286/ch5/s1","D286/ch5/s2","D286/ch5/s3","D286/ch6/s1","D286/ch6/s2","D286/ch6/s3","D286/challenge/c1","D286/challenge/c2","D286/cheat/s1","D286/cheat/s2","D286/cheat/s3","D286/cheat/s4","D286/cheat/s5","D286/concepts/s1","D286/concepts/s10","D286/concepts/s11","D286/concepts/s12","D286/concepts/s13","D286/concepts/s2","D286/concepts/s3","D286/concepts/s4","D286/concepts/s5","D286/concepts/s6","D286/concepts/s7","D286/concepts/s8","D286/concepts/s9","D286/hard_drill/sim","D286/oa_sim/sim","D286/pa_fresh/sim","D286/pa_sim/sim","D286/review_missed/sim","D286/u1/z1_1","D286/u1/z1_10","D286/u1/z1_11","D286/u1/z1_12","D286/u1/z1_2","D286/u1/z1_3","D286/u1/z1_4","D286/u1/z1_5","D286/u1/z1_6","D286/u1/z1_7","D286/u1/z1_8","D286/u1/z1_9","D286/u10/z10_1","D286/u10/z10_10","D286/u10/z10_11","D286/u10/z10_12","D286/u10/z10_13","D286/u10/z10_2","D286/u10/z10_3","D286/u10/z10_4","D286/u10/z10_5","D286/u10/z10_6","D286/u10/z10_7","D286/u10/z10_8","D286/u10/z10_9","D286/u11/z11_1","D286/u11/z11_2","D286/u11/z11_3","D286/u11/z11_4","D286/u11/z11_5","D286/u11/z11_6","D286/u11/z11_7","D286/u11/z11_8","D286/u11/z11_9","D286/u12/z12_1","D286/u12/z12_2","D286/u12/z12_3","D286/u12/z12_4","D286/u12/z12_5","D286/u12/z12_6","D286/u13/z13_1","D286/u13/z13_2","D286/u13/z13_3","D286/u13/z13_4","D286/u13/z13_5","D286/u13/z13_6","D286/u14/z14_1","D286/u14/z14_2","D286/u14/z14_3","D286/u14/z14_4","D286/u14/z14_5","D286/u14/z14_6","D286/u14/z14_7","D286/u14/z14_8","D286/u14/z14_9","D286/u15/z15_1","D286/u15/z15_10","D286/u15/z15_11","D286/u15/z15_2","D286/u15/z15_3","D286/u15/z15_4","D286/u15/z15_5","D286/u15/z15_6","D286/u15/z15_7","D286/u15/z15_8","D286/u15/z15_9","D286/u16/z16_1","D286/u16/z16_2","D286/u16/z16_3","D286/u16/z16_4","D286/u17/z17_1","D286/u17/z17_2","D286/u17/z17_3","D286/u17/z17_4","D286/u17/z17_5","D286/u17/z17_6","D286/u17/z17_7","D286/u17/z17_8","D286/u17/z17_9","D286/u18/z18_1","D286/u18/z18_2","D286/u18/z18_3","D286/u18/z18_4","D286/u18/z18_5","D286/u18/z18_6","D286/u18/z18_7","D286/u18/z18_8","D286/u18/z18_9","D286/u19/z19_1","D286/u19/z19_10","D286/u19/z19_2","D286/u19/z19_3","D286/u19/z19_4","D286/u19/z19_5","D286/u19/z19_6","D286/u19/z19_7","D286/u19/z19_8","D286/u19/z19_9","D286/u2/z2_1","D286/u2/z2_10","D286/u2/z2_11","D286/u2/z2_12","D286/u2/z2_13","D286/u2/z2_14","D286/u2/z2_15","D286/u2/z2_16","D286/u2/z2_17","D286/u2/z2_18","D286/u2/z2_19","D286/u2/z2_2","D286/u2/z2_20","D286/u2/z2_21","D286/u2/z2_22","D286/u2/z2_23","D286/u2/z2_24","D286/u2/z2_25","D286/u2/z2_3","D286/u2/z2_4","D286/u2/z2_5","D286/u2/z2_6","D286/u2/z2_7","D286/u2/z2_8","D286/u2/z2_9","D286/u3/z3_1","D286/u3/z3_10","D286/u3/z3_11","D286/u3/z3_12","D286/u3/z3_13","D286/u3/z3_14","D286/u3/z3_15","D286/u3/z3_16","D286/u3/z3_17","D286/u3/z3_18","D286/u3/z3_19","D286/u3/z3_2","D286/u3/z3_20","D286/u3/z3_21","D286/u3/z3_3","D286/u3/z3_4","D286/u3/z3_5","D286/u3/z3_6","D286/u3/z3_7","D286/u3/z3_8","D286/u3/z3_9","D286/u4/z4_1","D286/u4/z4_10","D286/u4/z4_11","D286/u4/z4_12","D286/u4/z4_13","D286/u4/z4_2","D286/u4/z4_3","D286/u4/z4_4","D286/u4/z4_5","D286/u4/z4_6","D286/u4/z4_7","D286/u4/z4_8","D286/u4/z4_9","D286/u5/z5_1","D286/u5/z5_10","D286/u5/z5_11","D286/u5/z5_12","D286/u5/z5_2","D286/u5/z5_3","D286/u5/z5_4","D286/u5/z5_5","D286/u5/z5_6","D286/u5/z5_7","D286/u5/z5_8","D286/u5/z5_9","D286/u6/z6_1","D286/u6/z6_10","D286/u6/z6_11","D286/u6/z6_12","D286/u6/z6_13","D286/u6/z6_14","D286/u6/z6_15","D286/u6/z6_16","D286/u6/z6_17","D286/u6/z6_18","D286/u6/z6_19","D286/u6/z6_2","D286/u6/z6_20","D286/u6/z6_21","D286/u6/z6_22","D286/u6/z6_23","D286/u6/z6_24","D286/u6/z6_3","D286/u6/z6_4","D286/u6/z6_5","D286/u6/z6_6","D286/u6/z6_7","D286/u6/z6_8","D286/u6/z6_9","D286/u7/z7_1","D286/u7/z7_10","D286/u7/z7_11","D286/u7/z7_12","D286/u7/z7_13","D286/u7/z7_14","D286/u7/z7_15","D286/u7/z7_16","D286/u7/z7_17","D286/u7/z7_18","D286/u7/z7_19","D286/u7/z7_2","D286/u7/z7_20","D286/u7/z7_21","D286/u7/z7_22","D286/u7/z7_3","D286/u7/z7_4","D286/u7/z7_5","D286/u7/z7_6","D286/u7/z7_7","D286/u7/z7_8","D286/u7/z7_9","D286/u8/z8_1","D286/u8/z8_2","D286/u8/z8_3","D286/u8/z8_4","D286/u8/z8_5","D286/u8/z8_6","D286/u9/z9_1","D286/u9/z9_2","D286/u9/z9_3","D286/u9/z9_4","D286/u9/z9_5","D286/uadv/s1","D286/uadv/s2","D286/uadv/s3","D286/uadv/s4","D286/uadv/s5","D286/userdocs/add","D286/weak_drill/sim"],"q":["D286/ch2/s4","D286/ch6/s1","D286/ch6/s2","D286/ch6/s3","D286/ch7/s1","D286/ch7/s2","D286/challenge/c1","D286/challenge/c2","D286/cheat/s1","D286/cheat/s2","D286/cheat/s3","D286/cheat/s4","D286/cheat/s5","D286/final/exam","D286/oa_sim/sim","D286/pa_fresh/sim","D286/pa_sim/sim","D286/u1/z1_1","D286/u1/z1_10","D286/u1/z1_11","D286/u1/z1_12","D286/u1/z1_2","D286/u1/z1_3","D286/u1/z1_4","D286/u1/z1_5","D286/u1/z1_6","D286/u1/z1_7","D286/u1/z1_8","D286/u1/z1_9","D286/u10/z10_1","D286/u10/z10_10","D286/u10/z10_11","D286/u10/z10_12","D286/u10/z10_13","D286/u10/z10_2","D286/u10/z10_3","D286/u10/z10_4","D286/u10/z10_5","D286/u10/z10_6","D286/u10/z10_7","D286/u10/z10_8","D286/u10/z10_9","D286/u11/z11_1","D286/u11/z11_2","D286/u11/z11_3","D286/u11/z11_4","D286/u11/z11_5","D286/u11/z11_6","D286/u11/z11_7","D286/u11/z11_8","D286/u11/z11_9","D286/u12/z12_1","D286/u12/z12_2","D286/u12/z12_3","D286/u12/z12_4","D286/u12/z12_5","D286/u12/z12_6","D286/u13/z13_1","D286/u13/z13_2","D286/u13/z13_3","D286/u13/z13_4","D286/u13/z13_5","D286/u13/z13_6","D286/u14/z14_1","D286/u14/z14_2","D286/u14/z14_3","D286/u14/z14_4","D286/u14/z14_5","D286/u14/z14_6","D286/u14/z14_7","D286/u14/z14_8","D286/u14/z14_9","D286/u15/z15_1","D286/u15/z15_10","D286/u15/z15_11","D286/u15/z15_2","D286/u15/z15_3","D286/u15/z15_4","D286/u15/z15_5","D286/u15/z15_6","D286/u15/z15_7","D286/u15/z15_8","D286/u15/z15_9","D286/u16/z16_1","D286/u16/z16_2","D286/u16/z16_3","D286/u16/z16_4","D286/u17/z17_1","D286/u17/z17_2","D286/u17/z17_3","D286/u17/z17_4","D286/u17/z17_5","D286/u17/z17_6","D286/u17/z17_7","D286/u17/z17_8","D286/u17/z17_9","D286/u18/z18_1","D286/u18/z18_2","D286/u18/z18_3","D286/u18/z18_4","D286/u18/z18_5","D286/u18/z18_6","D286/u18/z18_7","D286/u18/z18_8","D286/u18/z18_9","D286/u19/z19_1","D286/u19/z19_10","D286/u19/z19_2","D286/u19/z19_3","D286/u19/z19_4","D286/u19/z19_5","D286/u19/z19_6","D286/u19/z19_7","D286/u19/z19_8","D286/u19/z19_9","D286/u2/z2_1","D286/u2/z2_10","D286/u2/z2_11","D286/u2/z2_12","D286/u2/z2_13","D286/u2/z2_14","D286/u2/z2_15","D286/u2/z2_16","D286/u2/z2_17","D286/u2/z2_18","D286/u2/z2_19","D286/u2/z2_2","D286/u2/z2_20","D286/u2/z2_21","D286/u2/z2_22","D286/u2/z2_23","D286/u2/z2_24","D286/u2/z2_25","D286/u2/z2_3","D286/u2/z2_4","D286/u2/z2_5","D286/u2/z2_6","D286/u2/z2_7","D286/u2/z2_8","D286/u2/z2_9","D286/u3/z3_1","D286/u3/z3_10","D286/u3/z3_11","D286/u3/z3_12","D286/u3/z3_13","D286/u3/z3_14","D286/u3/z3_15","D286/u3/z3_16","D286/u3/z3_17","D286/u3/z3_18","D286/u3/z3_19","D286/u3/z3_2","D286/u3/z3_20","D286/u3/z3_21","D286/u3/z3_3","D286/u3/z3_4","D286/u3/z3_5","D286/u3/z3_6","D286/u3/z3_7","D286/u3/z3_8","D286/u3/z3_9","D286/u4/z4_1","D286/u4/z4_10","D286/u4/z4_11","D286/u4/z4_12","D286/u4/z4_13","D286/u4/z4_2","D286/u4/z4_3","D286/u4/z4_4","D286/u4/z4_5","D286/u4/z4_6","D286/u4/z4_7","D286/u4/z4_8","D286/u4/z4_9","D286/u5/z5_1","D286/u5/z5_10","D286/u5/z5_11","D286/u5/z5_12","D286/u5/z5_2","D286/u5/z5_3","D286/u5/z5_4","D286/u5/z5_5","D286/u5/z5_6","D286/u5/z5_7","D286/u5/z5_8","D286/u5/z5_9","D286/u6/z6_1","D286/u6/z6_10","D286/u6/z6_11","D286/u6/z6_12","D286/u6/z6_13","D286/u6/z6_14","D286/u6/z6_15","D286/u6/z6_16","D286/u6/z6_17","D286/u6/z6_18","D286/u6/z6_19","D286/u6/z6_2","D286/u6/z6_20","D286/u6/z6_21","D286/u6/z6_22","D286/u6/z6_23","D286/u6/z6_24","D286/u6/z6_3","D286/u6/z6_4","D286/u6/z6_5","D286/u6/z6_6","D286/u6/z6_7","D286/u6/z6_8","D286/u6/z6_9","D286/u7/z7_1","D286/u7/z7_10","D286/u7/z7_11","D286/u7/z7_12","D286/u7/z7_13","D286/u7/z7_14","D286/u7/z7_15","D286/u7/z7_16","D286/u7/z7_17","D286/u7/z7_18","D286/u7/z7_19","D286/u7/z7_2","D286/u7/z7_20","D286/u7/z7_21","D286/u7/z7_22","D286/u7/z7_3","D286/u7/z7_4","D286/u7/z7_5","D286/u7/z7_6","D286/u7/z7_7","D286/u7/z7_8","D286/u7/z7_9","D286/u8/z8_1","D286/u8/z8_2","D286/u8/z8_3","D286/u8/z8_4","D286/u8/z8_5","D286/u8/z8_6","D286/u9/z9_1","D286/u9/z9_2","D286/u9/z9_3","D286/u9/z9_4","D286/u9/z9_5"]},"D684":{"l":["D684/aistote/s1","D684/challenge/c1","D684/challenge/c2","D684/cheat/s1","D684/cheat/s2","D684/cheat/s3","D684/cheat/s4","D684/cheat/s5","D684/concepts/s1","D684/concepts/s10","D684/concepts/s11","D684/concepts/s12","D684/concepts/s13","D684/concepts/s14","D684/concepts/s15","D684/concepts/s16","D684/concepts/s17","D684/concepts/s18","D684/concepts/s19","D684/concepts/s2","D684/concepts/s20","D684/concepts/s3","D684/concepts/s4","D684/concepts/s5","D684/concepts/s6","D684/concepts/s7","D684/concepts/s8","D684/concepts/s9","D684/depth_drill/g1","D684/depth_drill/g2","D684/depth_drill/g3","D684/depth_drill/g4","D684/depth_drill/g5","D684/g1/x3_1","D684/g1/x3_2","D684/g1/x3_3","D684/g1/x3_4","D684/g1/x7_2","D684/g2/k_algo","D684/g2/k_ds","D684/g2/k_oop","D684/g2/k_prog","D684/g2/k_sub","D684/g2/x6_5","D684/g3/x10_1","D684/g3/x10_3","D684/g3/x10_4","D684/g3/x11_1","D684/g3/x11_3","D684/g4/k_bool","D684/g4/x15_1","D684/g4/x15_2","D684/g4/x15_3","D684/g4/x15_4","D684/g4/x2_1_2_2","D684/g4/x5_1","D684/g4/x5_2","D684/g4/x5_2b","D684/g4/x5_3","D684/hard_drill/sim","D684/oa/s1","D684/oa/s2","D684/oa_sim/sim","D684/pa_fresh/sim","D684/pa_sim/sim","D684/review_missed/sim","D684/s1/l1_1","D684/s1/l1_2","D684/s1/l1_3","D684/s1/l1_4","D684/s1/l1_5","D684/s2/l1_1","D684/s2/l1_2","D684/s2/l2_1","D684/s2/l3_1","D684/s2/x7_1","D684/s2/xE1","D684/s2/xE2","D684/s3/l2_1","D684/s4/l1_1","D684/s4/l2_1","D684/s4/l3_1","D684/s5/l1_1","D684/s5/l2_1","D684/s5/l3_1","D684/trace_drill/t1","D684/trace_drill/t2","D684/trace_drill/t3","D684/trace_drill/t4","D684/trace_drill/t5","D684/trace_drill/t6","D684/trace_drill/t7","D684/trace_drill/t8","D684/userdocs/add","D684/weak_drill/sim","D684/write_drill/p1","D684/write_drill/p2","D684/write_drill/p3","D684/write_drill/p4","D684/write_drill/p5","D684/write_drill/p6"],"q":["D684/challenge/c1","D684/challenge/c2","D684/cheat/s1","D684/cheat/s2","D684/cheat/s3","D684/cheat/s4","D684/cheat/s5","D684/depth_drill/g1","D684/depth_drill/g2","D684/depth_drill/g3","D684/depth_drill/g4","D684/depth_drill/g5","D684/final/exam","D684/g1/x3_1","D684/g1/x3_2","D684/g1/x3_3","D684/g1/x3_4","D684/g1/x7_2","D684/g2/k_algo","D684/g2/k_ds","D684/g2/k_oop","D684/g2/k_prog","D684/g2/k_sub","D684/g2/x6_5","D684/g3/x10_1","D684/g3/x10_3","D684/g3/x10_4","D684/g3/x11_1","D684/g3/x11_3","D684/g4/k_bool","D684/g4/x15_1","D684/g4/x15_2","D684/g4/x15_3","D684/g4/x15_4","D684/g4/x2_1_2_2","D684/g4/x5_1","D684/g4/x5_2","D684/g4/x5_2b","D684/g4/x5_3","D684/oa_sim/sim","D684/pa_fresh/sim","D684/pa_sim/sim","D684/s2/x7_1","D684/s2/xE1","D684/s2/xE2","D684/trace_drill/t1","D684/trace_drill/t2","D684/trace_drill/t3","D684/trace_drill/t4","D684/trace_drill/t5","D684/trace_drill/t6","D684/trace_drill/t7","D684/trace_drill/t8","D684/write_drill/p1","D684/write_drill/p2","D684/write_drill/p3","D684/write_drill/p4","D684/write_drill/p5","D684/write_drill/p6"]},"D197":{"l":["D197/aistote/s1","D197/ch1/s1","D197/ch1/s2","D197/ch1/s3","D197/ch2/s1","D197/ch2/s2","D197/ch2/s3","D197/ch3/s1","D197/ch3/s2","D197/ch3/s3","D197/ch4/s1","D197/ch4/s2","D197/ch4/s3","D197/cheat/s1","D197/cheat/s2","D197/cheat/s3","D197/cheat/s4","D197/concepts/s1","D197/concepts/s10","D197/concepts/s11","D197/concepts/s2","D197/concepts/s3","D197/concepts/s4","D197/concepts/s5","D197/concepts/s6","D197/concepts/s7","D197/concepts/s8","D197/concepts/s9","D197/hard_drill/sim","D197/oa/s1","D197/oa/s2","D197/oa_sim/sim","D197/pa_fresh/sim","D197/pa_playbook/checklist","D197/pa_playbook/rubric","D197/pa_playbook/tasks","D197/pa_sim/sim","D197/review_missed/sim","D197/teams/g1","D197/teams/g2","D197/teams/g3","D197/uadv/s1","D197/uadv/s2","D197/uadv/s3","D197/uadv/s4","D197/userdocs/add","D197/weak_drill/sim"],"q":["D197/ch1/s1","D197/ch1/s2","D197/ch1/s3","D197/ch2/s1","D197/ch2/s2","D197/ch2/s3","D197/ch2/s4","D197/ch3/s1","D197/ch3/s2","D197/ch3/s3","D197/ch4/s1","D197/ch4/s2","D197/ch4/s3","D197/cheat/s1","D197/cheat/s2","D197/cheat/s3","D197/cheat/s4","D197/concepts/s1","D197/concepts/s10","D197/concepts/s11","D197/concepts/s2","D197/concepts/s3","D197/concepts/s4","D197/concepts/s5","D197/concepts/s6","D197/concepts/s7","D197/concepts/s8","D197/concepts/s9","D197/final/exam","D197/oa_sim/sim","D197/pa_fresh/sim","D197/pa_playbook/checklist","D197/pa_playbook/rubric","D197/pa_playbook/tasks","D197/pa_sim/sim","D197/teams/g1","D197/teams/g2","D197/teams/g3","D197/uadv/s1","D197/uadv/s2","D197/uadv/s3","D197/uadv/s4"]}};
 var done = {};
 function hydrate(cid){
   if (done[cid]) return;
   if (!packLoaded) packLoadSync();
-  if (SRC['l_' + cid] === undefined && SRC['q_' + cid] === undefined) return; // pack unavailable - leave lazy so a later access retries
+  if (!SRCC[cid] || SRCC[cid].l === undefined) courseLoadSync(cid);
+  var entry = SRCC[cid];
+  if (!entry || (entry.l === undefined && entry.q === undefined)) return; // unavailable - stay lazy, retry on next access
   done[cid] = true;
   try { (window.__hydrateWhy = window.__hydrateWhy || {})[cid] = { t: Math.round(performance.now()), by: new Error().stack }; } catch (e) {}
   // Anything answered from the empty window is stale the moment content lands.
   try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e) {}
   ['l', 'q'].forEach(function(t){
-    var src = SRC[t + '_' + cid];
+    var src = entry[t];
     if (!src) return;
-    SRC[t + '_' + cid] = null;
+    entry[t] = null;
     var store = (t === 'l') ? SAMPLE_LESSON : SAMPLE_QUESTIONS;
     var data = JSON.parse(src);
     Object.keys(data).forEach(function(k){
