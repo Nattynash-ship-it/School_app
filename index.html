@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.486">
+<meta name="app-build" content="18.487">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -56288,15 +56288,65 @@ css.textContent = [
 '.aih-row button { padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: var(--accent-text, #fff);',
 '  font-weight: 700; cursor: pointer; }',
 '.aih-row button:disabled { opacity: 0.5; cursor: default; }',
-'.aih-hint { padding: 0 14px 10px; font-size: 11.5px; color: var(--text-4); }'
+'.aih-hint { padding: 0 14px 10px; font-size: 11.5px; color: var(--text-4); }',
+'.aih-chips { display: flex; gap: 6px; padding: 8px 12px 0; flex-wrap: wrap; }',
+'.aih-chips button { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border-strong, var(--border));',
+'  background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer;',
+'  white-space: nowrap; }',
+'.aih-chips button:active { transform: scale(0.96); }'
 ].join('\n');
 document.head.appendChild(css);
+
+// One-tap asks. The wording matters: "5th grade" alone tends to produce a
+// cute analogy and nothing she can use on an exam, so it asks for the plain
+// version AND the exam version, and forbids inventing anything the material
+// does not support.
+var PROMPTS = {
+  eli5: 'Explain what is on my screen as if I were a 5th grader: short sentences, everyday words, ' +
+        'no jargon unless you immediately define it, and use a concrete everyday comparison. ' +
+        'Then finish with a section headed "In exam words:" that restates the same idea in the ' +
+        'proper terminology I will actually see on the test. Do not invent anything the material ' +
+        'does not support.',
+  example: 'Work through one concrete example of what is on my screen, step by step, showing every ' +
+           'step the way a textbook worked example would. Then give me one similar problem to try ' +
+           'on my own, with the answer at the very end so I can check myself.',
+  exam: 'How is what is on my screen actually tested on the WGU objective assessment? Tell me the ' +
+        'form the questions take, the wording to watch for, and the mistakes people make on it. ' +
+        'If you are not sure how WGU tests this, say so plainly rather than guessing.'
+};
 
 var chat = [];        // { role, content } - memory only
 var busy = false;
 var sheet = null, log = null, ta = null, sendBtn = null;
 
 function lessonContext(){
+  // A question she just got wrong is the thing she most wants re-explained, so
+  // the quiz screen sends the question, the options, the right answer and the
+  // app's own explanation - not just the lesson behind it.
+  try {
+    if (typeof quizState === 'object' && quizState && quizState.questions) {
+      var qq = quizState.questions[quizState.idx];
+      if (qq) {
+        var opts = '';
+        try {
+          if (Array.isArray(qq.options)) {
+            opts = qq.options.map(function(o, i){ return String.fromCharCode(65 + i) + '. ' + o; }).join('\n');
+          }
+        } catch (e) {}
+        var right = '';
+        try {
+          if (typeof qq.correct === 'number' && Array.isArray(qq.options)) right = String.fromCharCode(65 + qq.correct) + '. ' + qq.options[qq.correct];
+        } catch (e) {}
+        return {
+          title: 'Quiz question (' + (quizState.courseId || '') + ')',
+          lesson: ('QUESTION: ' + (qq.text || '') + '\n\nOPTIONS:\n' + opts +
+                   (right ? '\n\nCORRECT ANSWER: ' + right : '') +
+                   (qq.explanation ? '\n\nTHE APP\u2019S EXPLANATION: ' + qq.explanation : ''))
+                  .replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').slice(0, 12000)
+        };
+      }
+    }
+  } catch (e) {}
   try {
     if (typeof view === 'undefined' || !view || view.name !== 'section' || !view.courseId) return {};
     var L = getLesson(view.courseId, view.chId, view.secId);
@@ -56385,6 +56435,11 @@ function open(){
   sheet.innerHTML =
     '<div class="aih-head">✨ Study Helper<button class="aih-x" aria-label="Close">×</button></div>' +
     '<div class="aih-log"></div>' +
+    '<div class="aih-chips">' +
+      '<button data-chip="eli5">🧒 Explain like I\u2019m in 5th grade</button>' +
+      '<button data-chip="example">📝 Show me an example</button>' +
+      '<button data-chip="exam">🎯 How is this tested?</button>' +
+    '</div>' +
     '<div class="aih-row"><textarea rows="1" placeholder="Ask about what you’re studying…"></textarea><button>Send</button></div>' +
     '<div class="aih-hint">Answers stream from an AI tutor that can see the lesson on your screen. It can make mistakes — verify anything surprising against the lesson.</div>';
   document.body.appendChild(sheet);
@@ -56393,6 +56448,9 @@ function open(){
   sendBtn = sheet.querySelector('.aih-row button');
   sheet.querySelector('.aih-x').addEventListener('click', close);
   sendBtn.addEventListener('click', send);
+  sheet.querySelectorAll('[data-chip]').forEach(function(c){
+    c.addEventListener('click', function(){ ta.value = PROMPTS[c.getAttribute('data-chip')] || ''; send(); });
+  });
   ta.addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -56400,6 +56458,17 @@ function open(){
   if (!chat.length) addMsg('a', 'Hi! Ask me anything about the lesson you’re reading — I can explain a step differently, work a similar problem, or quiz you on it.');
   try { ta.focus(); } catch (e) {}
 }
+
+// Let any button in the app open the helper with a question already asked.
+window.__aihAsk = function(key){
+  try {
+    if (!sheet) open();
+    if (!ta) return;
+    ta.value = PROMPTS[key] || String(key || '');
+    send();
+  } catch (e) {}
+};
+window.__aihPrompts = PROMPTS;
 
 var fab = document.createElement('button');
 fab.className = 'aih-fab';
@@ -58285,6 +58354,87 @@ if (typeof render === 'function' && !render.__adaptWrapped) {
 window.__adaptiveState = function(){
   return st ? { key: st.key, level: st.level, tier: st.off ? null : TIERS[st.level], run: st.run, moves: st.moves, off: !!st.off } : null;
 };
+})();
+
+
+(function explainSimply(){
+/* "What about the explain it like a 5th grader?"
+ *
+ * The study helper could always be asked that - but only by opening the chat
+ * and typing it out, every time, which is exactly the friction that stops
+ * someone using it at the moment they are stuck. So the ask is now one tap,
+ * put where the confusion actually happens:
+ *
+ *   - on a quiz answer she just got wrong, beside "Add to flashcards"
+ *   - at the top of any lesson
+ *
+ * Both hand the helper the thing on screen (the quiz screen sends the
+ * question, its options, the right answer and the app's explanation), so the
+ * answer is about THAT, not a generic definition.
+ */
+if (typeof document === 'undefined') return;
+if (window.__explainSimply) return; window.__explainSimply = true;
+
+var LABEL = '🧒 Explain simply';
+
+function mkBtn(style){
+  var b = document.createElement('button');
+  b.setAttribute('data-eli5', '1');
+  b.type = 'button';
+  b.textContent = LABEL;
+  b.title = 'Have the study helper explain this in plain words, then in exam words';
+  b.style.cssText = style;
+  b.addEventListener('click', function(e){
+    e.preventDefault(); e.stopPropagation();
+    try {
+      if (typeof window.__aihAsk === 'function') window.__aihAsk('eli5');
+      else if (typeof toast === 'function') toast('The study helper is not available on this screen');
+    } catch (er) {}
+  });
+  return b;
+}
+
+function inject(){
+  try {
+    // 1. Quiz - right where the answer is revealed and she is deciding whether
+    //    she actually understood it.
+    var fc = document.querySelector('[data-add-fc]');
+    if (fc && fc.parentNode && !fc.parentNode.querySelector('[data-eli5]')) {
+      var b1 = mkBtn('margin-left:8px; padding:7px 12px; border-radius:999px; cursor:pointer;'
+        + 'background:var(--surface-2); border:1px solid var(--border-strong,var(--border));'
+        + 'color:var(--text-2); font-size:12.5px; font-weight:650;');
+      fc.parentNode.insertBefore(b1, fc.nextSibling);
+    }
+
+    // 2. Lesson - at the top, before she has read a wall of text she may not
+    //    follow.
+    var lesson = document.querySelector('.lesson');
+    if (lesson && !lesson.querySelector('[data-eli5]')) {
+      var b2 = mkBtn('display:inline-flex; align-items:center; margin:0 0 14px; padding:8px 14px;'
+        + 'border-radius:999px; cursor:pointer; background:var(--surface-2);'
+        + 'border:1px solid var(--border-strong,var(--border)); color:var(--text-2);'
+        + 'font-size:12.5px; font-weight:650;');
+      lesson.insertBefore(b2, lesson.firstChild);
+    }
+  } catch (e) {}
+}
+
+if (typeof render === 'function' && !render.__eli5Wrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { inject(); setTimeout(inject, 150); } catch (e) {}
+    return out;
+  };
+  render.__eli5Wrapped = true;
+}
+// The answer reveal redraws part of the quiz without a full render, so a cheap
+// backstop catches it on the shared heartbeat rather than its own timer.
+try {
+  (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(inject, 2, 'ui');
+} catch (e) {}
+inject();
+window.__eli5Inject = inject;
 })();
 
 </script>
