@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.485">
+<meta name="app-build" content="18.486">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -58141,6 +58141,150 @@ renderResults = function(v){
   return el;
 };
 window.__weakSectionsBuild = build;
+})();
+
+
+(function adaptiveDifficulty(){
+/* "I don't think the questions are patterned after adaptive difficulty."
+ *
+ * They were not. The app knew each question's difficulty - authored, auto-
+ * tagged, then re-calibrated from her own accuracy - and it showed that as a
+ * badge, but selection never used it. Every practice quiz was sorted easy ->
+ * medium -> hard ONCE, before the first question, and that fixed ramp was
+ * served identically whether she got everything right or everything wrong.
+ * A ramp is a pattern; it is not adaptive.
+ *
+ * Now the next question is chosen from how the current one went:
+ *   two right in a row  -> step up a tier
+ *   one wrong           -> step down a tier immediately
+ * which keeps her at the edge of what she knows instead of grinding through
+ * easy items she has already proven or being buried in hard ones.
+ *
+ * Deliberately NOT applied to exam simulations. A WGU objective assessment is
+ * fixed-form: everyone gets the same spread regardless of how it is going. A
+ * sim that got easier when she struggled would flatter her score and mislead
+ * her about readiness, which is the opposite of what a practice exam is for.
+ *
+ * Also skipped when answers are deferred (the exam-style flow where grading
+ * happens at the end): nothing is known mid-quiz to adapt from, and questions
+ * must not move under her while she is jumping back and forth.
+ *
+ * Coverage is untouched. The same round of questions is asked - only the
+ * ORDER changes - so section progress still builds exactly as before.
+ */
+if (typeof document === 'undefined') return;
+if (typeof onAnswerGraded !== 'function') return;
+if (window.__adaptiveDiff) return; window.__adaptiveDiff = true;
+
+var TIERS = ['easy', 'medium', 'hard'];
+var LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+var st = null;    // { key, level, run, moves }
+
+function tierOf(q){
+  try { return getQuestionDifficulty(q) || 'medium'; } catch (e) { return 'medium'; }
+}
+function adaptable(){
+  try {
+    if (!quizState || !quizState.questions) return false;
+    if (quizState.mode === 'exam') return false;            // fixed-form on purpose
+    if (typeof deferAnswersOn === 'function' && deferAnswersOn()) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
+// Where to start: what she has already shown in this section. No history means
+// no evidence, so it opens in the middle rather than assuming either way.
+function startLevel(){
+  try {
+    var m = sectionMastery(quizState.courseId, quizState.chId, quizState.secId);
+    if (!m || !m.attempted) return 1;
+    if (m.accuracy >= 0.85) return 2;
+    if (m.accuracy >= 0.60) return 1;
+    return 0;
+  } catch (e) { return 1; }
+}
+
+function ensure(){
+  if (!adaptable()) { st = null; return null; }
+  if (!st || st.key !== quizState.key) {
+    // Only worth doing if the round actually holds a mix to choose from.
+    var seen = {};
+    for (var i = 0; i < quizState.questions.length; i++) seen[tierOf(quizState.questions[i])] = 1;
+    if (Object.keys(seen).length < 2) { st = { key: quizState.key, off: true }; return null; }
+    st = { key: quizState.key, level: startLevel(), run: 0, moves: 0, off: false };
+  }
+  return st.off ? null : st;
+}
+
+// Bring the best-matching remaining question to the front of what is left.
+// Nearest tier to the target wins; ties keep the existing order, so the
+// coverage ranking already applied still decides between equals.
+function pullNext(target){
+  var from = quizState.idx + 1;
+  if (from >= quizState.questions.length) return false;
+  var best = -1, bestDist = 99;
+  for (var i = from; i < quizState.questions.length; i++) {
+    var d = Math.abs(TIERS.indexOf(tierOf(quizState.questions[i])) - target);
+    if (d < bestDist) { bestDist = d; best = i; if (d === 0) break; }
+  }
+  if (best < 0 || best === from) return false;
+  var q = quizState.questions.splice(best, 1)[0];
+  quizState.questions.splice(from, 0, q);
+  return true;
+}
+
+var _graded = onAnswerGraded;
+onAnswerGraded = function(correct, q){
+  var r = _graded.apply(this, arguments);
+  try {
+    var s = ensure();
+    if (!s) return r;
+    if (correct) {
+      s.run++;
+      if (s.run >= 2 && s.level < 2) { s.level++; s.run = 0; }   // two right -> harder
+    } else {
+      s.run = 0;
+      if (s.level > 0) s.level--;                                 // one wrong -> easier
+    }
+    if (pullNext(s.level)) s.moves++;
+  } catch (e) {}
+  return r;
+};
+
+// Make it visible - she should be able to see it working rather than take it
+// on trust. Sits beside the question counter.
+function paint(){
+  try {
+    if (!quizState || !st || st.off || !adaptable()) return;
+    var counter = document.querySelector('.quiz-counter');
+    if (!counter || !counter.parentNode) return;
+    var tag = document.getElementById('adapt-tag');
+    if (!tag) {
+      tag = document.createElement('div');
+      tag.id = 'adapt-tag';
+      tag.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;'
+                        + 'color:var(--text-4);white-space:nowrap;margin-left:8px;';
+      counter.parentNode.insertBefore(tag, counter.nextSibling);
+    }
+    // "aiming" is the honest word: the level is the target, and the round can
+    // only serve what it actually holds. Claiming "Hard" while handing her a
+    // medium question because nothing harder is left would be a small lie.
+    tag.textContent = 'Adaptive · aiming ' + LABEL[TIERS[st.level]];
+  } catch (e) {}
+}
+if (typeof render === 'function' && !render.__adaptWrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { ensure(); paint(); } catch (e) {}
+    return out;
+  };
+  render.__adaptWrapped = true;
+}
+
+window.__adaptiveState = function(){
+  return st ? { key: st.key, level: st.level, tier: st.off ? null : TIERS[st.level], run: st.run, moves: st.moves, off: !!st.off } : null;
+};
 })();
 
 </script>
