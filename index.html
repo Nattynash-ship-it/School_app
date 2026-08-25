@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.484">
+<meta name="app-build" content="18.485">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -1646,28 +1646,62 @@
  Affects lesson body, quiz questions/options, and explanations. */
  body { --lesson-text-scale: 1; }
  /* Zoom scales the ENTIRE app uniformly — all UI, nav, cards, lessons */
- body.lesson-text-sm  { --lesson-text-scale: 0.92; zoom: 0.92; }
- body.lesson-text-lg  { --lesson-text-scale: 1.15; zoom: 1.15; }
- body.lesson-text-xl  { --lesson-text-scale: 1.35; zoom: 1.35; }
- body.lesson-text-xxl { --lesson-text-scale: 1.60; zoom: 1.60; }
+ /* The ladder used to jump 15% from Medium to Large and 60% at the top, and
+    because `zoom` scales the WHOLE app - nav, cards, everything - one press
+    changed the entire screen at once. The steps are now even and gentler, so
+    Medium -> Large is a nudge rather than a lurch. The top is still large. */
+ body.lesson-text-sm  { --lesson-text-scale: 0.94; zoom: 0.94; }
+ body.lesson-text-lg  { --lesson-text-scale: 1.09; zoom: 1.09; }
+ body.lesson-text-xl  { --lesson-text-scale: 1.22; zoom: 1.22; }
+ body.lesson-text-xxl { --lesson-text-scale: 1.40; zoom: 1.40; }
 
  /* ═══ LESSON TYPOGRAPHY NORMALIZATION ═══
     Lesson bodies written across many sessions had 4000+ inconsistent
     inline font sizes (9px-48px). These rules force uniform typography.
     Intentionally large elements (Korean display chars) are nested spans
-    with their own inline sizes, which these element-level rules don't touch. */
+    with their own inline sizes, which these element-level rules don't touch.
+
+    Sizes are derived from --lesson-fs, which the A- / A+ buttons set. These
+    rules carry !important (they have to, to beat thousands of inline sizes in
+    the lesson text), so while they hard-coded 15px the A- / A+ buttons moved a
+    variable nothing read and appeared to do nothing at all. Every size below is
+    now a ratio of the one base, so one press moves the whole page together. */
  .lesson p,
- .lesson li { font-size: calc(15px * var(--lesson-text-scale, 1)) !important; line-height: 1.68 !important; }
+ .lesson li { font-size: calc(var(--lesson-fs, 15px) * var(--lesson-text-scale, 1)) !important; line-height: 1.68 !important; }
  .lesson td,
- .lesson th { font-size: calc(13.5px * var(--lesson-text-scale, 1)) !important; line-height: 1.55 !important; }
- .lesson h3 { font-size: calc(19px * var(--lesson-text-scale, 1)) !important; line-height: 1.35 !important; }
- .lesson h4 { font-size: calc(16px * var(--lesson-text-scale, 1)) !important; line-height: 1.4 !important; }
+ .lesson th { font-size: calc(var(--lesson-fs, 15px) * 0.9 * var(--lesson-text-scale, 1)) !important; line-height: 1.55 !important; }
+ .lesson h3 { font-size: calc(var(--lesson-fs, 15px) * 1.27 * var(--lesson-text-scale, 1)) !important; line-height: 1.35 !important; }
+ .lesson h4 { font-size: calc(var(--lesson-fs, 15px) * 1.07 * var(--lesson-text-scale, 1)) !important; line-height: 1.4 !important; }
  .lesson .callout p,
- .lesson .callout li { font-size: calc(14px * var(--lesson-text-scale, 1)) !important; }
- .lesson .callout-label { font-size: calc(11.5px * var(--lesson-text-scale, 1)) !important; }
+ .lesson .callout li { font-size: calc(var(--lesson-fs, 15px) * 0.93 * var(--lesson-text-scale, 1)) !important; }
+ .lesson .callout-label { font-size: calc(var(--lesson-fs, 15px) * 0.77 * var(--lesson-text-scale, 1)) !important; }
  .lesson pre,
- .lesson pre code { font-size: calc(12.5px * var(--lesson-text-scale, 1)) !important; line-height: 1.6 !important; }
- .lesson p code, .lesson li code, .lesson td code { font-size: calc(13px * var(--lesson-text-scale, 1)) !important; }
+ .lesson pre code { font-size: calc(var(--lesson-fs, 15px) * 0.83 * var(--lesson-text-scale, 1)) !important; line-height: 1.6 !important; }
+ .lesson p code, .lesson li code, .lesson td code { font-size: calc(var(--lesson-fs, 15px) * 0.87 * var(--lesson-text-scale, 1)) !important; }
+
+ /* ═══ DESKTOP TEXT WEIGHT ═══
+    -webkit-font-smoothing:antialiased (set on body) turns OFF subpixel
+    rendering. On a desktop that makes every glyph render thinner and paler -
+    "the text is really light on desktops". On iOS it changes nothing, because
+    grayscale is the only mode there. So it cost contrast on the desktop and
+    bought nothing anywhere: wherever there is a mouse, the platform default is
+    restored. */
+ @media (pointer: fine) {
+   body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
+ }
+ /* And a switch for when that still is not enough - or for a screen where the
+    property does nothing at all, as on Windows. */
+ body.text-bolder { font-weight: 500; }
+ /* Lesson prose already sits at 500, so the switch has to go past it to mean
+    anything - 600 is a real step up without turning the page into headings. */
+ body.text-bolder .lesson p,
+ body.text-bolder .lesson li,
+ body.text-bolder .lesson td,
+ body.text-bolder .lesson .callout p,
+ body.text-bolder .lesson .callout li,
+ body.text-bolder .quiz-q,
+ body.text-bolder .quiz-option,
+ body.text-bolder .lesson-body { font-weight: 600 !important; }
 
  /* ============ FONT FAMILY OPTIONS ============
     User picks in Settings ⚙ → Font. Applied via data-font attribute on <html>.
@@ -15272,6 +15306,10 @@ function renderThemePicker() {
  <span data-size-label style="font-size:13px; color:var(--text-2); min-width:54px; text-align:center;"></span>
  <button class="read-size-btn" data-size-step="0.5">A+</button>
  </div>
+ <label style="display:flex; align-items:center; gap:9px; margin-top:14px; cursor:pointer; font-size:13px; color:var(--text-2);">
+ <input type="checkbox" data-bolder style="width:18px; height:18px; accent-color:var(--accent); cursor:pointer;">
+ <span>Bolder text <span style="color:var(--text-4);">— if it looks too faint</span></span>
+ </label>
  <div data-build-line style="margin-top:16px; text-align:center; font-size:11px; color:var(--text-5); cursor:pointer;">Build v3.1 · Jun 11 2026 · tap for diagnostics</div>
  </div>
  `;
@@ -15297,6 +15335,15 @@ function renderThemePicker() {
  _syncFonts();
  });
  });
+ const _bolder = sheet.querySelector('[data-bolder]');
+ if (_bolder) {
+ _bolder.checked = !!store.textBolder;
+ _bolder.addEventListener('change', function(){
+ store.textBolder = !!_bolder.checked;
+ saveStore();
+ document.body.classList.toggle('text-bolder', store.textBolder);
+ });
+ }
  const _sizeLabel = sheet.querySelector('[data-size-label]');
  const _syncSize = function(){ if (_sizeLabel) _sizeLabel.textContent = (store.lessonFs || 15.5) + 'px'; };
  _syncSize();
@@ -15304,7 +15351,7 @@ function renderThemePicker() {
  b.addEventListener('click', function(){
  const step = parseFloat(b.getAttribute('data-size-step'));
  let v = (store.lessonFs || 15.5) + step;
- v = Math.max(13, Math.min(19, v));
+ v = Math.max(12.5, Math.min(22, v));
  store.lessonFs = v;
  saveStore();
  if (typeof applyReadingPrefs === 'function') applyReadingPrefs();
@@ -22561,6 +22608,8 @@ function showMoreSheet() {
 function applyLessonTextSize() {
  const cls = ['lesson-text-sm', 'lesson-text-lg', 'lesson-text-xl', 'lesson-text-xxl'];
  document.body.classList.remove(...cls);
+ // Heavier text, for a screen where the default renders too pale to read.
+ document.body.classList.toggle('text-bolder', !!store.textBolder);
  const v = store.lessonTextScale;
  if (v === 'sm') document.body.classList.add('lesson-text-sm');
  else if (v === 'lg') document.body.classList.add('lesson-text-lg');
