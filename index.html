@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.492">
+<meta name="app-build" content="18.493">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -57569,11 +57569,29 @@ function mirrorWrite(){
     // thing failing on her device, reading back the stale blob would mirror
     // yesterday's data forever - the mirror must be independent of the very
     // layer it exists to protect.
+    // If the store was packed within the last couple of seconds (the smooth
+    // save keeps window.__lastPacked), reuse that exact blob instead of paying
+    // for a second full compression of the same data on the main thread. Both
+    // paths pack the in-memory store, so the freshness check is the only
+    // difference - and past 2.5s it packs itself, exactly as before.
+    var raw = null;
+    try {
+      var lp = window.__lastPacked;
+      if (lp && lp.blob && (Date.now() - lp.at) < 2500) raw = lp.blob;
+    } catch (e) {}
+    function put(r2){
+      if (!r2) return Promise.resolve();
+      var rec = { data: r2, at: Date.now(), build: (document.querySelector('meta[name=app-build]')||{}).content || '' };
+      return idb('readwrite', function(os){ os.put(rec, KEY); });
+    }
+    if (raw) return put(raw);
     var serialized = JSON.stringify(store);
-    var raw = (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized;
-    if (!raw) return Promise.resolve();
-    var rec = { data: raw, at: Date.now(), build: (document.querySelector('meta[name=app-build]')||{}).content || '' };
-    return idb('readwrite', function(os){ os.put(rec, KEY); });
+    var syncPack = function(){ return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized; };
+    // Backgrounded: iOS may suspend before a worker round-trip completes, and
+    // this mirror is the safety net - pack synchronously (nothing visible to
+    // jank). Foreground: compress in the worker, off the main thread.
+    if (document.visibilityState === 'hidden' || typeof window.__packAsync !== 'function') return put(syncPack());
+    return window.__packAsync(serialized).then(function(p){ return put(p || syncPack()); });
   } catch (e) { return Promise.resolve(); }
 }
 function mirrorRead(){
@@ -57855,7 +57873,16 @@ function pull(){
 function push(){
   var c = cfg();
   if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
-  var data = pack(snapshot());
+  // The snapshot (store + every page of ink) is the biggest thing this app
+  // ever compresses; doing it on the main thread was a guaranteed stall.
+  // Worker when the app is visible, synchronous only when backgrounded.
+  var snapStr;
+  try { snapStr = JSON.stringify(snapshot()); } catch (e) { return Promise.reject(new Error('Could not prepare the data on this device.')); }
+  var syncPack = function(){ return (typeof LZString !== 'undefined' && LZString.compressToBase64) ? LZString.compressToBase64(snapStr) : null; };
+  var packed = (document.visibilityState !== 'hidden' && typeof window.__packAsync === 'function')
+    ? window.__packAsync(snapStr, 'compressToBase64').then(function(p){ return p || syncPack(); })
+    : Promise.resolve(syncPack());
+  return packed.then(function(data){
   if (!data) return Promise.reject(new Error('Could not prepare the data on this device.'));
   if (data.length > MAX) return Promise.reject(new Error('This device holds more than the sync can carry (' + Math.round(data.length / 1e6) + 'MB). Clearing old handwriting would bring it under.'));
   return fetch(EP + '?k=' + encodeURIComponent(c.hash), {
@@ -57864,6 +57891,7 @@ function push(){
     body: JSON.stringify({ data: data, device: c.label || '' })
   }).then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ('server said ' + r.status)); return j; }); })
     .then(function(j){ var cc = cfg() || {}; cc.lastPush = Date.now(); setCfg(cc); return j; });
+  });
 }
 
 // The pair, in the only safe order: take what the other device has, then send
@@ -58961,6 +58989,154 @@ if (typeof render === 'function' && !render.__dashV1) {
 }
 inject();
 window.__dashInject = inject;
+})();
+
+
+(function storeSmoothSaveV2(){
+/* THE COMPRESS STALLS - the breadcrumbs finally named it.
+ *
+ * Her freeze trails are full of one tag: compress. LZString packing the
+ * whole store - 200KB and growing - on the MAIN THREAD, 130-290ms a time
+ * (once 1,089ms), every few seconds while she studies. That is saveStore():
+ * every answered question, every timer tick that touches the store,
+ * recompresses everything, synchronously.
+ *
+ * The cure already exists in this file: 18.271 built a Web Worker that
+ * compresses off-thread - but wired it to the PEN path only. Every other
+ * save still paid full price. This routes the one choke point everything
+ * shares, _persistStore, through the same design:
+ *
+ *   - saves COALESCE: however many land in a burst, one pack runs, ~700ms
+ *     after the last (the main thread only does JSON.stringify, a few ms)
+ *   - the COMPRESSION runs in the worker; the result is written to
+ *     localStorage on arrival and stashed as window.__lastPacked, which the
+ *     fortress mirror reuses instead of compressing a second time
+ *   - backgrounding flushes SYNCHRONOUSLY, so closing the app still cannot
+ *     lose the last answer; and the fortress IndexedDB mirror stays the
+ *     second line of defence it always was
+ *   - if the worker cannot be built, saves still coalesce (at most one sync
+ *     pack per 1.5s) - strictly better than one per save
+ *   - a full localStorage write still falls back to the original machinery,
+ *     which trims history and tells her
+ *
+ * Nothing about WHAT is saved changes - same key, same format, read by the
+ * same loader.
+ */
+if (typeof window === 'undefined') return;
+if (window.__smoothStore) return; window.__smoothStore = true;
+try {
+if (typeof _persistStore !== 'function' || typeof store === 'undefined') return;
+
+var _orig = _persistStore;
+
+// -- worker, built from the page's own lz-string tag (same trick as 18.271) --
+var worker = null, jobs = {}, jobId = 0;
+try {
+  var src = null;
+  var tags = document.getElementsByTagName('script');
+  for (var i = 0; i < tags.length; i++) {
+    var t = tags[i];
+    if (!t.src && t.textContent && t.textContent.indexOf('lz-string') !== -1 &&
+        t.textContent.indexOf('compressToUTF16') !== -1 && t.textContent.length < 200000) { src = t.textContent; break; }
+  }
+  if (src && window.Worker && window.Blob && window.URL && URL.createObjectURL) {
+    var code = src + '\nself.onmessage=function(ev){var d=ev.data||{};try{self.postMessage({id:d.id,packed:LZString[d.m||"compressToUTF16"](d.s)});}catch(e){self.postMessage({id:d.id,error:String(e&&e.message||e)});}};';
+    worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+    worker.onmessage = function(ev){
+      var d = ev.data || {}, cb = jobs[d.id];
+      delete jobs[d.id];
+      if (cb) cb(d.packed || null);
+    };
+    worker.onerror = function(){ try { worker.terminate(); } catch (e) {} worker = null; };
+  }
+} catch (e) { worker = null; }
+
+// Shared off-thread compression for the OTHER packers - the fortress mirror
+// and device sync were each recompressing everything on the main thread on
+// their own schedules; her stall trails were full of exactly that. Resolves
+// null when the worker is unavailable so callers keep their sync fallback.
+window.__packAsync = function(s, method){
+  return new Promise(function(res){
+    if (!worker) { res(null); return; }
+    var id = ++jobId;
+    jobs[id] = function(packed){ res(packed || null); };
+    try { worker.postMessage({ id: id, s: s, m: method || 'compressToUTF16' }); }
+    catch (e) { delete jobs[id]; res(null); }
+  });
+};
+
+var timer = null, dirty = false, busy = false, lastSync = 0, gen = 0;
+
+function heal(){
+  _dbg.heals++;
+  try { _dbg.healLen = JSON.stringify(store).length; } catch (e) {}
+  // The original quota machinery, without recursing into the wrapper.
+  try { _orig(); dirty = false; return true; } catch (e) {
+    try {
+      if (typeof _freeStorageSpace === 'function') _freeStorageSpace();
+      _orig(); dirty = false;
+      try { if (typeof toast === 'function') toast('Storage was full — trimmed old history and saved ✓', 5000); } catch (e2) {}
+      return true;
+    } catch (e3) { return false; }
+  }
+}
+
+function flushSync(){
+  _dbg.flushes++;
+  if (!dirty && !busy) return;
+  gen++;                     // invalidate any in-flight worker result: it was
+  busy = false;              // packed BEFORE this flush and must not overwrite it
+  if (heal()) {
+    try { window.__lastPacked = { blob: localStorage.getItem(STORE_KEY), at: Date.now() }; } catch (e) {}
+  }
+}
+
+function run(){
+  timer = null;
+  if (!dirty) return;
+  if (busy) { schedule(); return; }
+  if (!worker) {
+    // no worker: still coalesced - at most one synchronous pack per 1.5s
+    var now = Date.now();
+    if (now - lastSync < 1500) { schedule(); return; }
+    lastSync = now;
+    heal();
+    return;
+  }
+  var s;
+  try { s = JSON.stringify(store); } catch (e) { heal(); return; }
+  dirty = false; busy = true;
+  var id = ++jobId, g = gen;
+  jobs[id] = function(packed){
+    busy = false;
+    if (g !== gen) { if (dirty) schedule(); return; }   // superseded by a sync flush
+    if (!packed) { dirty = true; worker = null; schedule(); return; }
+    try {
+      localStorage.setItem(STORE_KEY, packed);
+      window.__lastPacked = { blob: packed, at: Date.now() };
+      try { if (typeof cloudSyncSoon === 'function') cloudSyncSoon(); } catch (e) {}
+    } catch (e) { dirty = true; heal(); }
+    if (dirty) schedule();
+  };
+  try { worker.postMessage({ id: id, s: s }); }
+  catch (e) { delete jobs[id]; busy = false; dirty = true; worker = null; schedule(); }
+}
+function schedule(){ if (!timer) timer = setTimeout(run, 700); }
+
+var _dbg = { wrapperCalls: 0, flushes: 0, heals: 0, healLen: 0 };
+_persistStore = function(){
+  _dbg.wrapperCalls++;
+  dirty = true;
+  if (document.visibilityState === 'hidden') { flushSync(); return; }
+  schedule();
+};
+window.__smoothDbg = function(){ return _dbg; };
+
+window.addEventListener('pagehide', flushSync);
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flushSync(); });
+window.__smoothStoreState = function(){ return { worker: !!worker, dirty: dirty, busy: busy, lastPackedAgoMs: window.__lastPacked ? Date.now() - window.__lastPacked.at : null }; };
+try { if (window.console) console.log('[store smooth save v2] ready — worker:', !!worker); } catch (e) {}
+} catch (e) { if (window.console && console.warn) console.warn('store smooth save v2 failed:', e); }
 })();
 
 </script>
