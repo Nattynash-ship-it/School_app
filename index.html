@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.488">
+<meta name="app-build" content="18.489">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -54928,6 +54928,15 @@ function snapshot(kind, ms){
   try { s.ink = (typeof window.__inkKeys === 'function') ? window.__inkKeys().length : -1; } catch (e) {}
   try { s.str = (typeof ganno !== 'undefined' && ganno && ganno.routeKey) ? (gannoGetStrokes(ganno.routeKey) || []).length : 0; } catch (e) {}
   try { s.stKB = Math.round((localStorage.getItem(STORE_KEY) || '').length / 1024); } catch (e) {}
+  // What was actually running. An empty trail is a real answer too: nothing of
+  // ours was working, so the pause belongs to iOS rather than to the app.
+  try { if (window.__bcTrail) s.bc = window.__bcTrail(); } catch (e) {}
+  try { if (window.__bcBusy) { var b = window.__bcBusy(); if (b.length) s.busy = b; } } catch (e) {}
+  try {
+    var v = window.__bcVis;
+    if (v && v.last) s.visAgoMs = Date.now() - v.last;
+    if (v) s.vis = v.state;
+  } catch (e) {}
   return s;
 }
 function record(kind, ms){
@@ -58448,6 +58457,115 @@ try {
 } catch (e) {}
 inject();
 window.__eli5Inject = inject;
+})();
+
+
+(function stallBreadcrumbs(){
+/* WHAT WAS THE APP DOING WHEN IT FROZE?
+ *
+ * Her report shows the freezes plainly - 36 of them, median 816ms, one of 21
+ * seconds - but every one is labelled "drift", which only means "the clock
+ * jumped". It does not say what ran. Reproducing them here fails: on this
+ * hardware gannoRender is 1-2ms flat even at 300 strokes, the ink index is
+ * stable across navigation, and a section change with ink costs ~30ms. So the
+ * cost lives somewhere this machine cannot show, and guessing at it from a
+ * desktop wastes her study time.
+ *
+ * So every heavy operation now leaves a breadcrumb when it takes 40ms or
+ * more, and a freeze record carries the last few plus anything still running.
+ * The next report either names the culprit outright, or shows an empty trail -
+ * which is itself the answer: nothing of ours was running, and the pause
+ * belongs to iOS (paint, GC, storage, or the app being pushed aside).
+ *
+ * Deliberately cheap: two timestamps and a comparison per call, a 20-entry
+ * ring, nothing written to storage until a freeze is actually recorded.
+ */
+if (typeof window === 'undefined') return;
+if (window.__bcInit) return; window.__bcInit = true;
+
+var MAX = 20, MIN_MS = 40;
+var ring = [], inflight = Object.create(null), worst = Object.create(null);
+
+function mark(tag, ms){
+  ring.push({ tag: tag, ms: Math.round(ms), ago: 0, _t: Date.now() });
+  if (ring.length > MAX) ring.shift();
+  if (!(worst[tag] >= ms)) worst[tag] = Math.round(ms);
+}
+window.__bcTrail = function(){
+  var now = Date.now();
+  return ring.slice(-8).map(function(e){ return { tag: e.tag, ms: e.ms, agoMs: now - e._t }; });
+};
+window.__bcBusy = function(){ var o = []; for (var k in inflight) o.push(k); return o; };
+window.__bcWorst = function(){ return worst; };
+
+function timed(name, get, set){
+  try {
+    var fn = get();
+    if (typeof fn !== 'function') return false;
+    set(function(){
+      inflight[name] = 1;
+      var t0 = (performance && performance.now) ? performance.now() : Date.now();
+      try { return fn.apply(this, arguments); }
+      finally {
+        var d = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
+        delete inflight[name];
+        if (d >= MIN_MS) mark(name, d);
+      }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+var wired = {};
+function wireAll(){
+  if (!wired.render)      wired.render      = timed('render',      function(){ return (typeof render === 'function') ? render : null; },      function(f){ render = f; });
+  if (!wired.gannoRender) wired.gannoRender = timed('gannoRender', function(){ return (typeof gannoRender === 'function') ? gannoRender : null; }, function(f){ gannoRender = f; window.gannoRender = f; });
+  if (!wired.saveStore)   wired.saveStore   = timed('saveStore',   function(){ return (typeof saveStore === 'function') ? saveStore : null; },   function(f){ saveStore = f; });
+  if (!wired.getLesson)   wired.getLesson   = timed('getLesson',   function(){ return (typeof getLesson === 'function') ? getLesson : null; },   function(f){ getLesson = f; });
+  if (!wired.getQuestions)wired.getQuestions= timed('getQuestions',function(){ return (typeof getQuestions === 'function') ? getQuestions : null; }, function(f){ getQuestions = f; });
+  // The two that are synchronous, unavoidable, and grow with her data.
+  if (!wired.lzC && window.LZString && LZString.compressToUTF16) {
+    wired.lzC = timed('compress', function(){ return LZString.compressToUTF16; }, function(f){ LZString.compressToUTF16 = f; });
+  }
+  if (!wired.lzD && window.LZString && LZString.decompressFromUTF16) {
+    wired.lzD = timed('decompress', function(){ return LZString.decompressFromUTF16; }, function(f){ LZString.decompressFromUTF16 = f; });
+  }
+}
+wireAll();
+// Several of these are replaced by later modules, so re-wrap on the shared
+// heartbeat until each one is ours.
+try {
+  (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
+    var all = wired.render && wired.gannoRender && wired.saveStore && wired.getLesson && wired.getQuestions && wired.lzC;
+    if (!all) wireAll();
+  }, 5, 'always');
+} catch (e) {}
+
+// localStorage.setItem is synchronous and is the classic multi-second stall on
+// iOS once a value gets big. Timed by key so a slow write names itself.
+try {
+  var _set = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(k, v){
+    var t0 = (performance && performance.now) ? performance.now() : Date.now();
+    try { return _set.apply(this, arguments); }
+    finally {
+      var d = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
+      if (d >= MIN_MS) {
+        var kb = 0; try { kb = Math.round(String(v == null ? '' : v).length / 1024); } catch (e) {}
+        mark('write:' + String(k).slice(0, 18) + '(' + kb + 'KB)', d);
+      }
+    }
+  };
+} catch (e) {}
+
+// Backgrounding is not a freeze; knowing one happened near a stall separates
+// "the app hung" from "iPadOS put it aside".
+window.__bcVis = { last: 0, state: (typeof document !== 'undefined') ? document.visibilityState : '?' };
+try {
+  document.addEventListener('visibilitychange', function(){
+    window.__bcVis = { last: Date.now(), state: document.visibilityState };
+  });
+} catch (e) {}
 })();
 
 </script>
