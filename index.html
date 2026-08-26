@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.490">
+<meta name="app-build" content="18.491">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -58566,6 +58566,153 @@ try {
     window.__bcVis = { last: Date.now(), state: document.visibilityState };
   });
 } catch (e) {}
+})();
+
+
+(function flashcardFit(){
+/* "The flash cards are not aligned in their box."
+ *
+ * Two faults, and the first one causes the second.
+ *
+ * 1. CARDS BUILT FROM RICH QUESTIONS SHOWED THEIR MARKUP. A question that
+ *    draws a truth table is HTML - a 40-cell <table>. Turned into a flashcard
+ *    the text is escaped for safety, so instead of the table she got 5,757
+ *    characters of literal <td style="..."> gibberish. Measured across her
+ *    decks: 174 cards carry markup like this (C959 33, D286 91, D684 50).
+ *
+ * 2. THE BOX COULD NOT CONTAIN IT. Each face is absolutely positioned at
+ *    inset:0 inside a fixed-height card, so content can never make the card
+ *    grow, and nothing clipped or scrolled it. That 5,757-character front
+ *    rendered 3,013px tall inside a 300px card - spilling ~1,340px above and
+ *    below the rounded border and straight over the rating buttons.
+ *
+ * So: the markup is converted to readable text (a table becomes real rows,
+ * <br> and block ends become line breaks), and the box is made able to hold
+ * whatever is left - it grows for long cards, steps the type down, and
+ * scrolls inside its own border rather than spilling outside it.
+ */
+if (typeof document === 'undefined') return;
+if (window.__fcFit) return; window.__fcFit = true;
+
+var css = document.createElement('style');
+css.textContent = [
+  /* cleaned text carries real line breaks now */
+  '.knowt-text { white-space: pre-wrap; }',
+  /* a long card gets more room, then scrolls INSIDE its border */
+  '.knowt-card.fc-long { min-height: 430px !important; }',
+  '.knowt-face.fc-scroll { overflow-y: auto; overscroll-behavior: contain;',
+  '  -webkit-overflow-scrolling: touch; justify-content: flex-start; }',
+  /* centring a scrolling flex column can clip its own top - once it scrolls,',
+     it starts at the top instead */
+  '.knowt-face.fc-scroll .knowt-hint { position: static; margin-top: 14px; }',
+  /* step the type down rather than letting a wall of text set the size */
+  '.knowt-text.fc-sm { font-size: 17px !important; line-height: 1.4 !important; }',
+  '.knowt-text.fc-xs { font-size: 14.5px !important; line-height: 1.38 !important; }',
+  '.knowt-text.fc-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;',
+  '  font-size: 13px !important; line-height: 1.35 !important; text-align: left; }'
+].join('\n');
+document.head.appendChild(css);
+
+// ---- markup -> readable text -------------------------------------------
+// Parsed with DOMParser rather than innerHTML: nothing is fetched and nothing
+// executes, and the text comes out the same.
+function toText(s){
+  if (typeof s !== 'string' || s.indexOf('<') < 0) return s;
+  var h = s
+    .replace(/<\s*(br|hr)\s*\/?\s*>/gi, '\n')
+    .replace(/<\/\s*(td|th)\s*>/gi, '\t')
+    .replace(/<\/\s*(tr|div|p|pre|li|table|h[1-6])\s*>/gi, '\n');
+  var body = null;
+  try { body = new DOMParser().parseFromString(h, 'text/html').body; } catch (e) {}
+  var t = body ? (body.textContent || '') : s.replace(/<[^>]+>/g, ' ');
+  return t.replace(/ /g, ' ')
+          .split('\n').map(function(l){ return l.replace(/[ \t]+$/, '').replace(/\t/g, '  '); })
+          .join('\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/^\s+|\s+$/g, '');
+}
+window.__fcToText = toText;
+
+// One choke point: every mode builds its cards here.
+try {
+  if (typeof buildKnowtCards === 'function' && !buildKnowtCards.__fcFit) {
+    var _build = buildKnowtCards;
+    buildKnowtCards = function(){
+      var cards = _build.apply(this, arguments) || [];
+      try {
+        return cards.map(function(c){
+          if (!c) return c;
+          var o = {};
+          for (var k in c) o[k] = c[k];
+          if (typeof o.front === 'string')  o.front  = toText(o.front);
+          if (typeof o.back === 'string')   o.back   = toText(o.back);
+          if (typeof o.answer === 'string') o.answer = toText(o.answer);
+          return o;
+        });
+      } catch (e) { return cards; }
+    };
+    buildKnowtCards.__fcFit = true;
+  }
+} catch (e) {}
+
+// ---- make the box hold what is left ------------------------------------
+function fit(){
+  try {
+    var card = document.querySelector('.knowt-card');
+    if (!card) return;
+    var faces = card.querySelectorAll('.knowt-face');
+    var anyLong = false;
+    for (var i = 0; i < faces.length; i++) {
+      var face = faces[i];
+      var t = face.querySelector('.knowt-text');
+      if (!t) continue;
+      var s = t.textContent || '';
+      t.classList.remove('fc-sm', 'fc-xs', 'fc-mono');
+      // Code and truth tables only read correctly left-aligned in a fixed
+      // pitch: centred Java is unreadable, and a centred table loses its
+      // columns. Anything that arrives as several lines is treated that way.
+      var lines = s.split('\n').length;
+      if (lines >= 4) t.classList.add('fc-mono');
+      else if (s.length > 600) t.classList.add('fc-xs');
+      else if (s.length > 260) t.classList.add('fc-sm');
+      face.classList.remove('fc-scroll');
+      if (face.scrollHeight > face.clientHeight + 1) anyLong = true;
+    }
+    card.classList.toggle('fc-long', anyLong);
+
+    // Grow the card to the tallest face rather than making her scroll inside a
+    // card she is about to flip. Capped at ~62% of the screen so the rating
+    // buttons are always reachable without scrolling the page.
+    card.style.minHeight = '';
+    if (anyLong) {
+      var need = 0;
+      for (var j = 0; j < faces.length; j++) need = Math.max(need, faces[j].scrollHeight);
+      var cap = Math.round((window.innerHeight || 800) * 0.62);
+      var h = Math.min(need + 4, cap);
+      if (h > 300) card.style.setProperty('min-height', h + 'px', 'important');
+    }
+    // Only what STILL does not fit scrolls, inside its own border.
+    for (var k2 = 0; k2 < faces.length; k2++) {
+      var f2 = faces[k2];
+      if (f2.scrollHeight > f2.clientHeight + 1) f2.classList.add('fc-scroll');
+      else f2.classList.remove('fc-scroll');
+    }
+  } catch (e) {}
+}
+window.__fcFitNow = fit;
+
+if (typeof render === 'function' && !render.__fcFit) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { fit(); setTimeout(fit, 60); } catch (e) {}
+    return out;
+  };
+  render.__fcFit = true;
+}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
+  if (document.querySelector('.knowt-card')) fit();
+}, 2, 'ui'); } catch (e) {}
 })();
 
 </script>
