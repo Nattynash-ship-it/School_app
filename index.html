@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.491">
+<meta name="app-build" content="18.492">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -1686,8 +1686,14 @@
     grayscale is the only mode there. So it cost contrast on the desktop and
     bought nothing anywhere: wherever there is a mouse, the platform default is
     restored. */
+    An iPad with a trackpad or Magic Keyboard also reports pointer:fine, so
+    this rule reached her iPad and changed how iOS rasterises every glyph -
+    which is not what it was for, and is the one thing that changed about text
+    rendering before "the words are doubling over". iOS is excluded by name:
+    the tablet goes back to exactly the rendering it had, and only real
+    desktops get the darker text. */
  @media (pointer: fine) {
-   body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
+   html:not(.is-ios) body { -webkit-font-smoothing: auto; -moz-osx-font-smoothing: auto; }
  }
  /* And a switch for when that still is not enough - or for a screen where the
     property does nothing at all, as on Windows. */
@@ -5737,6 +5743,17 @@ body.nav-collapsed .dash-wrap { grid-template-columns: 1fr !important; }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+/* iOS/iPadOS is marked before anything paints so the desktop-only text
+   rendering rule can exclude it. Reported pointer type is not enough: an iPad
+   with a trackpad reports a fine pointer just like a laptop. */
+(function(){try{
+  var ua = navigator.userAgent || '';
+  var ios = /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+  if (ios) document.documentElement.classList.add('is-ios');
+}catch(e){}})();
+</script>
 </head>
 <body>
 <div id="app"></div>
@@ -58713,6 +58730,237 @@ if (typeof render === 'function' && !render.__fcFit) {
 try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(function(){
   if (document.querySelector('.knowt-card')) fit();
 }, 2, 'ui'); } catch (e) {}
+})();
+
+
+(function dashboardV1(){
+/* "Please take elements from this image and create it on my app."
+ *
+ * From the StudySpace mock-up, the elements that fit HER data - built on what
+ * the app already tracks, not invented:
+ *   - a greeting with the time of day and a rotating study quote
+ *   - the study-streak card with the M..S week row ticked from her real
+ *     session days, plus current and best streak
+ *   - a quick-actions row: continue where she left off, practice test,
+ *     flashcards, weak spots
+ *   - "Upcoming" tasks driven by her saved exam dates, worst-first
+ *   - "Jump back in" cards: the last sections she actually studied
+ * Left out on purpose: Today's Schedule (the app has no class timetable) and
+ * anything else with no real data behind it - an empty widget is clutter.
+ * Everything uses theme variables, so all her themes and dark mode hold.
+ */
+if (typeof document === 'undefined') return;
+if (window.__dashV1) return; window.__dashV1 = true;
+
+var css = document.createElement('style');
+css.textContent = [
+'.dash { margin: 0 0 18px; }',
+'.dash-hello { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; margin: 2px 0 3px; }',
+'.dash-quote { font-size: 13px; color: var(--text-3); margin: 0 0 14px; font-style: italic; }',
+'.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }',
+'.dash-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px;',
+'  padding: 14px 16px; box-shadow: var(--shadow-card, none); }',
+'.dash-h { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800;',
+'  letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin: 0 0 10px; }',
+'.dash-streak-n { font-size: 30px; font-weight: 800; line-height: 1; }',
+'.dash-streak-n small { font-size: 14px; font-weight: 650; color: var(--text-3); }',
+'.dash-best { font-size: 11.5px; color: var(--text-4); margin-top: 3px; }',
+'.dash-week { display: flex; gap: 7px; margin-top: 11px; }',
+'.dash-day { flex: 1; text-align: center; }',
+'.dash-day-l { font-size: 10px; font-weight: 700; color: var(--text-4); margin-bottom: 4px; }',
+'.dash-day-c { width: 22px; height: 22px; margin: 0 auto; border-radius: 50%; border: 1.5px solid var(--border);',
+'  display: flex; align-items: center; justify-content: center; font-size: 12px; color: transparent; }',
+'.dash-day-c.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }',
+'.dash-day-c.today { border-color: var(--accent); border-style: dashed; }',
+'.dash-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }',
+'.dash-act { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-radius: 12px;',
+'  border: 1.5px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer;',
+'  font-size: 12.5px; font-weight: 700; text-align: left; }',
+'.dash-act:active { transform: scale(0.98); }',
+'.dash-act.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }',
+'.dash-task { display: flex; align-items: baseline; gap: 9px; padding: 8px 0; border-top: 1px solid var(--border); }',
+'.dash-task:first-of-type { border-top: none; padding-top: 2px; }',
+'.dash-task-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 650; }',
+'.dash-task-sub { font-size: 11px; color: var(--text-4); }',
+'.dash-due { font-size: 11.5px; font-weight: 800; white-space: nowrap; }',
+'.dash-recent { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }',
+'.dash-note { border: 1.5px solid var(--border); border-radius: 14px; padding: 12px 14px;',
+'  background: var(--surface-2); cursor: pointer; }',
+'.dash-note:active { transform: scale(0.99); }',
+'.dash-note-course { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800;',
+'  letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; }',
+'.dash-note-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }',
+'.dash-note-title { font-size: 13.5px; font-weight: 700; line-height: 1.35; }',
+'.dash-note-sub { font-size: 11.5px; color: var(--text-4); margin-top: 4px; }'
+].join('\n');
+document.head.appendChild(css);
+
+var QUOTES = [
+  'Small steps every day lead to big results.',
+  'The exam is a performance; practice is the rehearsal.',
+  'You don’t have to be perfect today — just show up.',
+  'Recall beats re-reading. Test yourself.',
+  'One section at a time is exactly fast enough.',
+  'Future you is watching — make her proud.'
+];
+
+function greeting(){
+  var h = new Date().getHours();
+  return h < 5 ? 'Burning the midnight oil' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+function esc2(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+
+function studiedDays(){
+  var days = Object.create(null);
+  try { (store.sessions || []).forEach(function(s){ if (s && s.dayStamp) days[s.dayStamp] = 1; }); } catch (e) {}
+  try { (store.quizHistory || []).forEach(function(h){ if (h && h.ts) days[new Date(h.ts).toDateString()] = 1; }); } catch (e) {}
+  return days;
+}
+function weekRow(){
+  var days = studiedDays();
+  var now = new Date();
+  var mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday of this week
+  var out = '';
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(mon); d.setDate(mon.getDate() + i);
+    var on = !!days[d.toDateString()];
+    var isToday = d.toDateString() === now.toDateString();
+    out += '<div class="dash-day"><div class="dash-day-l">' + 'MTWTFSS'[i] + '</div>' +
+      '<div class="dash-day-c' + (on ? ' on' : '') + (isToday && !on ? ' today' : '') + '">✓</div></div>';
+  }
+  return out;
+}
+
+function lastStudied(){
+  var seen = Object.create(null), out = [];
+  try {
+    var h = store.quizHistory || [];
+    for (var i = h.length - 1; i >= 0 && out.length < 4; i--) {
+      var e = h[i];
+      if (!e || !e.courseId || !e.chId || !e.secId) continue;
+      if (/_sim$|_drill|review_missed/.test(e.chId)) continue;
+      var k = e.courseId + '/' + e.chId + '/' + e.secId;
+      if (seen[k]) continue; seen[k] = 1;
+      var c = COURSES[e.courseId]; if (!c) continue;
+      var ch = (c.chapters || []).find(function(x){ return x.id === e.chId; });
+      var sec = ch && (ch.sections || []).find(function(x){ return x.id === e.secId; });
+      if (!ch || !sec) continue;
+      out.push({ courseId: e.courseId, code: c.code || e.courseId, chId: e.chId, secId: e.secId,
+                 title: sec.title || e.secId, chapter: ch.title || e.chId, when: e.ts });
+    }
+  } catch (e) {}
+  return out;
+}
+function ago2(ts){
+  if (!ts) return '';
+  var d = Math.round((Date.now() - ts) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
+}
+
+function tasks(){
+  var out = [];
+  try {
+    Object.keys(store.testPrep || {}).forEach(function(cid){
+      var p = store.testPrep[cid];
+      if (!p || !p.examDate) return;
+      var days = Math.ceil((new Date(p.examDate + 'T12:00:00') - new Date()) / 86400000);
+      if (days < 0) return;
+      var c = COURSES[cid];
+      out.push({ name: (c ? (c.code || cid) : cid) + ' ' + (p.examType || 'exam'),
+                 sub: c ? c.name : '', days: days, date: p.examDate });
+    });
+  } catch (e) {}
+  out.sort(function(a, b){ return a.days - b.days; });
+  return out.slice(0, 4);
+}
+
+function build(){
+  var streak = (typeof currentStreak === 'function') ? currentStreak() : 0;
+  var best = 0; try { best = Math.max(streak, (store.streak && (store.streak.best || store.streak.longest)) || 0); } catch (e) {}
+  var recents = lastStudied();
+  var tk = tasks();
+  var q = QUOTES[new Date().getDate() % QUOTES.length];
+  var cont = recents[0];
+
+  var el = document.createElement('div');
+  el.className = 'dash';
+  el.setAttribute('data-dash', '1');
+  el.innerHTML =
+    '<div class="dash-hello">' + greeting() + ', Natasha! 👋</div>' +
+    '<div class="dash-quote">“' + q + '”</div>' +
+    '<div class="dash-grid">' +
+
+    '<div class="dash-card"><div class="dash-h">🔥 Study streak</div>' +
+    '<div class="dash-streak-n">' + streak + ' <small>day' + (streak === 1 ? '' : 's') + '</small></div>' +
+    (best > streak ? '<div class="dash-best">Best: ' + best + ' days</div>' : '<div class="dash-best">Personal best!</div>') +
+    '<div class="dash-week">' + weekRow() + '</div></div>' +
+
+    '<div class="dash-card"><div class="dash-h">⚡ Quick actions</div><div class="dash-acts">' +
+    (cont ? '<button class="dash-act primary" data-dash-go="' + esc2(cont.courseId + '|' + cont.chId + '|' + cont.secId) + '">▶ Continue ' + esc2(cont.code) + '</button>' : '') +
+    '<button class="dash-act" data-dash-act="practice">🎯 Practice test</button>' +
+    '<button class="dash-act" data-dash-act="cards">🃏 Flashcards</button>' +
+    '<button class="dash-act" data-dash-act="weak">🔍 Weak spots</button>' +
+    '</div></div>' +
+
+    (tk.length ?
+      '<div class="dash-card"><div class="dash-h">🗓 Upcoming</div>' +
+      tk.map(function(t){
+        var color = t.days <= 7 ? 'var(--danger, #ef4444)' : t.days <= 14 ? 'var(--warning, #f59e0b)' : 'var(--accent)';
+        var label = t.days === 0 ? 'TODAY' : t.days === 1 ? 'TOMORROW' : 'in ' + t.days + ' days';
+        return '<div class="dash-task"><div class="dash-task-name">' + esc2(t.name) +
+          '<div class="dash-task-sub">' + esc2(t.sub) + '</div></div>' +
+          '<div class="dash-due" style="color:' + color + ';">' + label + '</div></div>';
+      }).join('') + '</div>'
+      : '') +
+
+    '</div>' +
+
+    (recents.length ?
+      '<div class="dash-card" style="margin-top:12px;"><div class="dash-h">📖 Jump back in</div>' +
+      '<div class="dash-recent">' +
+      recents.map(function(r){
+        return '<div class="dash-note" data-dash-go="' + esc2(r.courseId + '|' + r.chId + '|' + r.secId) + '">' +
+          '<div class="dash-note-course"><span class="dash-note-dot"></span>' + esc2(r.code) + '</div>' +
+          '<div class="dash-note-title">' + esc2(r.title) + '</div>' +
+          '<div class="dash-note-sub">' + esc2(r.chapter) + ' · ' + ago2(r.when) + '</div></div>';
+      }).join('') + '</div></div>'
+      : '');
+
+  el.addEventListener('click', function(ev){
+    var g = ev.target.closest && ev.target.closest('[data-dash-go]');
+    if (g) { var p = g.getAttribute('data-dash-go').split('|');
+      go({ name: 'section', courseId: p[0], chId: p[1], secId: p[2] }); return; }
+    var a = ev.target.closest && ev.target.closest('[data-dash-act]');
+    if (!a) return;
+    var act = a.getAttribute('data-dash-act');
+    var cid = (lastStudied()[0] || {}).courseId || 'C959';
+    if (act === 'practice') go({ name: 'section', courseId: cid, chId: 'pa_sim', secId: 'sim' });
+    else if (act === 'cards' && typeof startKnowt === 'function') startKnowt(cid, 'flip');
+    else if (act === 'weak') go({ name: 'section', courseId: cid, chId: 'weak_drill', secId: 'sim' });
+  });
+  return el;
+}
+
+function inject(){
+  try {
+    if (typeof view !== 'object' || !view || view.name !== 'today') return;
+    var root = document.getElementById('app');
+    if (!root || root.querySelector('[data-dash]')) return;
+    var host = root.querySelector('.screen') || root;
+    host.insertBefore(build(), host.firstChild);
+  } catch (e) {}
+}
+if (typeof render === 'function' && !render.__dashV1) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { inject(); setTimeout(inject, 120); } catch (e) {}
+    return out;
+  };
+  render.__dashV1 = true;
+}
+inject();
+window.__dashInject = inject;
 })();
 
 </script>
