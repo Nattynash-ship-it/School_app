@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.507">
+<meta name="app-build" content="18.508">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -25233,6 +25233,32 @@ function showStrategiesSheet(courseId) {
 
  const renderList = (items) => items.map(t => `<li style="margin-bottom: 6px; line-height: 1.5;">${esc(t)}</li>`).join('');
 
+ // Resources that name a YouTube channel, playlist or series become links.
+ // They open a YouTube SEARCH for that name rather than a specific video id:
+ // a search always resolves to the creator's current uploads, so the link
+ // cannot rot the way a hard-coded video link does when a channel re-uploads.
+ const YT_SEARCH = 'https://www.youtube.com/results?search_query=';
+ const ytQuery = (t) => String(t)
+ .split('—')[0]
+ .replace(/\([^)]*\)/g, ' ')
+ .replace(/^\s*YouTube\s*[:\-]?\s*(?:search\s+for|search)?\s*/i, ' ')
+ .replace(/\bon\s+YouTube\b/ig, ' ')
+ .replace(/\bYouTube\b/ig, ' ')
+ // Drop quote marks used as delimiters, but keep the apostrophe inside a
+ // name — "Andrew Ng's" must not search for "Andrew Ng s".
+ .replace(/(^|\s)["'“”‘’]+/g, '$1')
+ .replace(/["'“”‘’]+(?=\s|$)/g, '')
+ .replace(/\s+/g, ' ')
+ .trim();
+ const renderResources = (items) => items.map(t => {
+ const q = /youtube/i.test(t) ? ytQuery(t) : '';
+ if (!q) return `<li style="margin-bottom: 6px; line-height: 1.5;">${esc(t)}</li>`;
+ return `<li style="margin-bottom: 6px; line-height: 1.5;">` +
+ `<a href="${esc(YT_SEARCH + encodeURIComponent(q))}" target="_blank" rel="noopener noreferrer" ` +
+ `style="color:var(--accent); text-decoration:none; border-bottom:1px dotted currentColor;">` +
+ `<span aria-hidden="true">▶</span> ${esc(t)}</a></li>`;
+ }).join('');
+
  sheet.innerHTML = `
  <div class="pomo-card" style="text-align:left; max-width:640px; padding:18px 20px 24px; max-height:90vh; display:flex; flex-direction:column;">
  <button class="pomo-close" data-close>×</button>
@@ -25254,7 +25280,7 @@ function showStrategiesSheet(courseId) {
 
  <h3 style="font-size:14px; color:var(--text); margin:16px 0 8px;">📚 Top resources</h3>
  <ul style="font-size:13px; color:var(--text-2); padding-left:20px; margin:0;">
- ${renderList(s.topResources)}
+ ${renderResources(s.topResources)}
  </ul>
 
  <h3 style="font-size:14px; color:var(--text); margin:18px 0 8px;">✨ Top tips from passers</h3>
@@ -34539,8 +34565,21 @@ function showLockSheet(courseId, chId, secId) {
     if (!data || !data.data) return { merged: false, empty: true };
     const incoming = unpack(data.data);
     if (!incoming) return { merged: false, empty: true };
+    // A copy taken before she deliberately erased something must not merge that
+    // something back in — the union below never deletes, so this is the only
+    // place it can be caught. Anything newer merges exactly as it always did.
+    const when = Date.parse(data.updated_at || '') || 0;
+    let use = incoming;
+    try {
+      const E = window.__erase;
+      if (E) {
+        if (incoming.__erased) E.absorb(incoming.__erased);
+        use = E.filter(incoming, when);
+      }
+    } catch (e) {}
+    if (!use) return { merged: false, erased: true };
     // Reuse the app's battle-tested union merge — newer entries win, nothing lost.
-    mergeIntoStore(incoming);
+    mergeIntoStore(use);
     saveStore();
     return { merged: true, at: data.updated_at };
   }
@@ -57960,7 +57999,7 @@ function weight(st){
   try { w += (st.xp || 0) > 0 ? 5 : 0; } catch (e) {}
   return w;
 }
-window.__fortress = { mirroredAt: null, recovered: false, rescued: false };
+window.__fortress = { mirroredAt: null, recovered: false, rescued: false, skippedErased: false };
 
 // ---- 3. clobber guard + 1. mirroring, wrapped around every save ----
 var _mirrorT = null;
@@ -57994,6 +58033,14 @@ if (typeof saveStore === 'function' && !saveStore.__fortress) {
 }
 // flush the mirror the moment she leaves the app - that is when iOS strikes
 function flush(){ try { if (_mirrorT) { clearTimeout(_mirrorT); _mirrorT = null; } mirrorWrite(); } catch (e) {} }
+// Called the instant she erases something on purpose: the mirror is rewritten
+// from the erased store straight away (not on the 2s debounce, which a quick
+// app close would beat), and the rescue stash of the pre-erase blob is dropped
+// so nothing anywhere still holds the copy she deleted.
+window.__fortressErased = function(){
+  try { flush(); } catch (e) {}
+  try { localStorage.removeItem(RESCUE); } catch (e) {}
+};
 try { document.addEventListener('visibilitychange', function(){ if (document.hidden) flush(); }); } catch (e) {}
 try { window.addEventListener('pagehide', flush); } catch (e) {}
 
@@ -58010,6 +58057,20 @@ try {
 function recover(){
   mirrorRead().then(function(rec){
     if (!rec || !rec.data) { mirrorSoon(); return; }
+    // A mirror older than a deliberate erase is not a rescue - it is a copy of
+    // exactly what she chose to delete. Resetting her scores makes the local
+    // store light on purpose, which is the very shape this recovery treats as
+    // data loss, so without this check the reset undid itself at the next
+    // launch (and dragged the erased pen marks and highlights back with it).
+    try {
+      var E = window.__erase;
+      var eAt = E ? Math.max(E.at('all'), E.at('scores'), E.at('ink')) : 0;
+      if (eAt && (rec.at || 0) < eAt) {
+        window.__fortress.skippedErased = true;
+        mirrorWrite().then(function(){ window.__fortress.mirroredAt = Date.now(); }).catch(function(){});
+        return;
+      }
+    } catch (e) {}
     var snap = unpackRaw(rec.data);
     var wSnap = weight(snap), wLocal = weight(store);
     if (wSnap > 0 && wLocal * 5 < wSnap) {
@@ -58044,6 +58105,7 @@ try {
           mirroredAgoSec: window.__fortress.mirroredAt ? Math.round((Date.now() - window.__fortress.mirroredAt) / 1000) : null,
           recovered: window.__fortress.recovered,
           rescued: window.__fortress.rescued,
+          skippedErased: window.__fortress.skippedErased,
           // non-zero here means localStorage writes are FAILING on this device
           saveFails: (typeof _saveErrorCount === 'number') ? _saveErrorCount : null,
           storeKB: (function(){ try { return Math.round((localStorage.getItem(STORE_KEY) || '').length / 512) / 2; } catch (e) { return null; } })()
@@ -58057,6 +58119,159 @@ try {
 } catch (e) {}
 })();
 
+
+(function eraseLedger(){
+/* AN ERASE SHE ASKED FOR HAS TO STAY ERASED.
+ *
+ * "I used remove all annotations, closed the app and reopened it and the
+ * highlights are still there." / "nor was I able to reset all of my scores -
+ * whenever I run the newest version or when the app glitches, it brings me
+ * back to the old data."
+ *
+ * Three separate layers exist so her work can never be lost: the IndexedDB
+ * mirror, the cross-device sync and the cloud sync. Every one of them restores
+ * by UNION - it merges an older copy back in and, by design, never deletes.
+ * That is exactly right after a crash and exactly wrong after an erase: the
+ * copy they are holding IS the data she just deleted, so it walked straight
+ * back in at the next launch. Resetting her scores made it worse, because a
+ * deliberately-emptied store looks precisely like the data loss the mirror
+ * exists to undo.
+ *
+ * The missing piece is a record of WHEN she erased WHAT. Any copy older than
+ * that erase is not a rescue, it is the thing she deleted, and the restore
+ * paths now skip it. Anything newer is genuine work and still merges exactly
+ * as before - nothing about real data loss changes.
+ *
+ * The record lives in its own storage key, so "Reset all data" cannot wipe the
+ * evidence that it happened, and it rides along in the store as well, so an
+ * erase made on the iPad is honoured by the laptop instead of undone by it.
+ */
+if (typeof document === 'undefined') return;
+if (window.__erase) return;
+
+var LKEY = 'sh_erased_v1';
+var KINDS = { all: 1, scores: 1, ink: 1 };
+// What "reset my scores & progress" clears; an older copy keeps everything else.
+var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1,
+                   knowtProgress: 1, recentSections: 1, projectStatus: 1 };
+
+function read(){
+  var o = null;
+  try { o = JSON.parse(localStorage.getItem(LKEY) || 'null'); } catch (e) {}
+  if (!o || typeof o !== 'object') o = {};
+  if (!o.pages || typeof o.pages !== 'object') o.pages = {};
+  return o;
+}
+function write(o){
+  try { localStorage.setItem(LKEY, JSON.stringify(o)); } catch (e) {}
+  try { store.__erased = o; } catch (e) {}
+}
+function at(kind){
+  var o = read();
+  return Math.max((kind && o[kind]) || 0, o.all || 0);
+}
+function pageAt(rk){
+  var o = read();
+  return Math.max((o.pages && o.pages[rk]) || 0, o.ink || 0, o.all || 0);
+}
+// Fold in an erase recorded on another device - the later erase wins.
+function absorb(remote){
+  if (!remote || typeof remote !== 'object') return;
+  var o = read(), changed = false, k;
+  for (k in KINDS) if ((remote[k] || 0) > (o[k] || 0)) { o[k] = remote[k]; changed = true; }
+  var rp = remote.pages || {};
+  for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
+  if (changed) write(o);
+}
+function mark(kind, rk){
+  var o = read(), now = Date.now();
+  if (kind === 'page' && rk) o.pages[rk] = now;
+  else if (KINDS[kind]) {
+    o[kind] = now;
+    if (kind === 'all') { o.scores = now; o.ink = now; o.pages = {}; }
+  } else return 0;
+  write(o);
+  // Rewrite the mirror from the erased store immediately, and send the erased
+  // state outward, so the copies the other layers hold stop being the old one.
+  try { if (window.__fortressErased) window.__fortressErased(); } catch (e) {}
+  setTimeout(function(){
+    try {
+      if (window.__sync && window.__sync.state().on && navigator.onLine)
+        window.__sync.push().catch(function(){});
+    } catch (e) {}
+    try {
+      if (window._cloudConfigured && window._cloudConfigured() && window._cloudApi)
+        Promise.resolve(window._cloudApi.push()).catch(function(){});
+    } catch (e) {}
+  }, 500);
+  return now;
+}
+// Strip out of an incoming copy whatever she erased after that copy was made.
+// Returns null when the whole copy predates a full erase.
+function filter(incoming, when){
+  if (!incoming) return incoming;
+  when = when || 0;
+  if (!when) return incoming;                     // undated copy - leave it alone
+  if (when < at('all')) return null;
+  if (when < at('scores')) {
+    var out = {};
+    for (var k in incoming) if (!SCORE_KEYS[k]) out[k] = incoming[k];
+    return out;
+  }
+  return incoming;
+}
+window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter, read: read };
+
+/* ---- every erase path records itself, by wrapping the primitives ---- */
+try {
+  if (typeof window.__inkDropAll === 'function' && !window.__inkDropAll.__erase) {
+    var _dropAll = window.__inkDropAll;
+    var wAll = function(){ var r = _dropAll.apply(this, arguments); mark('ink'); return r; };
+    wAll.__erase = 1; window.__inkDropAll = wAll;
+  }
+} catch (e) {}
+try {
+  if (typeof window.__inkDrop === 'function' && !window.__inkDrop.__erase) {
+    var _dropOne = window.__inkDrop;
+    var wOne = function(rk){ var r = _dropOne.apply(this, arguments); if (rk) mark('page', rk); return r; };
+    wOne.__erase = 1; window.__inkDrop = wOne;
+  }
+} catch (e) {}
+try {
+  var T = window.__textHL;
+  if (T && typeof T.clearAll === 'function' && !T.clearAll.__erase) {
+    var _clearAll = T.clearAll;
+    var wHL = function(){ var r = _clearAll.apply(this, arguments); mark('ink'); return r; };
+    wHL.__erase = 1; T.clearAll = wHL;
+  }
+} catch (e) {}
+try {
+  if (typeof window.resetAllScores === 'function' && !window.resetAllScores.__erase) {
+    var _reset = window.resetAllScores;
+    var wRs = function(){ var r = _reset.apply(this, arguments); if (r) mark('scores'); return r; };
+    wRs.__erase = 1; window.resetAllScores = wRs;
+  }
+} catch (e) {}
+// "Reset all data" erases the store outright - catch it at the storage layer so
+// it is recorded no matter which of the two settings sheets ran it.
+try {
+  var _rm2 = localStorage.removeItem.bind(localStorage);
+  localStorage.removeItem = function(k){
+    if (k === STORE_KEY) { try { mark('all'); } catch (e) {} }
+    return _rm2(k);
+  };
+} catch (e) {}
+// After a full erase the store is a fresh default, so put the record back on it
+// for the sync layers to carry.
+try {
+  setTimeout(function(){
+    try {
+      var o = read();
+      if (!store.__erased && (o.all || o.scores || o.ink)) store.__erased = o;
+    } catch (e) {}
+  }, 1500);
+} catch (e) {}
+})();
 
 (function deviceSync(){
 /* SYNC ACROSS DEVICES - "the work I've done on my iPad does not translate to
@@ -58153,12 +58368,15 @@ function sig(s){
     return JSON.stringify(o);
   } catch (e) { return null; }
 }
-function mergeInk(remoteInk){
+function mergeInk(remoteInk, when){
   var added = 0, pages = 0;
   if (!remoteInk) return { added: 0, pages: 0 };
+  var E = window.__erase || null;
   for (var rk in remoteInk) {
     var incoming = remoteInk[rk];
     if (!incoming || !incoming.length) continue;
+    // Ink she cleared after this copy was taken must not come back with it.
+    try { if (E && when && when < E.pageAt(rk)) continue; } catch (e) {}
     var local = [];
     try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
     var seen = Object.create(null), i;
@@ -58177,12 +58395,21 @@ function mergeInk(remoteInk){
 }
 
 function applyRemote(snap){
-  var res = { history: 0, ink: 0, pages: 0 };
+  var res = { history: 0, ink: 0, pages: 0, skipped: 0 };
   if (!snap || snap.v !== 1 || !snap.store) return res;
+  // Rule 3, alongside never-delete and pull-before-push: an erase she made
+  // deliberately outranks a copy taken before it, on either device.
+  var E = window.__erase || null;
+  var when = snap.at || 0;
+  var incoming = snap.store;
+  try { if (E && incoming.__erased) E.absorb(incoming.__erased); } catch (e) {}
+  try { if (E) { incoming = E.filter(incoming, when); if (!incoming) res.skipped = 1; } } catch (e) {}
   var before = ((store.quizHistory || []).length) || 0;
-  try { if (typeof mergeIntoStore === 'function') mergeIntoStore(snap.store); } catch (e) {}
+  try { if (incoming && typeof mergeIntoStore === 'function') mergeIntoStore(incoming); } catch (e) {}
   res.history = Math.max(0, (((store.quizHistory || []).length) || 0) - before);
-  var ink = mergeInk(snap.ink);
+  var inkOk = true;
+  try { if (E && when && when < E.at('ink')) inkOk = false; } catch (e) {}
+  var ink = inkOk ? mergeInk(snap.ink, when) : { added: 0, pages: 0 };
   res.ink = ink.added; res.pages = ink.pages;
   try { saveStore(); } catch (e) {}
   try { if (typeof render === 'function') render(); } catch (e) {}
