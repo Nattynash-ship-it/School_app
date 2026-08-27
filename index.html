@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.503">
+<meta name="app-build" content="18.504">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -53645,10 +53645,27 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
   // (lesson-text-sm/lg/xl/xxl -> 0.92/1.15/1.35/1.60, none -> 1). Reading the
   // CLASS is exact and needs no introspection of the `zoom` property itself,
   // which is what made the previous attempt fragile across engines.
-  var ZOOM_OF = [['lesson-text-xxl', 1.60], ['lesson-text-xl', 1.35],
-                 ['lesson-text-lg', 1.15], ['lesson-text-sm', 0.92]];
+  /* THE HARDCODED TABLE WAS WRONG - and it moved her ink.
+   * The stylesheet's zoom steps were later re-tuned ("even and gentler":
+   * 0.94/1.09/1.22/1.40) but these hardcoded factors were never updated, so
+   * at XL this module believed 1.35 while the page was really zoomed 1.22.
+   * The overlay is un-zoomed by 1/z, so the ink layer ended up 1.22/1.35 =
+   * ~90% of the page's size: marks near the top looked right and everything
+   * further down drifted upward by ~10% of its distance - highlights landing
+   * on the wrong lines and on blank space, and her writing appearing a second
+   * time in the wrong place. The fix reads the factor from the STYLESHEET:
+   * every lesson-text-* rule sets --lesson-text-scale to the same value as
+   * its zoom, so this can never drift from the CSS again. The class table
+   * survives only as a last-resort fallback, now with the true values. */
+  var ZOOM_OF = [['lesson-text-xxl', 1.40], ['lesson-text-xl', 1.22],
+                 ['lesson-text-lg', 1.09], ['lesson-text-sm', 0.94]];
   function bodyZoom(){
     try {
+      var cs = window.getComputedStyle(document.body);
+      var v = parseFloat(cs.getPropertyValue('--lesson-text-scale'));
+      if (isFinite(v) && v > 0) return v;
+      var z = parseFloat(cs.zoom);
+      if (isFinite(z) && z > 0) return z;
       for (var i = 0; i < ZOOM_OF.length; i++) {
         if (document.body.classList.contains(ZOOM_OF[i][0])) return ZOOM_OF[i][1];
       }
@@ -53772,15 +53789,26 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
   // Read the reading zoom from the body CLASS, whose factors are fixed
   // (lesson-text-sm/lg/xl/xxl -> 0.92/1.15/1.35/1.60). Exact, and independent
   // of how a given engine reports the `zoom` property.
-  var ZOOM_OF = [['lesson-text-xxl', 1.60], ['lesson-text-xl', 1.35],
-                 ['lesson-text-lg', 1.15], ['lesson-text-sm', 0.92]];
+  /* Same stale-table bug as the toolbar module, and this is the one that
+   * actually moved the ink: it writes zoom = 1/z onto the annotation overlay
+   * to cancel the page zoom. A wrong z leaves the overlay a few percent off
+   * the page's scale, which displaces every mark by a share of its distance
+   * down the page. Read the factor from the stylesheet's own
+   * --lesson-text-scale (set to the same value as zoom in each rule) so the
+   * two can never disagree again. */
+  var ZOOM_OF = [['lesson-text-xxl', 1.40], ['lesson-text-xl', 1.22],
+                 ['lesson-text-lg', 1.09], ['lesson-text-sm', 0.94]];
   function bodyZoom(){
     try {
+      var cs = window.getComputedStyle(document.body);
+      var v = parseFloat(cs.getPropertyValue('--lesson-text-scale'));
+      if (isFinite(v) && v > 0) return v;
+      var z = parseFloat(cs.zoom);
+      if (isFinite(z) && z > 0) return z;
       for (var i = 0; i < ZOOM_OF.length; i++) {
         if (document.body.classList.contains(ZOOM_OF[i][0])) return ZOOM_OF[i][1];
       }
-      var z = parseFloat(window.getComputedStyle(document.body).zoom);
-      return (isFinite(z) && z > 0) ? z : 1;
+      return 1;
     } catch (e) { return 1; }
   }
 
