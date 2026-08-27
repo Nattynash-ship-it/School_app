@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.502">
+<meta name="app-build" content="18.503">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -56221,8 +56221,43 @@ if (_down) {
  */
 try {
 if (window.__penGhostGuard) return; window.__penGhostGuard = true;
+
+// When iOS drops the pen-lift (her crash log shows a 13s block with the pen
+// active), ganno.current stays set forever: the app believes a stroke is
+// still in progress, so nothing commits it, the preview ghost survives, and
+// the next strokes can misbehave. Track real pen activity; a "stroke" that
+// has produced no pointer events for STALE_MS is a stranded stroke - commit
+// it through the ordinary pen-lift path (which never reads the event object
+// on that path), exactly as if the lift had arrived. Her writing is saved
+// where she drew it; the ghost and the stuck state die together.
+var STALE_MS = 10000;
+var lastPen = 0;
+function stamp(){ try { if (typeof ganno === 'object' && ganno && ganno.drawing) lastPen = Date.now(); } catch (e) {} }
+document.addEventListener('pointermove', stamp, true);
+document.addEventListener('pointerdown', function(){ lastPen = Date.now(); }, true);
+
+function finalizeStale(){
+  try {
+    if (typeof ganno !== 'object' || !ganno || (!ganno.drawing && !ganno.current)) return false;
+    var limit = (typeof window.__penStaleMsOverride === 'number') ? window.__penStaleMsOverride : STALE_MS;
+    if (!lastPen || Date.now() - lastPen < limit) return false;
+    if (typeof gannoPointerUp === 'function'){
+      gannoPointerUp({ pointerId: ganno.pointerId || 1, pointerType: 'pen', clientX: 0, clientY: 0,
+                       preventDefault: function(){}, stopPropagation: function(){} });
+    } else {
+      ganno.current = null; ganno.drawing = false;
+    }
+    if (window.console && console.warn) console.warn('[pen ghost guard] committed a stranded stroke (pen-lift was lost)');
+    return true;
+  } catch (e) {
+    try { ganno.current = null; ganno.drawing = false; } catch (e2) {}
+    return true;
+  }
+}
+
 function sweep(){
   try {
+    finalizeStale();
     var cv = document.querySelector('canvas[data-pen-canvas]');
     if (!cv || cv.style.display !== 'block') return;
     var drawing = false;
