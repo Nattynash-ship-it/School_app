@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.506">
+<meta name="app-build" content="18.507">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -19802,13 +19802,28 @@ function gradeCodeAnswer(q, code) {
  const accepts = Array.isArray(q.accept) ? q.accept : [q.accept];
  for (const a of accepts) {
  if (a instanceof RegExp) { if (a.test(code)) return true; }
+ else if (a && typeof a === 'object' && typeof a.__rx === 'string') {
+ // Content files are JSON, so accept regexes ship serialized as
+ // {__rx, __fl} and are revived here. (The restore that moved these
+ // courses into JSON files silently turned live RegExps into {} - every
+ // code exercise graded WRONG regardless of the answer. The patterns
+ // were recovered from the pre-restore build.)
+ try { if (new RegExp(a.__rx, a.__fl || '').test(code)) return true; } catch (e) {}
+ }
  else if (typeof a === 'string') {
  // Literal match after whitespace normalization
  if (lower(a) === userLow) return true;
  }
  }
+ // Typing the model solution exactly must always pass, whatever state the
+ // accept patterns are in - the safety net that makes damaged or missing
+ // patterns a tolerance loss instead of a wrong verdict.
+ if (q.solution && lower(q.solution) === userLow) return true;
  return false;
  }
+
+ // No accept rules: an exact solution match still deserves a pass.
+ if (q.solution && lower(q.solution) === userLow) return true;
 
  // No grading rules at all — fall back to self-grade (always shows solution)
  return false;
@@ -30822,12 +30837,17 @@ function renderPretest(courseId) {
  if (q.accept) {
  try {
  correct = q.accept.some(r => {
+ if (r instanceof RegExp) return r.test(text);
+ if (r && typeof r === 'object' && typeof r.__rx === 'string') {
+ try { return new RegExp(r.__rx, r.__fl || '').test(text); } catch (e2) { return false; }
+ }
  const m = String(r).match(/^\/(.+)\/([a-z]*)$/);
  if (!m) return false;
  return new RegExp(m[1], m[2]).test(text);
  });
  } catch (e) { correct = false; }
  }
+ if (!correct && q.solution && String(q.solution).replace(/\s+/g, ' ').trim().toLowerCase() === text.replace(/\s+/g, ' ').trim().toLowerCase()) correct = true;
  session.answers.push({ item: cur, picked: text, correct });
  if (correct) session.byChap[cur.chId].correct++;
  session.idx++;
