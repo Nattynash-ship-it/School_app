@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.510">
+<meta name="app-build" content="18.511">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -61091,7 +61091,7 @@ function tasks(){
   return out.slice(0, 4);
 }
 
-function build(){
+function build(withHello){
   var streak = (typeof currentStreak === 'function') ? currentStreak() : 0;
   var best = 0; try { best = Math.max(streak, (store.streak && (store.streak.best || store.streak.longest)) || 0); } catch (e) {}
   var recents = lastStudied();
@@ -61103,8 +61103,10 @@ function build(){
   el.className = 'dash';
   el.setAttribute('data-dash', '1');
   el.innerHTML =
-    '<div class="dash-hello">' + greeting() + ', Natasha! 👋</div>' +
-    '<div class="dash-quote">“' + q + '”</div>' +
+    (withHello
+      ? '<div class="dash-hello">' + greeting() + ', Natasha! 👋</div>' +
+        '<div class="dash-quote">“' + q + '”</div>'
+      : '') +
     '<div class="dash-grid">' +
 
     '<div class="dash-card"><div class="dash-h">🔥 Study streak</div>' +
@@ -61158,13 +61160,51 @@ function build(){
   return el;
 }
 
+/* WHERE THIS BLOCK BELONGS.
+ *
+ * It was written to sit at the top of the mobile screen container, and to fall
+ * back to the app root if it could not find one. The desktop shell replaced
+ * that container everywhere, so the fallback is what always ran: the block
+ * mounted as the FIRST CHILD OF #app - above the entire shell, outside the
+ * sidebar, full bleed across the window. On a phone that still read as a
+ * header. On a desktop it read as a second app stacked on top of the first,
+ * greeting her twice: once here and once in the screen's own hero.
+ *
+ * It now mounts inside the content column, directly under that hero, and
+ * leaves the greeting to whichever of the two is already showing one.
+ */
+function mountPoint(){
+  var hero = document.querySelector('.hub-hero');
+  if (hero && hero.parentElement) return { parent: hero.parentElement, before: hero.nextSibling };
+  var main = document.querySelector('.v2-main');
+  if (main) {
+    var arc = main.querySelector('.arc-cta');
+    return { parent: main, before: arc ? arc.nextSibling : main.firstChild };
+  }
+  var root = document.getElementById('app');
+  if (!root) return null;
+  var screen = root.querySelector('.screen');
+  return screen ? { parent: screen, before: screen.firstChild } : { parent: root, before: root.firstChild };
+}
+var _waits = 0;
 function inject(){
   try {
     if (typeof view !== 'object' || !view || view.name !== 'today') return;
     var root = document.getElementById('app');
     if (!root || root.querySelector('[data-dash]')) return;
-    var host = root.querySelector('.screen') || root;
-    host.insertBefore(build(), host.firstChild);
+    var hero = document.querySelector('.hub-hero');
+    // The screen's hero renders one tick AFTER this hook runs, and it decides
+    // both where this block goes and whether it should greet her at all. So
+    // wait for it rather than landing in the wrong place and correcting later,
+    // which would flash a second "Good afternoon" on the way past. If it never
+    // arrives, fall through and mount at the top of the column as before.
+    if (!hero && document.querySelector('.v2-main') && _waits < 5) {
+      _waits++; setTimeout(inject, 40); return;
+    }
+    _waits = 0;
+    var at = mountPoint();
+    if (!at || !at.parent) return;
+    at.parent.insertBefore(build(!hero), at.before || null);
   } catch (e) {}
 }
 if (typeof render === 'function' && !render.__dashV1) {
