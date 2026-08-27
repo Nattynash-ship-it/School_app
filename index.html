@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.511">
+<meta name="app-build" content="18.512">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -47388,6 +47388,9 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
     /* ---- the Today stat tiles ---- */
     '.hub-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; grid-column: 1 / -1; }',
     '@media (max-width: 900px) { .hub-stats { grid-template-columns: repeat(2, 1fr); } }',
+    // three tiles when the home dashboard above already carries the streak
+    '.hub-stats.hs-3 { grid-template-columns: repeat(3, 1fr); }',
+    '@media (max-width: 900px) { .hub-stats.hs-3 { grid-template-columns: repeat(2, 1fr); } }',
     '.hub-stat {',
     '  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 13px 14px;',
     '}',
@@ -47452,7 +47455,13 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
     } catch(e){}
     var overall = n ? Math.round(totalPct / n) : 0;
     var hrs = Math.floor(mins / 60), rem = mins % 60;
-    return '<div class="hub-stats">' +
+    // The home dashboard directly above already shows the streak, and shows it
+    // better - same number, same personal best, plus the seven-day row this
+    // tile has no room for. Two of them on one screen is just noise. Both
+    // blocks live only on Today, so whether the other one is there is decided
+    // by whether its module loaded, not by racing it in the DOM.
+    var dashHasStreak = (typeof window.__dashInject === 'function');
+    return '<div class="hub-stats' + (dashHasStreak ? ' hs-3' : '') + '">' +
       '<div class="hub-stat"><div class="hs-l">Study time</div>' +
         '<div class="hs-v">' + (hrs ? hrs + 'h ' : '') + rem + 'm</div>' +
         '<div class="hs-s">Daily goal: ' + goalMin + 'm</div>' +
@@ -47465,10 +47474,11 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
         '<div class="hs-v">' + active + '</div>' +
         '<div class="hs-s">Overall: ' + overall + '%</div>' +
         '<div class="hub-bar"><i style="width:' + overall + '%; background:var(--accent-2, var(--accent))"></i></div></div>' +
-      '<div class="hub-stat"><div class="hs-l">🔥 Current streak</div>' +
+      (dashHasStreak ? '' :
+        '<div class="hub-stat"><div class="hs-l">🔥 Current streak</div>' +
         '<div class="hs-v">' + streak + ' <small>days</small></div>' +
         '<div class="hs-s">' + (best > streak ? 'Best: ' + best + ' days' : 'Your best run yet') + '</div>' +
-        '<div class="hub-bar"><i style="width:' + (best > 0 ? pct(streak, Math.max(best, streak)) : (streak ? 100 : 0)) + '%; background:var(--warning)"></i></div></div>' +
+        '<div class="hub-bar"><i style="width:' + (best > 0 ? pct(streak, Math.max(best, streak)) : (streak ? 100 : 0)) + '%; background:var(--warning)"></i></div></div>') +
     '</div>';
   }
 
@@ -52737,7 +52747,7 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
 
     // icon-sized controls, two to a row in the 84px rail
     'body #nav-dock > #wb-fab, body #nav-dock > #sticky-notes-tab,',
-    'body #nav-dock > .pomo-fab, body #nav-dock > #floating-back-btn {',
+    'body #nav-dock > #floating-back-btn {',
     '  width: 31px !important; height: 31px !important; min-height: 0 !important;',
     '  padding: 0 !important; border-radius: 9px !important;',
     '  align-items: center !important; justify-content: center !important;',
@@ -52747,9 +52757,20 @@ window.__pulseState = function(){ return { ticks: t, count: cbs.length, cbs: cbs
 
     // full-width controls inside the rail
     'body #nav-dock.dock-col > #recall-pill, body #nav-dock.dock-col > .aa-zoom-fab,',
-    'body #nav-dock.dock-col > #weak-report-btn,',
+    'body #nav-dock.dock-col > #weak-report-btn, body #nav-dock.dock-col > .pomo-fab,',
     'body #nav-dock.dock-col > .ver-badge { width: 100% !important; }',
-    'body #nav-dock > #recall-pill, body #nav-dock > #weak-report-btn {',
+    // The timer keeps its minutes label, and the label is what forced this: as
+    // a 31px icon its "25m" badge is absolutely positioned past the button's
+    // own corner, so in the tray it hung over the row below - landing on the
+    // version line. Docked it becomes a labelled pill like the others, with the
+    // minutes sitting inside the button instead of below it.
+    'body #nav-dock .pomo-fab .pomo-mini { position: static !important; inset: auto !important;',
+    '  top: auto !important; right: auto !important; bottom: auto !important; left: auto !important;',
+    '  margin-left: 5px !important; padding: 0 !important; border: 0 !important;',
+    '  background: none !important; min-width: 0 !important; font-size: 11px !important;',
+    '  color: inherit !important; }',
+    'body #nav-dock > #recall-pill, body #nav-dock > #weak-report-btn,',
+    'body #nav-dock > .pomo-fab {',
     '  min-height: 0 !important; height: 30px !important;',
     '  padding: 0 6px !important; border-radius: 9px !important; font-size: 11px !important;',
     '  align-items: center !important; justify-content: center !important; }',
