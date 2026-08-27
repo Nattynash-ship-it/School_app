@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.514">
+<meta name="app-build" content="18.515">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59282,6 +59282,16 @@ css.textContent = [
 '.pod-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 14px; }',
 '.pod-head .pod-x { margin-left: auto; border: none; background: none; color: var(--text-3); font-size: 20px; cursor: pointer; }',
 '.pod-sub { padding: 0 14px 8px; font-size: 11.5px; color: var(--text-4); }',
+'.pod-voices { padding: 4px 14px 10px; display: none; flex-direction: column; gap: 8px; }',
+'.pod-voices.open { display: flex; }',
+'.pod-vrow { display: flex; align-items: center; gap: 8px; }',
+'.pod-vrow > span { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;',
+'  color: var(--text-3); width: 46px; flex: 0 0 auto; }',
+'.pod-vrow select { flex: 1 1 auto; min-width: 0; padding: 7px 8px; border-radius: 9px; font-size: 13px;',
+'  background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong, var(--border)); }',
+'.pod-vrow button { flex: 0 0 auto; padding: 7px 11px; border-radius: 9px; font-size: 13px; cursor: pointer;',
+'  background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong, var(--border)); }',
+'.pod-vhint { font-size: 11px; line-height: 1.5; color: var(--text-4); }',
 '.pod-log { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 1.5; min-height: 100px; }',
 '.pod-turn { padding: 7px 11px; border-radius: 11px; background: var(--surface-2); }',
 '.pod-turn .pod-who { font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 2px; }',
@@ -59364,13 +59374,26 @@ function bestNamed(list, names, taken){
   }
   return null;
 }
-function pickVoices(){
+// A voice she picked herself outranks anything guessed from a name list.
+function savedVoice(host){
+  try { return (store.podcastVoices && store.podcastVoices[host]) || null; } catch (e) { return null; }
+}
+function byURI(list, uri){
+  if (!uri) return null;
+  for (var i = 0; i < list.length; i++) if (list[i].voiceURI === uri) return list[i];
+  return null;
+}
+function englishVoices(){
   var vs = [];
   try { vs = S().getVoices() || []; } catch (e) {}
   var en = vs.filter(function(v){ return /^en/i.test(v.lang || ''); });
-  if (!en.length) en = vs;
-  var a = bestNamed(en, VOICE_MAYA, null);
-  var b = bestNamed(en, VOICE_SAM, a);
+  return en.length ? en : vs;
+}
+function pickVoices(){
+  var en = englishVoices();
+  var a = byURI(en, savedVoice('maya')) || bestNamed(en, VOICE_MAYA, null);
+  var b = byURI(en, savedVoice('sam'));
+  if (!b) b = bestNamed(en, VOICE_SAM, a);
   if (!a || !b) {
     var scored = en.slice().sort(function(x, y){ return vQuality(y) - vQuality(x); });
     if (!a) a = scored[0] || null;
@@ -59387,10 +59410,10 @@ function pickVoices(){
 // downloaded voice is really being used without listening for it.
 function voiceNote(){
   var vv = pickVoices();
-  var n = function(v){ return (v && v.name) ? v.name : 'your device voice'; };
-  var line = 'Two hosts explain this exact section. Maya: ' + n(vv.maya) + ' · Sam: ' + n(vv.sam) + '.';
+  var d = function(v){ return v && v.name ? (v.name + ' (' + (hifi(v) ? 'enhanced' : 'standard') + ')') : 'your device voice'; };
+  var line = 'Maya: ' + d(vv.maya) + ' · Sam: ' + d(vv.sam) + '.';
   if (!hifi(vv.maya) || !hifi(vv.sam))
-    line += ' Enhanced and Premium voices sound far better — add them in Settings → Accessibility → Spoken Content → Voices.';
+    line += ' “Standard” is the small built-in recording — that is the robotic one. Tap Voices to try the others your iPad offers.';
   return line;
 }
 
@@ -59581,6 +59604,71 @@ function close(){
   sheet = null; logEl = null; statusEl = null; playBtn = null; curKey = null;
 }
 
+// ---- choosing the voices by ear ----
+// The name lists are a guess about which voice she wants. This is how she
+// overrides it: every English voice iPadOS hands a web page, labelled with its
+// recording quality, previewable, and remembered. It also answers the one
+// question no code here can answer - whether a voice she downloaded is offered
+// to web apps at all, or kept for the system's own reading.
+var subUpdate = function(){};
+function previewVoice(host){
+  try {
+    var v = pickVoices()[host];
+    var Utter = U();
+    var u = new Utter(host === 'maya'
+      ? 'Hi, I am Maya. This is how I sound reading your lesson.'
+      : 'And I am Sam. We will take this section together.');
+    if (v) u.voice = v;
+    u.rate = rate();
+    try { S().cancel(); } catch (e) {}
+    S().speak(u);
+  } catch (e) {}
+}
+function buildVoicePanel(){
+  if (!sheet) return;
+  var panel = sheet.querySelector('.pod-voices');
+  if (!panel) return;
+  var en = englishVoices();
+  var cur = pickVoices();
+  panel.textContent = '';
+  ['maya', 'sam'].forEach(function(host){
+    var row = document.createElement('div');
+    row.className = 'pod-vrow';
+    var label = document.createElement('span');
+    label.textContent = host === 'maya' ? 'Maya' : 'Sam';
+    var sel = document.createElement('select');
+    sel.setAttribute('aria-label', 'Voice for ' + label.textContent);
+    en.forEach(function(v){
+      var o = document.createElement('option');
+      o.value = v.voiceURI;
+      o.textContent = v.name + ' \u2014 ' + (hifi(v) ? 'enhanced' : 'standard');
+      if (cur[host] && v.voiceURI === cur[host].voiceURI) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function(){
+      try {
+        if (!store.podcastVoices) store.podcastVoices = {};
+        store.podcastVoices[host] = sel.value;
+        if (typeof saveStore === 'function') saveStore();
+      } catch (e) {}
+      subUpdate();
+      previewVoice(host);
+    });
+    var play = document.createElement('button');
+    play.type = 'button';
+    play.textContent = '\u25B6 Hear';
+    play.addEventListener('click', function(){ previewVoice(host); });
+    row.appendChild(label); row.appendChild(sel); row.appendChild(play);
+    panel.appendChild(row);
+  });
+  var hint = document.createElement('div');
+  hint.className = 'pod-vhint';
+  hint.textContent = en.length
+    ? ('These are the ' + en.length + ' English voices this device offers a web page. Anything marked \u201Cstandard\u201D is the small built-in recording. If a voice you downloaded is not listed, the system is keeping it for its own reading and not sharing it with web apps.')
+    : 'This device is not offering any voices yet \u2014 close the app and open it again.';
+  panel.appendChild(hint);
+}
+
 function open(){
   if (sheet) { close(); return; }
   var key = secKey();
@@ -59597,8 +59685,10 @@ function open(){
       '<button data-pod="back" title="Previous turn">⏮</button>' +
       '<button data-pod="fwd" title="Next turn">⏭</button>' +
       '<button data-pod="rate" title="Speed"></button>' +
+      '<button data-pod="voices" title="Choose the voices">🎚 Voices</button>' +
       '<button data-pod="redo" title="Write a fresh episode" style="margin-left:auto;">↻ New take</button>' +
     '</div>' +
+    '<div class="pod-voices"></div>' +
     '<div class="pod-sub">Two AI hosts explain this exact section. Voices come from your iPad — enhanced voices (Settings → Accessibility → Spoken Content → Voices) sound much better.</div>';
   document.body.appendChild(sheet);
   logEl = sheet.querySelector('.pod-log');
@@ -59612,10 +59702,18 @@ function open(){
   rb.textContent = rate() + '×';
   rb.addEventListener('click', function(){ cycleRate(rb); });
   sheet.querySelector('[data-pod="redo"]').addEventListener('click', function(){ stopSpeech(); generate(key, true); });
+  sheet.querySelector('[data-pod="voices"]').addEventListener('click', function(){
+    var panel = sheet.querySelector('.pod-voices');
+    if (!panel) return;
+    var opening = !panel.classList.contains('open');
+    if (opening) buildVoicePanel();
+    panel.classList.toggle('open', opening);
+  });
   // Warm the voice list (async on most engines) and name the two voices in the
   // sheet once it arrives - iOS reports an empty list on the first call.
   var subEl = sheet.querySelector('.pod-sub');
   var setSub = function(){ try { if (subEl && subEl.isConnected) subEl.textContent = voiceNote(); } catch (e) {} };
+  subUpdate = setSub;
   try { S().getVoices(); } catch (e) {}
   setSub();
   try {
