@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.515">
+<meta name="app-build" content="18.516">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -18877,6 +18877,134 @@ function renderSection(courseId, chId, secId) {
 }
 
 // ==================== AUDIO READ-ALOUD ====================
+/* ONE PLACE THAT DECIDES WHICH VOICE READS WHICH TEXT.
+ *
+ * "The voices should sound real across the board." Three different parts of
+ * this app speak - the lesson read-aloud, the flashcards and the podcast - and
+ * each chose a voice its own way. The read-aloud demanded an English voice, the
+ * flashcards asked for no voice at all and took the browser default, and the
+ * podcast filtered to English. 142 of the 146 Korean lessons contain Hangul, so
+ * all three read Korean aloud in an English voice, which is the worst sound the
+ * app can make.
+ *
+ * Two things decide a good reading: the right LANGUAGE, and the best RECORDING
+ * of that language the device has. Apple ships several recordings under one
+ * name and only the voiceURI says which, so quality is read from there as well
+ * as from the name.
+ */
+(function voicePicker(){
+if (typeof document === 'undefined' || window.__ttsPick) return;
+
+var HIFI_RX = /enhanced|premium|advanced|neural|natural|siri/i;
+// Scripts the app's own content actually contains, most specific first.
+var SCRIPTS = [
+  { lang: 'ko', rx: /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g },
+  { lang: 'ja', rx: /[\u3040-\u309F\u30A0-\u30FF]/g },
+  { lang: 'zh', rx: /[\u4E00-\u9FFF]/g },
+  { lang: 'ru', rx: /[\u0400-\u04FF]/g },
+  { lang: 'ar', rx: /[\u0600-\u06FF]/g }
+];
+
+// Which language is this passage mostly in? A Korean lesson is mixed - English
+// explanation around Korean examples - so the majority script wins rather than
+// the first character seen.
+function langOf(text){
+  var t = String(text || '');
+  if (!t) return 'en';
+  var letters = (t.match(/[^\s\d\W]/g) || []).length || t.length;
+  for (var i = 0; i < SCRIPTS.length; i++) {
+    var hits = (t.match(SCRIPTS[i].rx) || []).length;
+    if (hits && hits / letters > 0.18) return SCRIPTS[i].lang;
+  }
+  return 'en';
+}
+function isHifi(v){ return !!v && (HIFI_RX.test(v.name || '') || HIFI_RX.test(v.voiceURI || '')); }
+function allVoices(){
+  try { return (window.speechSynthesis && window.speechSynthesis.getVoices()) || []; } catch (e) { return []; }
+}
+function voicesFor(lang){
+  var all = allVoices();
+  var want = String(lang || 'en').slice(0, 2).toLowerCase();
+  var hit = all.filter(function(v){ return String(v.lang || '').slice(0, 2).toLowerCase() === want; });
+  // No voice for that language installed: better to read it in the default
+  // voice than to pick a confidently wrong one.
+  return hit.length ? hit : all;
+}
+function score(v){
+  var s = 0;
+  if (HIFI_RX.test(v.name || '')) s += 30;
+  if (HIFI_RX.test(v.voiceURI || '')) s += 30;
+  if (v.localService) s += 8;
+  if (v.default) s += 2;
+  return s;
+}
+function best(lang){
+  var list = voicesFor(lang).slice().sort(function(a, b){ return score(b) - score(a); });
+  return list[0] || null;
+}
+// The one call every speaking part of the app makes.
+window.__ttsPick = function(text, hintLang){
+  var lang = hintLang || langOf(text);
+  var v = best(lang);
+  return { voice: v, lang: v ? (v.lang || lang) : lang, hifi: isHifi(v), detected: lang };
+};
+// A Korean lesson is English explanation wrapped around Korean examples. Read
+// with one voice it is wrong either way round: an English voice mangles the
+// Korean, a Korean voice mangles the English. So the passage is split into runs
+// of one script and each run is read by the right voice, in order.
+window.__ttsSegments = function(text, cap){
+  cap = cap || 800;
+  var t = String(text || '');
+  if (!t) return [{ text: '', lang: 'en' }];
+  // Classify each character. Anything that is not a letter - spaces, digits,
+  // punctuation, emoji - is neutral and simply joins whichever run it falls in,
+  // so a run is never cut mid-phrase.
+  function charLang(ch){
+    for (var i = 0; i < SCRIPTS.length; i++) { SCRIPTS[i].rx.lastIndex = 0; if (SCRIPTS[i].rx.test(ch)) return SCRIPTS[i].lang; }
+    if (/[A-Za-z\u00C0-\u024F]/.test(ch)) return 'en';
+    return null;
+  }
+  var runs = [], cur = null;
+  for (var i = 0; i < t.length; i++) {
+    var ch = t.charAt(i), lang = charLang(ch);
+    if (!cur) { cur = { text: ch, lang: lang, letters: lang ? 1 : 0 }; continue; }
+    if (lang === null || lang === cur.lang) { cur.text += ch; if (lang) cur.letters++; continue; }
+    if (cur.lang === null) { cur.lang = lang; cur.text += ch; cur.letters++; continue; }
+    runs.push(cur);
+    cur = { text: ch, lang: lang, letters: 1 };
+  }
+  if (cur) runs.push(cur);
+  // A stray letter or two is not a language change - fold those back in.
+  var solid = [];
+  for (var j = 0; j < runs.length; j++) {
+    var r = runs[j];
+    if (!r.lang) r.lang = 'en';
+    var prev = solid[solid.length - 1];
+    if (prev && (r.letters < 3 || prev.lang === r.lang) && (prev.text.length + r.text.length) < cap) {
+      prev.text += r.text; prev.letters += r.letters;
+    } else solid.push(r);
+  }
+  // Pathological alternation would mean hundreds of utterances; read it as one
+  // language rather than machine-gunning the queue.
+  if (solid.length > 300) return [{ text: t, lang: langOf(t) }];
+  return solid.length ? solid.map(function(x){ return { text: x.text, lang: x.lang }; })
+                      : [{ text: t, lang: langOf(t) }];
+};
+window.__ttsLangOf = langOf;
+window.__ttsVoicesFor = voicesFor;
+window.__ttsIsHifi = isHifi;
+// Apply both the voice and the language tag - a voice alone is not enough,
+// engines use utterance.lang to choose pronunciation rules.
+window.__ttsApply = function(utter, text, hintLang){
+  try {
+    var p = window.__ttsPick(text, hintLang);
+    if (p.voice) utter.voice = p.voice;
+    if (p.lang) utter.lang = p.lang;
+    return p;
+  } catch (e) { return null; }
+};
+})();
+
 // Uses the browser's native SpeechSynthesis API. Free, offline-capable,
 // no API key. Strips HTML, normalizes math/symbols, speaks the lesson.
 const audioState = { utterance: null, isSpeaking: false, isPaused: false };
@@ -18932,25 +19060,23 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  // Cap length to ~30k chars (browser limits vary)
  if (text.length > 30000) text = text.slice(0, 30000) + ' ... lesson truncated.';
 
- const utter = new SpeechSynthesisUtterance(text);
- utter.rate = (store.audioRate || 1.0);
- utter.pitch = 1.0;
- utter.volume = 1.0;
- // Pick a nicer voice if available
- const voices = window.speechSynthesis.getVoices();
- if (voices && voices.length) {
- // Prefer English voices; prefer "natural"/"neural" voices
- const preferred = voices.find(v => /en-(US|GB)/i.test(v.lang) && /(natural|neural|premium|enhanced)/i.test(v.name))
- || voices.find(v => /en-(US|GB)/i.test(v.lang))
- || voices[0];
- if (preferred) utter.voice = preferred;
- }
- utter.onstart = () => setPlaying();
- utter.onend = () => { setIdle(); audioState.utterance = null; };
- utter.onerror = () => { setIdle(); audioState.utterance = null; };
- audioState.utterance = utter;
+ // Read each run of the lesson in its own language, in the best recording this
+ // device has of it. Pause, resume and stop still work: they act on the whole
+ // queue, and only the last run hands back to Idle.
+ const segs = (window.__ttsSegments ? window.__ttsSegments(text) : [{ text: text, lang: null }]);
  window.speechSynthesis.cancel(); // clear any previous queue
- window.speechSynthesis.speak(utter);
+ audioState.utterance = null;
+ segs.forEach((seg, i) => {
+ const u = new SpeechSynthesisUtterance(seg.text);
+ u.rate = (store.audioRate || 1.0);
+ u.pitch = 1.0;
+ u.volume = 1.0;
+ if (window.__ttsApply) window.__ttsApply(u, seg.text, seg.lang);
+ if (i === 0) { u.onstart = () => setPlaying(); audioState.utterance = u; }
+ if (i === segs.length - 1) u.onend = () => { setIdle(); audioState.utterance = null; };
+ u.onerror = () => { setIdle(); audioState.utterance = null; };
+ window.speechSynthesis.speak(u);
+ });
  setPlaying();
  });
 
@@ -21208,9 +21334,16 @@ function knowtSpeak(text) {
   try {
     if (!('speechSynthesis' in window)) { toast('Audio not supported on this device.'); return; }
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(String(text || '').slice(0, 400));
-    u.rate = 0.95; u.pitch = 1.0;
-    window.speechSynthesis.speak(u);
+    const said = String(text || '').slice(0, 400);
+    // Cards are often "Korean term — English meaning", so each side is read in
+    // its own voice rather than one voice mispronouncing half the card.
+    const segs = window.__ttsSegments ? window.__ttsSegments(said, 200) : [{ text: said, lang: null }];
+    segs.forEach(seg => {
+      const u = new SpeechSynthesisUtterance(seg.text);
+      u.rate = 0.95; u.pitch = 1.0;
+      if (window.__ttsApply) window.__ttsApply(u, seg.text, seg.lang);
+      window.speechSynthesis.speak(u);
+    });
   } catch (e) {}
 }
 
@@ -59375,15 +59508,37 @@ function bestNamed(list, names, taken){
   return null;
 }
 // A voice she picked herself outranks anything guessed from a name list.
+// Keyed by host AND language: the voice she wants reading Korean is not the
+// one she wants reading discrete maths.
+function voiceKey(host){ return host + ':' + episodeLang(); }
 function savedVoice(host){
-  try { return (store.podcastVoices && store.podcastVoices[host]) || null; } catch (e) { return null; }
+  try {
+    var m = store.podcastVoices || {};
+    return m[voiceKey(host)] || m[host] || null;
+  } catch (e) { return null; }
 }
 function byURI(list, uri){
   if (!uri) return null;
   for (var i = 0; i < list.length; i++) if (list[i].voiceURI === uri) return list[i];
   return null;
 }
+// The language of the episode, taken from the section it is about - a Korean
+// lesson is discussed with Korean words in it, and an English voice saying
+// those is exactly the sound she is complaining about.
+function episodeLang(){
+  try {
+    if (script && window.__ttsLangOf) return window.__ttsLangOf(String(script).slice(0, 4000));
+    var L = lessonText();
+    if (L && window.__ttsLangOf) return window.__ttsLangOf(L.lesson.slice(0, 4000));
+  } catch (e) {}
+  return 'en';
+}
 function englishVoices(){
+  var lang = episodeLang();
+  if (window.__ttsVoicesFor) {
+    var got = window.__ttsVoicesFor(lang);
+    if (got && got.length) return got;
+  }
   var vs = [];
   try { vs = S().getVoices() || []; } catch (e) {}
   var en = vs.filter(function(v){ return /^en/i.test(v.lang || ''); });
@@ -59411,7 +59566,9 @@ function pickVoices(){
 function voiceNote(){
   var vv = pickVoices();
   var d = function(v){ return v && v.name ? (v.name + ' (' + (hifi(v) ? 'enhanced' : 'standard') + ')') : 'your device voice'; };
-  var line = 'Maya: ' + d(vv.maya) + ' · Sam: ' + d(vv.sam) + '.';
+  var lang = episodeLang();
+  var langName = { ko: 'Korean', ja: 'Japanese', zh: 'Chinese', ru: 'Russian', ar: 'Arabic', en: '' }[lang] || '';
+  var line = (langName ? langName + ' section. ' : '') + 'Maya: ' + d(vv.maya) + ' · Sam: ' + d(vv.sam) + '.';
   if (!hifi(vv.maya) || !hifi(vv.sam))
     line += ' “Standard” is the small built-in recording — that is the robotic one. Tap Voices to try the others your iPad offers.';
   return line;
@@ -59469,6 +59626,8 @@ function speakNext(){
   var vv = pickVoices();
   var voice = (turns[c.turn].host === 'SAM') ? vv.sam : vv.maya;
   if (voice) u.voice = voice;
+  // The voice alone does not settle pronunciation - engines read utterance.lang.
+  try { if (voice && voice.lang) u.lang = voice.lang; } catch (e) {}
   u.rate = rate();
   // Two real voices need no help telling each other apart, and a downloaded
   // Enhanced voice is recorded at its own pitch - shifting it makes the engine
@@ -59648,7 +59807,7 @@ function buildVoicePanel(){
     sel.addEventListener('change', function(){
       try {
         if (!store.podcastVoices) store.podcastVoices = {};
-        store.podcastVoices[host] = sel.value;
+        store.podcastVoices[voiceKey(host)] = sel.value;
         if (typeof saveStore === 'function') saveStore();
       } catch (e) {}
       subUpdate();
