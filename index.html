@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.512">
+<meta name="app-build" content="18.513">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59304,25 +59304,74 @@ function lessonText(){
   } catch (e) { return null; }
 }
 
-// ---- voices: two distinct English voices, best available ----
-var PREF = ['ava', 'samantha', 'allison', 'susan', 'zoe', 'karen', 'moira', 'evan', 'nathan', 'tom', 'daniel', 'alex', 'aaron'];
+/* ---- voices: one host each, best recording of each name ----
+ *
+ * Apple ships several different recordings under ONE name. "Alison" can be the
+ * small built-in voice or the downloaded Enhanced one, and both report the same
+ * `name` - only the voiceURI says which recording it is
+ * (com.apple.voice.compact.en-US.Alison vs ...enhanced...). Quality is
+ * therefore read from the URI as well as the name, and where a name has more
+ * than one recording installed the better one always wins - otherwise a voice
+ * she deliberately downloaded gets passed over for the compact version of
+ * itself.
+ *
+ * The name lists are ordered by preference, one host each, so a downloaded
+ * pair is used as the pair. Nothing here is required: on a device with neither
+ * name installed the fallback below picks the two best voices it can find, as
+ * it always did.
+ */
+var VOICE_MAYA = ['alison', 'allison', 'ava', 'samantha', 'susan', 'zoe', 'karen', 'moira'];
+var VOICE_SAM  = ['evan', 'nathan', 'tom', 'aaron', 'daniel', 'alex'];
+var HIFI = /enhanced|premium|advanced|neural|siri/i;
+
+function hifi(v){ return !!v && (HIFI.test(v.name || '') || HIFI.test(v.voiceURI || '')); }
+function vQuality(v){
+  var s = 0;
+  if (HIFI.test(v.name || '')) s += 30;
+  if (HIFI.test(v.voiceURI || '')) s += 30;
+  if (v.localService) s += 8;
+  if (/^en-us/i.test(v.lang || '')) s += 3;
+  return s;
+}
+function bestNamed(list, names, taken){
+  for (var i = 0; i < names.length; i++) {
+    var hits = list.filter(function(v){
+      return v !== taken && (v.name || '').toLowerCase().indexOf(names[i]) !== -1;
+    });
+    if (!hits.length) continue;
+    hits.sort(function(a, b){ return vQuality(b) - vQuality(a); });
+    return hits[0];
+  }
+  return null;
+}
 function pickVoices(){
   var vs = [];
   try { vs = S().getVoices() || []; } catch (e) {}
   var en = vs.filter(function(v){ return /^en/i.test(v.lang || ''); });
   if (!en.length) en = vs;
-  var scored = en.map(function(v){
-    var n = (v.name || '').toLowerCase(), s = 0;
-    for (var i = 0; i < PREF.length; i++) if (n.indexOf(PREF[i]) !== -1) { s += (PREF.length - i) * 4; break; }
-    if (/premium|enhanced|natural/.test(n)) s += 30;
-    if (v.localService) s += 8;
-    if (/^en-us/i.test(v.lang || '')) s += 3;
-    return { v: v, s: s };
-  }).sort(function(a, b){ return b.s - a.s; });
-  var a = scored[0] ? scored[0].v : null;
-  var b = null;
-  for (var j = 1; j < scored.length; j++) { if (scored[j].v.name !== (a && a.name)) { b = scored[j].v; break; } }
-  return { maya: a, sam: b || a, same: !b };
+  var a = bestNamed(en, VOICE_MAYA, null);
+  var b = bestNamed(en, VOICE_SAM, a);
+  if (!a || !b) {
+    var scored = en.slice().sort(function(x, y){ return vQuality(y) - vQuality(x); });
+    if (!a) a = scored[0] || null;
+    if (!b) {
+      for (var j = 0; j < scored.length; j++) {
+        if (scored[j] !== a && scored[j].name !== (a && a.name)) { b = scored[j]; break; }
+      }
+    }
+  }
+  var same = !b || !a || (a.name === b.name && a.voiceURI === b.voiceURI);
+  return { maya: a, sam: b || a, same: same };
+}
+// What she will actually hear, said plainly - the only way to know a
+// downloaded voice is really being used without listening for it.
+function voiceNote(){
+  var vv = pickVoices();
+  var n = function(v){ return (v && v.name) ? v.name : 'your device voice'; };
+  var line = 'Two hosts explain this exact section. Maya: ' + n(vv.maya) + ' · Sam: ' + n(vv.sam) + '.';
+  if (!hifi(vv.maya) || !hifi(vv.sam))
+    line += ' Enhanced and Premium voices sound far better — add them in Settings → Accessibility → Spoken Content → Voices.';
+  return line;
 }
 
 function splitSentences(t){
@@ -59378,8 +59427,11 @@ function speakNext(){
   var voice = (turns[c.turn].host === 'SAM') ? vv.sam : vv.maya;
   if (voice) u.voice = voice;
   u.rate = rate();
-  // Same voice for both hosts (older devices): split them by pitch instead.
-  u.pitch = (turns[c.turn].host === 'SAM') ? (vv.same ? 0.88 : 0.98) : (vv.same ? 1.08 : 1.02);
+  // Two real voices need no help telling each other apart, and a downloaded
+  // Enhanced voice is recorded at its own pitch - shifting it makes the engine
+  // resample the thing she installed for its quality. Only when one voice has
+  // to play both hosts is it pitched apart.
+  u.pitch = vv.same ? (turns[c.turn].host === 'SAM' ? 0.88 : 1.08) : 1;
   var advanced = false;
   var step = function(){
     if (advanced) return; advanced = true;
@@ -59540,8 +59592,23 @@ function open(){
   rb.textContent = rate() + '×';
   rb.addEventListener('click', function(){ cycleRate(rb); });
   sheet.querySelector('[data-pod="redo"]').addEventListener('click', function(){ stopSpeech(); generate(key, true); });
-  // Warm the voice list (async on most engines).
+  // Warm the voice list (async on most engines) and name the two voices in the
+  // sheet once it arrives - iOS reports an empty list on the first call.
+  var subEl = sheet.querySelector('.pod-sub');
+  var setSub = function(){ try { if (subEl && subEl.isConnected) subEl.textContent = voiceNote(); } catch (e) {} };
   try { S().getVoices(); } catch (e) {}
+  setSub();
+  try {
+    var synth = S();
+    if (synth && 'onvoiceschanged' in synth) {
+      var prevVC = synth.onvoiceschanged;
+      synth.onvoiceschanged = function(){
+        try { if (typeof prevVC === 'function') prevVC.apply(this, arguments); } catch (e) {}
+        setSub();
+      };
+    }
+  } catch (e) {}
+  setTimeout(setSub, 600);
   generate(key, false);
 }
 
