@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.509">
+<meta name="app-build" content="18.510">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -27930,6 +27930,10 @@ function gannoPointerUp(e) {
  c.orient = gannoOrient();
  const strokes = gannoGetStrokes(ganno.routeKey);
  ganno._sid = (ganno._sid || 0) + 1; c._id = ganno._sid;
+ // When it was drawn. Underscore-prefixed, so the sync's stroke signature
+ // ignores it exactly as it ignores _id - it exists so an erase made on one
+ // device can spare ink drawn on the other one after it.
+ c._ts = Date.now();
  strokes.push(c);
  gannoSaveStrokes(ganno.routeKey, strokes);
  // INCREMENTAL COMMIT: finalize the existing live path in place (O(1)) instead
@@ -58238,14 +58242,79 @@ function pageAt(rk){
   var o = read();
   return Math.max((o.pages && o.pages[rk]) || 0, o.ink || 0, o.all || 0);
 }
-// Fold in an erase recorded on another device - the later erase wins.
+/* AN ERASE IS AN OPERATION, NOT A NOTE.
+ *
+ * A device that only records someone else's erase still holds the deleted work
+ * itself - and the next sync pushes it straight back to the device she erased
+ * it on, with a fresh timestamp that puts it beyond every guard. So learning of
+ * an erase means carrying it out here too.
+ *
+ * Only what actually travels between devices is touched: quiz attempts, exam
+ * results, pretests and ink. Anything made AFTER the erase is kept - attempts
+ * and results carry their own timestamps, and strokes have carried one since
+ * this build. A stroke with no timestamp was drawn before any erase could have
+ * been recorded, so it predates this one.
+ */
+function applyMark(kind, T){
+  var changed = false, i;
+  if (kind === 'scores' || kind === 'all') {
+    try {
+      var qh = store.quizHistory;
+      if (qh && qh.length) {
+        var keepQ = [];
+        for (i = 0; i < qh.length; i++) if ((qh[i].ts || 0) >= T) keepQ.push(qh[i]);
+        if (keepQ.length !== qh.length) { store.quizHistory = keepQ; changed = true; }
+      }
+    } catch (e) {}
+    try {
+      var es = store.examSessions;
+      if (es && es.length) {
+        var keepE = [];
+        for (i = 0; i < es.length; i++) if ((es[i].ts || 0) >= T) keepE.push(es[i]);
+        if (keepE.length !== es.length) { store.examSessions = keepE; changed = true; }
+      }
+    } catch (e) {}
+    try {
+      var pt = store.pretests || {};
+      for (var pk in pt) if (((pt[pk] || {}).ts || 0) < T) { delete pt[pk]; changed = true; }
+    } catch (e) {}
+  }
+  if (kind === 'ink' || kind === 'all') {
+    try {
+      var keys = (typeof window.__inkKeys === 'function') ? window.__inkKeys().slice() : [];
+      for (var n = 0; n < keys.length; n++) {
+        var rk = keys[n], list = [];
+        try { list = gannoGetStrokes(rk) || []; } catch (e) { list = []; }
+        if (!list.length) continue;
+        var keepS = [];
+        for (i = 0; i < list.length; i++) if ((list[i]._ts || 0) >= T) keepS.push(list[i]);
+        if (keepS.length !== list.length) {
+          try { gannoSaveStrokes(rk, keepS); changed = true; } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  return changed;
+}
+// Fold in an erase recorded on another device - the later erase wins - and
+// carry out anything this device had not done yet.
 function absorb(remote){
   if (!remote || typeof remote !== 'object') return;
-  var o = read(), changed = false, k;
-  for (k in KINDS) if ((remote[k] || 0) > (o[k] || 0)) { o[k] = remote[k]; changed = true; }
+  var o = read(), changed = false, applied = false, k;
+  for (k in KINDS) {
+    if ((remote[k] || 0) > (o[k] || 0)) {
+      o[k] = remote[k]; changed = true;
+      if (applyMark(k, remote[k])) applied = true;
+    }
+  }
   var rp = remote.pages || {};
   for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
   if (changed) write(o);
+  if (applied) {
+    try { saveStore(); } catch (e) {}
+    try { if (typeof render === 'function') render(); } catch (e) {}
+    try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
+  }
 }
 function mark(kind, rk){
   var o = read(), now = Date.now();
