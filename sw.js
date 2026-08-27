@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v676';
+const CACHE = 'study-hub-v677';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -103,18 +103,27 @@ self.addEventListener('fetch', (event) => {
   // megabytes on every launch. Old entries die with the old cache when CACHE
   // bumps.
   if (/^\/content-[\w-]+\.json$/.test(url.pathname)) {
-    // ignoreSearch: the install step precaches the plain URL while the app
-    // requests ?v=<build>. Safe within one cache generation - every deploy
-    // bumps CACHE which deletes the old cache wholesale, so a stale pack can
-    // never survive into a new build.
+    // VERSION-AWARE, and it has to be. These are requested as ?v=<build>.
+    // Matching with ignoreSearch meant ANY cached copy won over the network,
+    // however old: one stale copy - a precache that raced a deploy, say -
+    // pinned an outdated course for the whole cache generation, and because
+    // the match was cache-first it never revalidated. That is a course
+    // silently "reverting to the previous version", with restarting the app
+    // powerless to fix it (reproduced: a build-18.504 app served
+    // build-18.480 lessons with the newest sections missing).
+    //
+    // Now: this build's exact copy, else the network (stored under the exact
+    // versioned URL), and only if BOTH fail, any cached version - stale
+    // content still beats no content when she is offline.
     event.respondWith(
-      caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req).then((resp) => {
+      caches.match(req).then((exact) => exact || fetch(req).then((resp) => {
         if (resp && resp.ok) {
           const copy = resp.clone();
           caches.open(CACHE).then((cache) => cache.put(req, copy).catch(() => {}));
         }
         return resp;
-      }).catch(() => new Response('Offline', { status: 503 })))
+      }).catch(() => caches.match(req, { ignoreSearch: true })
+        .then((any) => any || new Response('Offline', { status: 503 }))))
     );
     return;
   }
