@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.518">
+<meta name="app-build" content="18.519">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -55178,7 +55178,17 @@ window.__diag = function(){
   try { if (window.__staleContent && Object.keys(window.__staleContent).length) out.staleContent = window.__staleContent; } catch (e) {}
   // The stall log and the device details used to live only in __report(), so a
   // report copied any other way arrived without the two things worth reading.
-  try { if (typeof window.__freezes === 'function') out.freezes = window.__freezes(); } catch (e) {}
+  // Only this session's worth. The log keeps days of stalls, and sending all of
+  // it made every report kilobytes of history already read once - the count of
+  // what was left out says as much without the bulk. (__report was slimmed in
+  // 18.514; this is the copy path that is actually used, and was missed.)
+  try {
+    if (typeof window.__freezes === 'function') {
+      var fz = window.__freezes() || [];
+      out.freezes = fz.slice(-6);
+      if (fz.length > out.freezes.length) out.olderFreezesNotSent = fz.length - out.freezes.length;
+    }
+  } catch (e) {}
   // How each restart happened. why:'external' means nothing in the app asked
   // for it - that is iOS reloading the page. Counting them is the only way to
   // tell whether the 'random refresh' is getting better or worse.
@@ -56786,6 +56796,25 @@ try {
         usageMB: Math.round((est.usage || 0) / 1048576),
         quotaMB: Math.round((est.quota || 0) / 1048576)
       };
+      // Safari reports one total and no breakdown, and a total on its own
+      // cannot say whether 600MB is content she needs or old copies nothing
+      // reads any more. The cache names and their entry counts can.
+      try {
+        if (window.caches && caches.keys) {
+          caches.keys().then(function(names){
+            return Promise.all(names.map(function(n){
+              return caches.open(n).then(function(c){ return c.keys(); })
+                .then(function(ks){ return { name: n.slice(0, 28), entries: ks.length }; })
+                .catch(function(){ return { name: n.slice(0, 28), entries: -1 }; });
+            }));
+          }).then(function(list){
+            if (window.__storageEstimate) {
+              window.__storageEstimate.caches = list;
+              window.__storageEstimate.cacheCount = list.length;
+            }
+          }).catch(function(){});
+        }
+      } catch (e) {}
     }).catch(function(){});
   }
 } catch (e) { window.__storagePersisted = 'error'; }
