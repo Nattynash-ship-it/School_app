@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.494">
+<meta name="app-build" content="18.495">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -56325,9 +56325,78 @@ css.textContent = [
 '.aih-chips button { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border-strong, var(--border));',
 '  background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer;',
 '  white-space: nowrap; }',
-'.aih-chips button:active { transform: scale(0.96); }'
+'.aih-chips button:active { transform: scale(0.96); }',
+'.aih-msg.a code { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.92em;',
+'  background: var(--code-bg, rgba(127,127,127,0.15)); padding: 1px 5px; border-radius: 5px; }',
+'.aih-msg.a strong { font-weight: 750; }',
+'.aih-msg.a sub, .aih-msg.a sup { font-size: 0.78em; }'
 ].join('\n');
 document.head.appendChild(css);
+
+// ---- ANSWER FORMATTING ----
+// The tutor's answers used to land in the bubble as raw text, so LaTeX like
+// $$\begin{bmatrix}3 & -1\\ 5 & 0\end{bmatrix}$$ and markdown like **bold**
+// showed up literally - unreadable for exactly the math-heavy lessons where
+// the helper matters most. The server prompt now asks for plain text, and
+// this renderer handles what still arrives: it escapes ALL HTML first (the
+// model's output is untrusted), then converts a small, known set of patterns
+// into tags - bold, code, bullets, sub/superscripts - and translates common
+// LaTeX (matrices, \frac, \times, Greek) into plain Unicode.
+function aihEsc(s){
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+var AIH_TEX = { times:'×', cdot:'·', div:'÷', pm:'±', mp:'∓', le:'≤', leq:'≤', ge:'≥', geq:'≥',
+  ne:'≠', neq:'≠', approx:'≈', equiv:'≡', infty:'∞', to:'→', rightarrow:'→', leftarrow:'←',
+  Rightarrow:'⇒', Leftarrow:'⇐', Leftrightarrow:'⇔', iff:'⇔', implies:'⇒', mapsto:'↦',
+  sum:'Σ', prod:'Π', int:'∫', partial:'∂', nabla:'∇', pi:'π', theta:'θ', alpha:'α', beta:'β',
+  gamma:'γ', delta:'δ', epsilon:'ε', lambda:'λ', mu:'μ', sigma:'σ', phi:'φ', omega:'ω',
+  Delta:'Δ', Sigma:'Σ', Omega:'Ω', cup:'∪', cap:'∩', subseteq:'⊆', subset:'⊂', supseteq:'⊇',
+  supset:'⊃', in:'∈', notin:'∉', emptyset:'∅', varnothing:'∅', forall:'∀', exists:'∃',
+  neg:'¬', lnot:'¬', land:'∧', wedge:'∧', lor:'∨', vee:'∨', oplus:'⊕', otimes:'⊗',
+  because:'∵', therefore:'∴', dots:'…', ldots:'…', cdots:'⋯', vdots:'⋮', quad:'  ', qquad:'    ' };
+function aihTex(t){
+  // Operates on ALREADY-ESCAPED text ('&' is '&amp;' here), inside a segment
+  // known to be math, so ^/_ conversions cannot hit prose or snake_case code.
+  t = t.replace(/\\begin\{[bpvB]?matrix\}([\s\S]*?)\\end\{[bpvB]?matrix\}/g, function(_, body){
+    var rows = body.split(/\\\\/).map(function(r){
+      return r.split(/&amp;/).map(function(c){ return c.trim(); }).join('  ');
+    }).filter(function(r){ return r.length; });
+    return '\n' + rows.map(function(r){ return '[ ' + r + ' ]'; }).join('\n') + '\n';
+  });
+  t = t.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, function(_, a, b){
+    var simple = /^[\w.\-]+$/;
+    return (simple.test(a) ? a : '(' + a + ')') + '/' + (simple.test(b) ? b : '(' + b + ')');
+  });
+  t = t.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
+  t = t.replace(/\\(?:text|mathbf|mathrm|mathit|mathcal|mathbb|operatorname)\{([^{}]*)\}/g, '$1');
+  t = t.replace(/\\([a-zA-Z]+)/g, function(m, name){ return AIH_TEX.hasOwnProperty(name) ? AIH_TEX[name] : name; });
+  t = t.replace(/\^\{([^{}]+)\}/g, '<sup>$1</sup>').replace(/\^([\w+\-])/g, '<sup>$1</sup>');
+  t = t.replace(/_\{([^{}]+)\}/g, '<sub>$1</sub>').replace(/_([\w+\-])/g, '<sub>$1</sub>');
+  t = t.replace(/\\[,;!]/g, ' ').replace(/[{}]/g, '');
+  return t;
+}
+function aihFormat(raw){
+  var t = aihEsc(raw);
+  // Math segments: $$...$$ and \[...\] always; $...$ and \(...\) only when the
+  // content actually looks like TeX, so "costs $5 and $10" is left alone.
+  t = t.replace(/\$\$([\s\S]+?)\$\$/g, function(_, m){ return aihTex(m); });
+  t = t.replace(/\\\[([\s\S]+?)\\\]/g, function(_, m){ return aihTex(m); });
+  t = t.replace(/\\\(([\s\S]+?)\\\)/g, function(_, m){ return aihTex(m); });
+  t = t.replace(/\$([^$\n]+?)\$/g, function(m0, m){ return /[\\^_{}]/.test(m) ? aihTex(m) : m0; });
+  // A bare matrix that arrived without $ delimiters still deserves rendering.
+  t = t.replace(/\\begin\{[bpvB]?matrix\}[\s\S]*?\\end\{[bpvB]?matrix\}/g, function(m){ return aihTex(m); });
+  // Markdown subset: headings become bold lines, bullets become •, then
+  // code / bold / italic. Order matters: bullets before italics so a leading
+  // "* " can never be misread as emphasis.
+  t = t.replace(/^#{1,4}\s+(.+)$/gm, '<strong>$1</strong>');
+  t = t.replace(/^(\s*)[-*]\s+/gm, '$1• ');
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  t = t.replace(/\*\*([^*\n][^*]*?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/gm, '$1<em>$2</em>');
+  return t;
+}
+window.__aihFormat = aihFormat;
 
 // One-tap asks. The wording matters: "5th grade" alone tends to produce a
 // cute analogy and nothing she can use on an exam, so it asks for the plain
@@ -56394,7 +56463,9 @@ function lessonContext(){
 function addMsg(cls, text){
   var d = document.createElement('div');
   d.className = 'aih-msg ' + cls;
-  d.textContent = text;
+  // Assistant answers get the formatter (it escapes everything first); the
+  // user's own words and error notices stay literal text.
+  if (cls === 'a') d.innerHTML = aihFormat(text); else d.textContent = text;
   log.appendChild(d);
   log.scrollTop = log.scrollHeight;
   return d;
@@ -56432,7 +56503,7 @@ async function send(){
       var r = await reader.read();
       if (r.done) break;
       full += dec.decode(r.value, { stream: true });
-      bubble.textContent = full;
+      bubble.innerHTML = aihFormat(full);
       log.scrollTop = log.scrollHeight;
     }
     if (!full.trim()) { bubble.className = 'aih-msg err'; bubble.textContent = 'No answer came back. Try again.'; chat.pop(); return; }

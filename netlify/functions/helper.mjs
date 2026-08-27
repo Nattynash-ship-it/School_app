@@ -15,6 +15,14 @@ const TUTOR_SYSTEM = [
   "something outside the courses, answer briefly and steer back to the",
   "material. Never invent facts about WGU exam contents or policies - if you",
   "do not know, say so plainly.",
+  "FORMAT - your answer renders in a simple chat bubble, not a math engine:",
+  "never use LaTeX (no $ delimiters, no \\begin, \\frac, \\times), no markdown",
+  "tables, no # headings. You may use **bold**, `code`, and hyphen bullets.",
+  "Write math in plain Unicode characters (× · ÷ ² ³ ≤ ≥ ≠ → √ Σ π), write",
+  "subscripts like a[i][j] or aᵢⱼ, and show a matrix as bracketed rows, one",
+  "row per line, like:",
+  "[ 3  -1 ]",
+  "[ 5   0 ]",
 ].join(" ");
 
 const json = (status, obj) =>
