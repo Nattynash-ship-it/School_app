@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.504">
+<meta name="app-build" content="18.505">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -54887,6 +54887,9 @@ window.__diag = function(){
   // but every job is erroring" from "worker is fine, this is the backgrounding
   // safety flush" - three different bugs that all look identical from outside.
   try { if (typeof window.__smoothStoreState === 'function') out.smooth = window.__smoothStoreState(); } catch (e) {}
+  // Any course whose content arrived built by a DIFFERENT app build (a cache
+  // serving an old copy). Empty is the healthy state.
+  try { if (window.__staleContent && Object.keys(window.__staleContent).length) out.staleContent = window.__staleContent; } catch (e) {}
   // The stall log and the device details used to live only in __report(), so a
   // report copied any other way arrived without the two things worth reading.
   try { if (typeof window.__freezes === 'function') out.freezes = window.__freezes(); } catch (e) {}
@@ -55730,14 +55733,37 @@ var EXTRA_CIDS = ["AI-AGENTIC", "AIM-CAREER", "AIM-CS", "AIM-ENG", "AIM-FRONTIER
 var CONTENT_CIDS = FOCUS_CIDS.concat(EXTRA_CIDS);
 var BUILD_V = encodeURIComponent((document.querySelector('meta[name=app-build]') || {}).content || '0');
 var MANIFEST_URL = '/content-manifest.json?v=' + BUILD_V;
-function courseUrl(cid){ return '/content-' + cid + '.json?v=' + BUILD_V; }
+/* PER-FILE VERSIONS, so an update does not re-download courses that did not
+ * change. The manifest carries fv: the build that actually produced each
+ * course file. Stamping every file with the app build (as the release script
+ * used to) changed every URL on every deploy, which - now that the service
+ * worker matches these URLs exactly - would mean re-downloading megabytes of
+ * unchanged courses after each update, on her data and her hosting bill. A
+ * course keeps its URL until its content genuinely changes. */
+var FV = null;
+function fvOf(cid){ try { return (FV && FV[cid]) || null; } catch (e) { return null; } }
+function courseUrl(cid){ return '/content-' + cid + '.json?v=' + encodeURIComponent(fvOf(cid) || BUILD_V); }
 var SRCC = {};              // cid -> { l: str|null(consumed), q: str|null }
 var packLoaded = false;     // kept name: "manifest absorbed"
 window.__packMeta = null;   // cid -> { 'CID/ch/sec': [question ids] }
 
+var _manifestRetried = false;
 function packAbsorb(m){     // kept name: absorbs the MANIFEST
   if (!m || typeof m !== 'object') return false;
   for (var i = 0; i < FOCUS_CIDS.length; i++) { if (typeof m['s_' + FOCUS_CIDS[i]] !== 'string') return false; }
+  if (m.fv && typeof m.fv === 'object') FV = m.fv;
+  // A stale manifest is a stale CHAPTER LIST - new chapters simply missing.
+  if (typeof m.build === 'string' && RUNNING_BUILD && m.build !== RUNNING_BUILD) {
+    try { window.__staleContent.manifest = m.build; } catch (e) {}
+    if (!_manifestRetried) {
+      _manifestRetried = true;
+      try {
+        fetch(MANIFEST_URL + '&fresh=' + Date.now(), { cache: 'reload' })
+          .then(function(r){ return r.json(); }).then(packAbsorb).catch(function(){});
+      } catch (e) {}
+      return false;
+    }
+  }
   try {
     for (var j = 0; j < FOCUS_CIDS.length; j++) {
       var cid = FOCUS_CIDS[j];
@@ -55783,8 +55809,37 @@ function packLoadSync(){    // kept name: sync manifest fetch, throttled
   } catch (e) {}
   if (!packLoaded) window.__packMissed = true;
 }
+/* WHAT BUILD IS THIS CONTENT FROM?
+ * Every content file carries a build field and nothing ever checked it, so a
+ * stale copy from any cache layer loaded silently - the course quietly showed
+ * an older version of itself (missing sections, older lessons) and restarting
+ * did not help. Content from a different build is now REFUSED on first
+ * sighting and refetched past every cache; if the refetch still disagrees it
+ * is accepted (an out-of-date course beats an empty one) and recorded, so a
+ * diagnostic report says so plainly instead of leaving us guessing. */
+var RUNNING_BUILD = ((document.querySelector('meta[name=app-build]') || {}).content) || '';
+var _staleRetry = {};
+window.__staleContent = {};
+function freshRefetch(cid){
+  try {
+    fetch(courseUrl(cid) + '&fresh=' + Date.now(), { cache: 'reload' })
+      .then(function(r){ return r.json(); })
+      .then(function(p2){
+        if (courseAbsorb(cid, p2)) {
+          try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e0) {}
+          setTimeout(function(){ try { if (typeof render === 'function') render(); } catch (e1) {} }, 80);
+        }
+      })
+      .catch(function(){});
+  } catch (e) {}
+}
 function courseAbsorb(cid, p){
   if (!p || typeof p.l !== 'string' || typeof p.q !== 'string') return false;
+  var expect = fvOf(cid) || RUNNING_BUILD;
+  if (typeof p.build === 'string' && expect && p.build !== expect) {
+    try { window.__staleContent[cid] = p.build + '!=' + expect; } catch (e) {}
+    if (!_staleRetry[cid]) { _staleRetry[cid] = 1; freshRefetch(cid); return false; }
+  }
   if (!SRCC[cid]) SRCC[cid] = {};
   if (SRCC[cid].l === undefined) SRCC[cid].l = p.l;
   if (SRCC[cid].q === undefined) SRCC[cid].q = p.q;
@@ -55830,9 +55885,18 @@ function courseLoadSync(cid){
   } catch (e) {}
   if (!SRCC[cid] || SRCC[cid].l === undefined) window.__packMissed = true;
 }
+var _warmWait = {};
 window.__courseWarm = function(cid){
   if (CONTENT_CIDS.indexOf(cid) === -1) return;
   if (SRCC[cid] && SRCC[cid].l !== undefined) return;
+  // Wait briefly for the manifest so the request carries this course's own
+  // version; otherwise the URL changes when fv lands and the file downloads
+  // a second time. Falls through after ~3s so a missing manifest can never
+  // block content.
+  if (!FV && (_warmWait[cid] = (_warmWait[cid] || 0) + 1) <= 10) {
+    setTimeout(function(){ try { window.__courseWarm(cid); } catch (e) {} }, 300);
+    return;
+  }
   if (_warmAt[cid] && Date.now() - _warmAt[cid] < 15000) return;
   _warmAt[cid] = Date.now();
   try {
