@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.513">
+<meta name="app-build" content="18.514">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -58,7 +58,19 @@
 <!-- Block-style fonts: Space Grotesk (geometric, slightly chunky sans) for body, JetBrains Mono for code -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- The app's entire 4.5MB script sits below this line, and a classic script
+     may not run until every stylesheet before it has loaded. As a plain
+     stylesheet this one put Google's font server in front of the whole app:
+     when it answered slowly - flaky wifi, a hotel portal, a weak signal - the
+     app showed a white screen for as long as the request took, measured at
+     over 15 seconds, then appeared all at once. That is the "screen turns
+     white and 10 seconds later the app comes back".
+     media="print" makes it non-blocking: the app paints and runs immediately
+     in its fallback faces, and the moment the fonts arrive the onload swaps
+     them in. Nothing about the typography changes once it has loaded. -->
+<link rel="stylesheet" media="print" onload="this.media='all'; this.onload=null;"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"></noscript>
 <style>
  /* ============ DESIGN TOKENS ============ */
  :root {
@@ -5747,7 +5759,10 @@ body.nav-collapsed .dash-wrap { grid-template-columns: 1fr !important; }
 
 </style>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- defer, for the same reason: this sits 92 bytes before the app script,
+     so as a blocking script a slow CDN held the app up too. It is only ever
+     used by the PDF export, which already checks that it loaded. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* iOS/iPadOS is marked before anything paints so the desktop-only text
    rendering rule can exclude it. Reported pointer type is not enough: an iPad
@@ -55142,7 +55157,12 @@ try {
 window.__freezes = function(){ return freezes; };
 
 window.__report = function(){
-  var out = { build: (document.querySelector('meta[name=app-build]') || {}).content, freezes: freezes };
+  // Only what is true of THIS session. The freeze log accumulates for days, and
+  // sending all of it made every report kilobytes of history she had already
+  // paid to send once - the count of what was left out says as much.
+  var recent = freezes.slice(-6);
+  var out = { build: (document.querySelector('meta[name=app-build]') || {}).content, freezes: recent };
+  if (freezes.length > recent.length) out.olderFreezesNotSent = freezes.length - recent.length;
   try { var d = window.__diag ? JSON.parse(window.__diag()) : null; if (d) { out.recent = d.now && d.now.samples; out.lastCrash = d.lastCrash; if (d.reloads) out.reloads = d.reloads; if (d.smooth) out.smooth = d.smooth; } } catch (e) {}
   try {
     var ua = navigator.userAgent || '';
