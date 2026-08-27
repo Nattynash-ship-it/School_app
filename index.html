@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.499">
+<meta name="app-build" content="18.500">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59477,6 +59477,95 @@ var D684 = [
       v, ['A', 'B', 'C', 'F'].filter(function(g){ return g !== v; }),
       'The chain checks top-down and stops at the FIRST true condition: with x = ' + x + ' that gives "' + v + '".',
       'Conditionals', 'easy');
+  },
+  function hexConv(){
+    var v = ri(16, 255);
+    var hx = v.toString(16).toUpperCase();
+    if (ri(0, 1) === 1){
+      return mk('Convert decimal ' + v + ' to hexadecimal.', '0x' + hx,
+        ['0x' + (v + 1).toString(16).toUpperCase(), '0x' + (v - 3 > 0 ? (v - 3) : (v + 3)).toString(16).toUpperCase(), '0x' + (v ^ 17).toString(16).toUpperCase()],
+        'Divide by 16: ' + v + ' = ' + Math.floor(v / 16) + '×16 + ' + (v % 16) + ' → 0x' + hx + '. (Digits above 9 use A–F.)',
+        'Number bases', 'medium');
+    }
+    return mk('Convert hexadecimal 0x' + hx + ' to decimal.', v,
+      [v + 16, v - 1, parseInt(hx, 16) + 6],
+      '0x' + hx + ' = ' + Math.floor(v / 16) + '×16 + ' + (v % 16) + ' = ' + v + '.',
+      'Number bases', 'medium');
+  },
+  function twosComp(){
+    if (ri(0, 1) === 1){
+      var bits = pick([4, 6, 8, 10, 12, 16]);
+      var lo = -Math.pow(2, bits - 1), hi = Math.pow(2, bits - 1) - 1;
+      return mk('What range of integers can ' + bits + '-bit two\u2019s complement represent?',
+        lo + ' to ' + hi, [(-hi) + ' to ' + hi, lo + ' to ' + (hi + 1), '0 to ' + (Math.pow(2, bits) - 1)],
+        'One bit pattern is spent on the sign structure: ' + bits + ' bits give −2^' + (bits - 1) + ' … 2^' + (bits - 1) + '−1, i.e. ' + lo + ' to ' + hi + '. (0 to ' + (Math.pow(2, bits) - 1) + ' is the UNSIGNED range.)',
+        'Data representation', 'medium');
+    }
+    var k = ri(1, 120);
+    var rep = (256 - k).toString(2);
+    while (rep.length < 8) rep = '0' + rep;
+    return mk('What is the 8-bit two\u2019s complement representation of −' + k + '?',
+      rep, [k.toString(2).padStart ? k.toString(2) : k.toString(2), '1' + k.toString(2), (255 - k).toString(2)],
+      'Take +' + k + ' in 8 bits, invert every bit, add 1 — equivalently 256 − ' + k + ' = ' + (256 - k) + ' = ' + rep + '₂. (Flipping without adding 1 gives one\u2019s complement, a classic trap.)',
+      'Data representation', 'hard');
+  },
+  function bubblePass(){
+    var a = [];
+    while (a.length < 5){ var x = ri(1, 40); if (a.indexOf(x) === -1) a.push(x); }
+    var after = a.slice();
+    for (var i = 0; i < after.length - 1; i++){
+      if (after[i] > after[i + 1]){ var t = after[i]; after[i] = after[i + 1]; after[i + 1] = t; }
+    }
+    var sorted = a.slice().sort(function(x, y){ return x - y; });
+    var one = a.slice();
+    for (var j = 0; j < one.length - 1; j++){ if (one[j] > one[j + 1]){ var t2 = one[j]; one[j] = one[j + 1]; one[j + 1] = t2; break; } }
+    return mk('Bubble sort makes ONE full left-to-right pass (comparing and swapping adjacent pairs) over: [' + a.join(', ') + ']. What does the list look like after that single pass?',
+      '[' + after.join(', ') + ']', ['[' + sorted.join(', ') + ']', '[' + a.join(', ') + ']', '[' + one.join(', ') + ']'],
+      'Walk the pairs left to right, swapping when out of order: the result is [' + after.join(', ') + ']. One pass guarantees the LARGEST value reaches the end — full sorting takes more passes.',
+      'Sorting', 'hard');
+  },
+  function bigO(){
+    var n = pick(['n', 'size', 'count']);
+    var forms = [
+      { code: 'FOR i \u2190 1 TO ' + n + '\n  doOneThing()\nENDFOR', ans: 'O(n)', why: 'one loop over ' + n + ' items does linear work' },
+      { code: 'FOR i \u2190 1 TO ' + n + '\n  FOR j \u2190 1 TO ' + n + '\n    doOneThing()\n  ENDFOR\nENDFOR', ans: 'O(n²)', why: 'a loop inside a loop multiplies: ' + n + ' × ' + n + ' steps' },
+      { code: 'WHILE ' + n + ' > 1\n  ' + n + ' \u2190 ' + n + ' / 2\nENDWHILE', ans: 'O(log n)', why: 'halving each step reaches 1 in log₂ steps — the binary-search pattern' },
+      { code: 'x \u2190 ' + n + '[0] + ' + n + '[1]\nprint(x)', ans: 'O(1)', why: 'a fixed number of operations regardless of input size is constant time' }
+    ];
+    var f = pick(forms);
+    return mk('What is the time complexity of:\n' + f.code,
+      f.ans, ['O(1)', 'O(log n)', 'O(n)', 'O(n²)'].filter(function(o){ return o !== f.ans; }),
+      f.ans + ' because ' + f.why + '.',
+      'Algorithm complexity', 'medium');
+  },
+  function logicGate(){
+    var A = ri(0, 1), B = ri(0, 1);
+    var gates = [
+      { name: 'AND',  v: A & B },
+      { name: 'OR',   v: A | B },
+      { name: 'XOR',  v: A ^ B },
+      { name: 'NAND', v: 1 - (A & B) },
+      { name: 'NOR',  v: 1 - (A | B) }
+    ];
+    var g2 = pick(gates);
+    var why = { AND: 'outputs 1 only when BOTH inputs are 1', OR: 'outputs 1 when AT LEAST one input is 1',
+                XOR: 'outputs 1 when the inputs DIFFER', NAND: 'is AND inverted', NOR: 'is OR inverted' }[g2.name];
+    return mk('A ' + g2.name + ' gate receives inputs A = ' + A + ', B = ' + B + '. What is its output?',
+      g2.v, [1 - g2.v, 'undefined', 'both 0 and 1'],
+      'A ' + g2.name + ' gate ' + why + ': with A=' + A + ', B=' + B + ' the output is ' + g2.v + '.',
+      'Logic gates', 'easy');
+  },
+  function postfixEval(){
+    var a = ri(2, 9), b = ri(2, 9), c = ri(2, 9);
+    var op1 = pick(['+', '-']), op2 = pick(['*', '+']);
+    var mid = op1 === '+' ? a + b : a - b;
+    var v = op2 === '*' ? mid * c : mid + c;
+    var expr = a + ' ' + b + ' ' + op1 + ' ' + c + ' ' + op2;
+    var infixWrong = op2 === '*' ? (op1 === '+' ? a + b * c : a - b * c) : v + 1;
+    return mk('Evaluate the postfix (RPN) expression using a stack: ' + expr,
+      v, [infixWrong, mid, op2 === '*' ? mid + c : mid * c],
+      'Push ' + a + ', push ' + b + '; see ' + op1 + ' → pop both, push ' + a + op1 + b + ' = ' + mid + '. Push ' + c + '; see ' + op2 + ' → pop both, push ' + mid + op2 + c + ' = ' + v + '. Postfix needs no parentheses — operators apply to the two most recent values.',
+      'Stacks & expressions', 'hard');
   },
   function whileCount(){
     var x = ri(20, 90), d = pick([3, 4, 5, 7]), n = 0, cur = x;
