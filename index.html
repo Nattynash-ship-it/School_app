@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.517">
+<meta name="app-build" content="18.518">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59602,6 +59602,8 @@ function pickVoices(){
 // What she will actually hear, said plainly - the only way to know a
 // downloaded voice is really being used without listening for it.
 function voiceNote(){
+  if (neuralOn())
+    return 'Real voices \u2014 generated audio, not the iPad\u2019s built-in speech. Each episode is fetched once and then kept, so replaying it is free.';
   var vv = pickVoices();
   var d = function(v){ return v && v.name ? (v.name + ' (' + (hifi(v) ? 'enhanced' : 'standard') + ')') : 'your device voice'; };
   var lang = episodeLang();
@@ -59641,6 +59643,7 @@ function rate(){ var r = 1; try { r = store.podcastRate || 1; } catch (e) {} ret
 function stopSpeech(){
   playing = false;
   if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+  try { if (neural.el) neural.el.pause(); } catch (e) {}
   try { S().cancel(); } catch (e) {}
   if (playBtn) playBtn.textContent = '▶ Play';
 }
@@ -59654,7 +59657,115 @@ function highlight(){
   }
 }
 
+/* REAL VOICES, WHEN THE SITE HAS A KEY FOR THEM.
+ *
+ * iPadOS keeps its good recordings for its own reading and hands a web page the
+ * small built-in ones, so no choice made inside this app can stop the podcast
+ * sounding synthetic. This path generates the audio server-side instead and
+ * plays it back.
+ *
+ * It stays completely out of the way until it is switched on. The probe below
+ * is a POST with no text: a site with no key answers 503 and the podcast keeps
+ * using the device voices exactly as before, and no audio is ever generated, so
+ * nothing costs anything. A configured site answers 400 (no_text) - which tells
+ * us it is there without spending a cent to find out.
+ *
+ * If anything fails once it IS on - the key is wrong, the provider is down, the
+ * iPad is offline mid-episode - it drops back to the device voices in place and
+ * keeps playing rather than stopping on an error.
+ */
+var TTS_EP = '/.netlify/functions/tts';
+var neural = { state: 'unknown', el: null, cache: Object.create(null), urls: [] };
+
+function neuralOn(){ return neural.state === 'on'; }
+function neuralProbe(){
+  if (neural.state === 'on' || neural.state === 'off') return Promise.resolve(neuralOn());
+  neural.state = 'probing';
+  return fetch(TTS_EP, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    .then(function(r){ neural.state = (r.status === 400) ? 'on' : 'off'; return neuralOn(); })
+    .catch(function(){ neural.state = 'off'; return false; });
+}
+function ttsHost(turnIdx){ return (turns[turnIdx] && turns[turnIdx].host === 'SAM') ? 'sam' : 'maya'; }
+function clipKey(host, text){
+  var h = 0, str = host + '|' + text;
+  for (var i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+  return 'tts:' + host + ':' + (h >>> 0).toString(36) + ':' + text.length;
+}
+// Clips are a pure function of (voice, words), so a replay of an episode never
+// pays twice - they are kept in the same database as the rest of her data.
+function clipFromDisk(key){
+  return new Promise(function(res){
+    try {
+      if (typeof window.__fortressIdb !== 'function') return res(null);
+      window.__fortressIdb('readonly', function(os){
+        var out = { __v: null }, g = os.get(key);
+        g.onsuccess = function(){ out.__v = g.result || null; };
+        return out;
+      }).then(function(v){ res(v && v.blob ? v.blob : null); }).catch(function(){ res(null); });
+    } catch (e) { res(null); }
+  });
+}
+function clipToDisk(key, blob){
+  try {
+    if (typeof window.__fortressIdb !== 'function') return;
+    window.__fortressIdb('readwrite', function(os){ os.put({ blob: blob, at: Date.now() }, key); }).catch(function(){});
+  } catch (e) {}
+}
+function clipFor(i){
+  var c = chunks[i];
+  if (!c) return Promise.reject(new Error('no chunk'));
+  var host = ttsHost(c.turn);
+  var key = clipKey(host, c.text);
+  if (neural.cache[key]) return Promise.resolve(neural.cache[key]);
+  return clipFromDisk(key).then(function(hit){
+    if (hit) {
+      var u = URL.createObjectURL(hit);
+      neural.cache[key] = u; neural.urls.push(u);
+      return u;
+    }
+    return fetch(TTS_EP, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: c.text, voice: host })
+    }).then(function(r){
+      if (!r.ok) throw new Error('tts ' + r.status);
+      return r.blob();
+    }).then(function(b){
+      clipToDisk(key, b);
+      var u = URL.createObjectURL(b);
+      neural.cache[key] = u; neural.urls.push(u);
+      return u;
+    });
+  });
+}
+function speakNextNeural(){
+  if (!playing) return;
+  if (idx >= chunks.length) { stopSpeech(); idx = 0; highlight(); return; }
+  highlight();
+  var mine = idx;
+  clipFor(mine).then(function(url){
+    if (!playing || idx !== mine) return;
+    var el = neural.el || (neural.el = new Audio());
+    el.onended = function(){ if (!playing || idx !== mine) return; idx++; speakNext(); };
+    el.onerror = function(){ neural.state = 'off'; if (playing) speakNext(); };
+    el.src = url;
+    el.playbackRate = rate();
+    var pr = el.play();
+    if (pr && pr.catch) pr.catch(function(){ neural.state = 'off'; if (playing) speakNext(); });
+    // fetch the next line while this one plays, so there is no gap between them
+    try { clipFor(mine + 1).catch(function(){}); } catch (e) {}
+  }).catch(function(){
+    // Whatever went wrong, keep the episode running in the device voices.
+    neural.state = 'off';
+    if (playing) speakNext();
+  });
+}
+
 function speakNext(){
+  if (neuralOn()) return speakNextNeural();
+  return speakNextDevice();
+}
+
+function speakNextDevice(){
   if (!playing) return;
   if (idx >= chunks.length) { stopSpeech(); idx = 0; highlight(); return; }
   var c = chunks[idx];
@@ -59689,6 +59800,14 @@ function play(){
   if (!chunks.length) return;
   playing = true;
   if (playBtn) playBtn.textContent = '⏸ Pause';
+  // Pausing generated audio leaves the line half-said; carry on from there
+  // rather than starting the sentence again.
+  if (neuralOn() && neural.el && neural.el.src && !neural.el.ended && neural.el.currentTime > 0) {
+    neural.el.playbackRate = rate();
+    var rp = neural.el.play();
+    if (rp && rp.catch) rp.catch(function(){});
+    return;
+  }
   try { S().cancel(); } catch (e) {}
   speakNext();
 }
@@ -59796,6 +59915,11 @@ function generate(key, force){
 
 function close(){
   stopSpeech();
+  try {
+    for (var u = 0; u < neural.urls.length; u++) URL.revokeObjectURL(neural.urls[u]);
+    neural.urls = []; neural.cache = Object.create(null);
+    if (neural.el) { neural.el.removeAttribute('src'); neural.el.load(); }
+  } catch (e) {}
   if (genAbort) { genAbort(); genAbort = null; }
   if (sheet) sheet.remove();
   sheet = null; logEl = null; statusEl = null; playBtn = null; curKey = null;
@@ -59911,6 +60035,7 @@ function open(){
   var subEl = sheet.querySelector('.pod-sub');
   var setSub = function(){ try { if (subEl && subEl.isConnected) subEl.textContent = voiceNote(); } catch (e) {} };
   subUpdate = setSub;
+  try { neuralProbe().then(setSub).catch(function(){}); } catch (e) {}
   try { S().getVoices(); } catch (e) {}
   setSub();
   try {
