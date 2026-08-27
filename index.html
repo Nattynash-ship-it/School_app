@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.493">
+<meta name="app-build" content="18.494">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -54848,6 +54848,12 @@ window.__diag = function(){
     }
   } catch (e) {}
   try { var c = localStorage.getItem(CRASH); if (c) out.lastCrash = JSON.parse(c); } catch (e) {}
+  // Whether the background compression worker (18.493, extended 18.494) is actually running on
+  // THIS device. Without this a report can show low-level "compress" stalls
+  // and there is no way to tell apart "worker never built" from "worker built
+  // but every job is erroring" from "worker is fine, this is the backgrounding
+  // safety flush" - three different bugs that all look identical from outside.
+  try { if (typeof window.__smoothStoreState === 'function') out.smooth = window.__smoothStoreState(); } catch (e) {}
   // The stall log and the device details used to live only in __report(), so a
   // report copied any other way arrived without the two things worth reading.
   try { if (typeof window.__freezes === 'function') out.freezes = window.__freezes(); } catch (e) {}
@@ -55001,7 +55007,7 @@ window.__freezes = function(){ return freezes; };
 
 window.__report = function(){
   var out = { build: (document.querySelector('meta[name=app-build]') || {}).content, freezes: freezes };
-  try { var d = window.__diag ? JSON.parse(window.__diag()) : null; if (d) { out.recent = d.now && d.now.samples; out.lastCrash = d.lastCrash; if (d.reloads) out.reloads = d.reloads; } } catch (e) {}
+  try { var d = window.__diag ? JSON.parse(window.__diag()) : null; if (d) { out.recent = d.now && d.now.samples; out.lastCrash = d.lastCrash; if (d.reloads) out.reloads = d.reloads; if (d.smooth) out.smooth = d.smooth; } } catch (e) {}
   try {
     var ua = navigator.userAgent || '';
     out.device = { standalone: !!(window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)),
@@ -59047,7 +59053,7 @@ try {
       delete jobs[d.id];
       if (cb) cb(d.packed || null);
     };
-    worker.onerror = function(){ try { worker.terminate(); } catch (e) {} worker = null; };
+    worker.onerror = function(){ try { worker.terminate(); } catch (e) {} worker = null; try { _dbg.workerKilledAt = Date.now(); } catch (e2) {} };
   }
 } catch (e) { worker = null; }
 
@@ -59059,7 +59065,7 @@ window.__packAsync = function(s, method){
   return new Promise(function(res){
     if (!worker) { res(null); return; }
     var id = ++jobId;
-    jobs[id] = function(packed){ res(packed || null); };
+    jobs[id] = function(packed){ try { if (packed) _dbg.jobsOk++; else _dbg.jobsErr++; } catch (e3) {} res(packed || null); };
     try { worker.postMessage({ id: id, s: s, m: method || 'compressToUTF16' }); }
     catch (e) { delete jobs[id]; res(null); }
   });
@@ -59110,7 +59116,8 @@ function run(){
   jobs[id] = function(packed){
     busy = false;
     if (g !== gen) { if (dirty) schedule(); return; }   // superseded by a sync flush
-    if (!packed) { dirty = true; worker = null; schedule(); return; }
+    if (!packed) { _dbg.jobsErr++; dirty = true; worker = null; schedule(); return; }
+    _dbg.jobsOk++;
     try {
       localStorage.setItem(STORE_KEY, packed);
       window.__lastPacked = { blob: packed, at: Date.now() };
@@ -59123,7 +59130,7 @@ function run(){
 }
 function schedule(){ if (!timer) timer = setTimeout(run, 700); }
 
-var _dbg = { wrapperCalls: 0, flushes: 0, heals: 0, healLen: 0 };
+var _dbg = { wrapperCalls: 0, flushes: 0, heals: 0, healLen: 0, workerBuilt: !!worker, jobsOk: 0, jobsErr: 0, workerKilledAt: null };
 _persistStore = function(){
   _dbg.wrapperCalls++;
   dirty = true;
@@ -59134,7 +59141,7 @@ window.__smoothDbg = function(){ return _dbg; };
 
 window.addEventListener('pagehide', flushSync);
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flushSync(); });
-window.__smoothStoreState = function(){ return { worker: !!worker, dirty: dirty, busy: busy, lastPackedAgoMs: window.__lastPacked ? Date.now() - window.__lastPacked.at : null }; };
+window.__smoothStoreState = function(){ return { worker: !!worker, dirty: dirty, busy: busy, lastPackedAgoMs: window.__lastPacked ? Date.now() - window.__lastPacked.at : null, workerBuilt: _dbg.workerBuilt, jobsOk: _dbg.jobsOk, jobsErr: _dbg.jobsErr, workerKilledAt: _dbg.workerKilledAt, heals: _dbg.heals };};
 try { if (window.console) console.log('[store smooth save v2] ready — worker:', !!worker); } catch (e) {}
 } catch (e) { if (window.console && console.warn) console.warn('store smooth save v2 failed:', e); }
 })();
