@@ -48,6 +48,20 @@ const PODCAST_SYSTEM = [
   "math in spoken words or plain Unicode (say 'n squared', '2 to the n').",
 ].join(" ");
 
+// Mind-map mode: the lesson's ideas as a strict JSON tree the app lays out
+// visually. JSON only - the client parses the response directly.
+const MINDMAP_SYSTEM = [
+  "You turn the WGU lesson provided below into a mind map. Output STRICT",
+  "JSON and nothing else - no prose, no markdown fences. Schema:",
+  '{"t":"central topic, 2-5 words","b":[{"t":"branch, 2-6 words",',
+  '"c":[{"t":"leaf, 2-7 words","n":"one plain sentence explaining it,',
+  'grounded in the lesson"}]}]}',
+  "Rules: 4 to 7 branches covering the WHOLE lesson; 2 to 5 leaves per",
+  "branch; every t is short enough to read at a glance; every leaf has an",
+  "n sentence; use the lesson's own terminology; do not invent content the",
+  "lesson does not support. Plain Unicode for any math (n squared as n²).",
+].join(" ");
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -75,6 +89,8 @@ export default async (req) => {
   try { body = await req.json(); } catch { return json(400, { error: "bad_json" }); }
 
   const podcast = body.mode === "podcast";
+  const mindmap = body.mode === "mindmap";
+  const generated = podcast || mindmap;
 
   // Bound everything the client can send: last 12 turns, 8KB per turn,
   // 16KB of lesson context. Keeps a single question to a few cents.
@@ -85,7 +101,7 @@ export default async (req) => {
       content: String((m && m.content) || "").slice(0, 8000),
     }))
     .filter((m) => m.content.length > 0);
-  if (!podcast && (!messages.length || messages[messages.length - 1].role !== "user")) {
+  if (!generated && (!messages.length || messages[messages.length - 1].role !== "user")) {
     return json(400, { error: "no_user_message" });
   }
 
@@ -93,15 +109,15 @@ export default async (req) => {
   const lesson = String(ctx.lesson || "").slice(0, 16000);
   const title = String(ctx.title || "").slice(0, 200);
 
-  if (podcast && !lesson) return json(400, { error: "no_lesson" });
+  if (generated && !lesson) return json(400, { error: "no_lesson" });
 
   const system = [
-    { type: "text", text: podcast ? PODCAST_SYSTEM : TUTOR_SYSTEM, cache_control: { type: "ephemeral" } },
+    { type: "text", text: podcast ? PODCAST_SYSTEM : (mindmap ? MINDMAP_SYSTEM : TUTOR_SYSTEM), cache_control: { type: "ephemeral" } },
   ];
   if (lesson) {
     system.push({
       type: "text",
-      text: (podcast ? "The lesson for this episode" : "The student is currently reading this lesson") +
+      text: (generated ? "The lesson" : "The student is currently reading this lesson") +
         (title ? ` ("${title}")` : "") + ":\n\n" + lesson,
     });
   }
@@ -114,14 +130,14 @@ export default async (req) => {
   // max_tokens 2048 caps the cost of any single answer.
   const stream = client.beta.messages.stream({
     model: "claude-opus-5",
-    max_tokens: podcast ? 3500 : 2048,
+    max_tokens: podcast ? 3500 : (mindmap ? 2000 : 2048),
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "medium" },
     system,
     messages: podcast
       ? [{ role: "user", content: "Write today's episode about the lesson." }]
-      : messages,
+      : (mindmap ? [{ role: "user", content: "Produce the mind map JSON for the lesson." }] : messages),
   });
 
   const enc = new TextEncoder();
