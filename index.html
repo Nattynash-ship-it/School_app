@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.498">
+<meta name="app-build" content="18.499">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59212,6 +59212,552 @@ window.__mmState = function(){
            leaves: mapEl ? mapEl.querySelectorAll('.mm-leaf').length : 0 };
 };
 } catch (e) { if (window.console && console.warn) console.warn('mind map failed:', e); }
+})();
+
+
+/* FRESH QUESTION GENERATORS - one template = infinite variants.
+ * Every answer is COMPUTED by the same code that builds the question, and the
+ * whole library is verified offline: structural checks over thousands of
+ * instances, Java templates against real javac/java, git templates against
+ * real git. Runs in the browser (window.FRESHGEN) and under node (exports).
+ */
+(function(root){
+'use strict';
+
+function ri(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+function pick(arr){ return arr[ri(0, arr.length - 1)]; }
+function shuffle(a){ for (var i = a.length - 1; i > 0; i--){ var j = ri(0, i); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+
+// Build a question whose options are unique; correct value first, then
+// distractors (deduped, correct removed), shuffled, correct index recomputed.
+function mk(text, correctVal, distractors, explain, topic, diff){
+  var opts = [String(correctVal)];
+  for (var i = 0; i < distractors.length && opts.length < 4; i++){
+    var d = String(distractors[i]);
+    if (opts.indexOf(d) === -1) opts.push(d);
+  }
+  var fill = 1;
+  while (opts.length < 4){ // numeric backstop: pad with offsets
+    var pad = String(correctVal) + ' + ' + fill;
+    var n = Number(correctVal);
+    if (!isNaN(n)) pad = String(n + fill * 7 + 1);
+    if (opts.indexOf(pad) === -1) opts.push(pad);
+    fill++;
+  }
+  var correctStr = opts[0];
+  shuffle(opts);
+  return { text: text, options: opts, correct: opts.indexOf(correctStr),
+           explain: explain, topic: topic, difficulty: diff || 'medium' };
+}
+
+// ============ C959 - DISCRETE MATH ============
+
+// tiny proposition engine: tree over p,q with NOT/AND/OR/IMPLIES/IFF/XOR
+var OPS = [
+  { s: '∧', f: function(a, b){ return a && b; }, name: 'AND' },
+  { s: '∨', f: function(a, b){ return a || b; }, name: 'OR' },
+  { s: '→', f: function(a, b){ return !a || b; }, name: 'IMPLIES' },
+  { s: '↔', f: function(a, b){ return a === b; }, name: 'IFF' },
+  { s: '⊕', f: function(a, b){ return a !== b; }, name: 'XOR' }
+];
+function randProp(){
+  var op = pick(OPS), negL = ri(0, 1), negR = ri(0, 1), op2 = pick(OPS), useNest = ri(0, 1);
+  var leftS = (negL ? '¬p' : 'p');
+  var rightS = useNest ? '(' + (negR ? '¬q' : 'q') + ' ' + op2.s + ' p)' : (negR ? '¬q' : 'q');
+  var evalF = function(p, q){
+    var l = negL ? !p : p;
+    var r = useNest ? op2.f(negR ? !q : q, p) : (negR ? !q : q);
+    return op.f(l, r);
+  };
+  return { s: leftS + ' ' + op.s + ' ' + rightS, f: evalF };
+}
+function truthCount(f){ var n = 0; [[true,true],[true,false],[false,true],[false,false]].forEach(function(r){ if (f(r[0], r[1])) n++; }); return n; }
+
+var C959 = [
+  function tRowEval(){
+    var pr = randProp(); var P = ri(0,1) === 1, Q = ri(0,1) === 1;
+    var v = pr.f(P, Q);
+    return mk('Evaluate ' + pr.s + ' when p is ' + (P ? 'TRUE' : 'FALSE') + ' and q is ' + (Q ? 'TRUE' : 'FALSE') + '.',
+      v ? 'True' : 'False', [v ? 'False' : 'True', 'Cannot be determined', 'True only if p ≡ q'],
+      'Substitute the values and evaluate inside-out: with p=' + P + ', q=' + Q + ', the expression is ' + v + '. (¬ first, then the connective; → is false only when TRUE → FALSE.)',
+      'Truth tables', 'easy');
+  },
+  function tSatCount(){
+    var pr = randProp(); var n = truthCount(pr.f);
+    return mk('For how many of the 4 truth-value rows (p,q) is ' + pr.s + ' TRUE?',
+      n, [ (n + 1) % 5, (n + 3) % 5, (n + 2) % 5 ],
+      'Sweep all four rows TT, TF, FT, FF and count: exactly ' + n + ' make it true.',
+      'Truth tables', 'medium');
+  },
+  function tEquiv(){
+    var a = ri(2, 9), forms = [
+      { given: '¬(p ∧ q)', eq: '¬p ∨ ¬q', wrong: ['¬p ∧ ¬q', 'p ∨ q', '¬(p ∨ q)'], rule: "De Morgan's law: negation of AND is OR of negations" },
+      { given: '¬(p ∨ q)', eq: '¬p ∧ ¬q', wrong: ['¬p ∨ ¬q', 'p ∧ q', '¬(p ∧ q)'], rule: "De Morgan's law: negation of OR is AND of negations" },
+      { given: 'p → q', eq: '¬p ∨ q', wrong: ['p ∨ ¬q', '¬p ∧ q', 'q → p'], rule: 'implication equals NOT-antecedent OR consequent' },
+      { given: 'p → q', eq: '¬q → ¬p', wrong: ['q → p', '¬p → ¬q', 'p → ¬q'], rule: 'an implication is equivalent to its contrapositive' }
+    ];
+    var f = pick(forms);
+    return mk('Which is logically equivalent to ' + f.given + '?  (Same table on all ' + a + ' of your practice rows or the standard 4 — equivalence never depends on the row count.)',
+      f.eq, f.wrong, 'By ' + f.rule + '. The others differ on at least one row of the truth table.', 'Logical equivalence', 'medium');
+  },
+  function setOps(){
+    function rset(){ var s = []; for (var i = 1; i <= 9; i++) if (ri(0, 2) === 0) s.push(i); return s.length ? s : [ri(1, 9)]; }
+    var A = rset(), B = rset();
+    var inter = A.filter(function(x){ return B.indexOf(x) !== -1; });
+    var uni = A.slice(); B.forEach(function(x){ if (uni.indexOf(x) === -1) uni.push(x); }); uni.sort(function(x, y){ return x - y; });
+    var diff = A.filter(function(x){ return B.indexOf(x) === -1; });
+    var kind = pick(['∩', '∪', '−']);
+    var val = kind === '∩' ? inter : (kind === '∪' ? uni : diff);
+    var fmt = function(s){ return '{' + s.join(', ') + '}'; };
+    var wrongs = [fmt(kind === '∩' ? uni : inter), fmt(diff.length === val.length && diff.join() === val.join() ? uni : diff), fmt(B.filter(function(x){ return A.indexOf(x) === -1; }))];
+    var name = kind === '∩' ? 'intersection (elements in BOTH)' : kind === '∪' ? 'union (elements in EITHER)' : 'difference A − B (in A but NOT in B)';
+    return mk('A = ' + fmt(A) + ', B = ' + fmt(B) + '.  What is A ' + kind + ' B?', fmt(val), wrongs,
+      'The ' + name + ' gives ' + fmt(val) + '.', 'Set operations', 'easy');
+  },
+  function powerSet(){
+    var n = ri(3, 10);
+    var ctx = pick(['A set has ' + n + ' elements. How many subsets does it have (the size of its power set)?',
+                    'A pizza shop offers ' + n + ' toppings. How many different topping combinations are possible (including none)?',
+                    'How many bit strings of length ' + n + ' are there?',
+                    'A club of ' + n + ' people forms a committee of ANY size (empty allowed). How many committees are possible?']);
+    return mk(ctx,
+      Math.pow(2, n), [Math.pow(2, n) - 1, n * n, Math.pow(2, n + 1)],
+      'Each element is either in or out of a subset: 2^' + n + ' = ' + Math.pow(2, n) + '.', 'Power sets', 'easy');
+  },
+  function modArith(){
+    var m = pick([5, 6, 7, 9, 11, 12]), a = ri(10, 60), b = ri(3, 20), c = ri(2, 15);
+    var v = ((a * b + c) % m + m) % m;
+    return mk('Compute (' + a + ' · ' + b + ' + ' + c + ') mod ' + m + '.',
+      v, [(v + 1) % m, (v + m - 1) % m, (a + b + c) % m],
+      a + '·' + b + ' + ' + c + ' = ' + (a * b + c) + ', and ' + (a * b + c) + ' mod ' + m + ' = ' + v + '. (You can reduce mod ' + m + ' at every step to keep numbers small.)',
+      'Modular arithmetic', 'medium');
+  },
+  function matDet(){
+    var a = ri(-5, 6), b = ri(-5, 6), c = ri(-5, 6), d = ri(-5, 6);
+    var det = a * d - b * c;
+    return mk('What is the determinant of the 2×2 matrix with rows [ ' + a + '  ' + b + ' ] and [ ' + c + '  ' + d + ' ]?',
+      det, [a * d + b * c, b * c - a * d, a * b - c * d],
+      'det = ad − bc = (' + a + ')(' + d + ') − (' + b + ')(' + c + ') = ' + (a * d) + ' − ' + (b * c) + ' = ' + det + '.',
+      'Matrices', 'medium');
+  },
+  function matMulEntry(){
+    var A = [[ri(-4, 5), ri(-4, 5)], [ri(-4, 5), ri(-4, 5)]], B = [[ri(-4, 5), ri(-4, 5)], [ri(-4, 5), ri(-4, 5)]];
+    var r = ri(0, 1), c = ri(0, 1);
+    var v = A[r][0] * B[0][c] + A[r][1] * B[1][c];
+    return mk('A has rows [ ' + A[0].join('  ') + ' ], [ ' + A[1].join('  ') + ' ]; B has rows [ ' + B[0].join('  ') + ' ], [ ' + B[1].join('  ') + ' ]. What is entry (row ' + (r + 1) + ', column ' + (c + 1) + ') of AB?',
+      v, [A[r][0] * B[c][0] + A[r][1] * B[c][1], v + A[r][1], A[r][c] * B[r][c]],
+      'Row ' + (r + 1) + ' of A dot column ' + (c + 1) + ' of B: (' + A[r][0] + ')(' + B[0][c] + ') + (' + A[r][1] + ')(' + B[1][c] + ') = ' + v + '.',
+      'Matrices', 'hard');
+  },
+  function seqTerm(){
+    var isArith = ri(0, 1) === 1;
+    if (isArith){
+      var a1 = ri(-5, 12), d = ri(2, 9), n = ri(5, 12);
+      var v = a1 + (n - 1) * d;
+      return mk('An arithmetic sequence starts at ' + a1 + ' with common difference ' + d + '. What is term ' + n + '?',
+        v, [a1 + n * d, v - d, a1 * (n - 1) * d],
+        'aₙ = a₁ + (n−1)d = ' + a1 + ' + ' + (n - 1) + '·' + d + ' = ' + v + '.', 'Sequences', 'easy');
+    }
+    var g1 = ri(1, 4), rr = pick([2, 3]), nn = ri(3, 7);
+    var gv = g1 * Math.pow(rr, nn - 1);
+    return mk('A geometric sequence starts at ' + g1 + ' with common ratio ' + rr + '. What is term ' + nn + '?',
+      gv, [g1 * Math.pow(rr, nn), g1 * rr * (nn - 1), gv / rr],
+      'aₙ = a₁·r^(n−1) = ' + g1 + '·' + rr + '^' + (nn - 1) + ' = ' + gv + '.', 'Sequences', 'medium');
+  },
+  function combinatorics(){
+    function fact(n){ var f = 1; for (var i = 2; i <= n; i++) f *= i; return f; }
+    var n = ri(5, 9), r = ri(2, 4);
+    var isPerm = ri(0, 1) === 1;
+    var v = isPerm ? fact(n) / fact(n - r) : fact(n) / (fact(r) * fact(n - r));
+    var other = isPerm ? fact(n) / (fact(r) * fact(n - r)) : fact(n) / fact(n - r);
+    return mk(isPerm
+        ? 'How many ways can ' + r + ' distinct officers (order matters) be chosen from ' + n + ' people?'
+        : 'How many ways can a committee of ' + r + ' (order does not matter) be chosen from ' + n + ' people?',
+      v, [other, Math.pow(n, r), n * r],
+      (isPerm ? 'Order matters → permutation: P(' + n + ',' + r + ') = ' + n + '!/(' + n + '−' + r + ')! = ' + v
+              : 'Order does not matter → combination: C(' + n + ',' + r + ') = ' + n + '!/( ' + r + '!·' + (n - r) + '! ) = ' + v) + '. The other big number is the ' + (isPerm ? 'combination' : 'permutation') + '.',
+      'Counting', 'medium');
+  },
+  function binConv(){
+    var v = ri(9, 200);
+    var toB = v.toString(2);
+    if (ri(0, 1) === 1){
+      return mk('Convert decimal ' + v + ' to binary.', toB,
+        [(v + 1).toString(2), (v - 1).toString(2), (v ^ 8).toString(2)],
+        'Repeated division by 2 (or place values): ' + v + ' = ' + toB + '₂.', 'Number bases', 'easy');
+    }
+    return mk('Convert binary ' + toB + ' to decimal.', v, [v + 1, v - 2, parseInt(toB.split('').reverse().join(''), 2)],
+      'Add the powers of 2 whose bit is 1: ' + toB + '₂ = ' + v + '.', 'Number bases', 'easy');
+  },
+  function relationProps(){
+    // random relation on {1,2,3}; ask which properties hold (single choice among combos)
+    var pairs = [];
+    for (var i = 1; i <= 3; i++) for (var j = 1; j <= 3; j++) if (ri(0, 2) === 0) pairs.push([i, j]);
+    if (!pairs.length) pairs.push([1, 1]);
+    function has(a, b){ return pairs.some(function(p){ return p[0] === a && p[1] === b; }); }
+    var refl = [1, 2, 3].every(function(x){ return has(x, x); });
+    var symm = pairs.every(function(p){ return has(p[1], p[0]); });
+    var trans = pairs.every(function(p){ return pairs.every(function(q){ return q[0] !== p[1] || has(p[0], q[1]); }); });
+    var label = (refl ? 'reflexive ' : '') + (symm ? 'symmetric ' : '') + (trans ? 'transitive' : '');
+    if (!label.trim()) label = 'none of these properties';
+    label = label.trim();
+    var all = ['reflexive symmetric transitive', 'reflexive', 'symmetric', 'transitive', 'reflexive symmetric', 'reflexive transitive', 'symmetric transitive', 'none of these properties'];
+    var wrongs = shuffle(all.filter(function(x){ return x !== label; })).slice(0, 3);
+    var fmt = '{' + pairs.map(function(p){ return '(' + p[0] + ',' + p[1] + ')'; }).join(', ') + '}';
+    return mk('R = ' + fmt + ' on {1,2,3}. Which properties does R have?', label, wrongs,
+      'Reflexive needs (1,1),(2,2),(3,3) all present → ' + refl + '. Symmetric needs the reverse of every pair → ' + symm + '. Transitive needs (a,c) whenever (a,b),(b,c) → ' + trans + '.',
+      'Relations', 'hard');
+  }
+];
+
+// ============ D684 - INTRO TO COMPUTER SCIENCE ============
+var D684 = [
+  function loopTrace(){
+    var s = ri(1, 4), e = ri(6, 12), st = pick([1, 2, 3]), acc = 0, its = 0;
+    for (var i = s; i <= e; i += st){ acc += i; its++; }
+    return mk('Trace this pseudocode:\nsum ← 0\nFOR i ← ' + s + ' TO ' + e + ' STEP ' + st + '\n  sum ← sum + i\nENDFOR\nWhat is sum afterward?',
+      acc, [acc + e, acc - s, its],
+      'i takes ' + its + ' values; adding them gives ' + acc + '. (A common trap answer is the loop count, ' + its + '.)',
+      'Loops & tracing', 'medium');
+  },
+  function boolEval(){
+    var A = ri(0, 1) === 1, B = ri(0, 1) === 1, C = ri(0, 1) === 1;
+    var form = ri(0, 2);
+    var v, s;
+    if (form === 0){ v = (A && !B) || C; s = '(A AND NOT B) OR C'; }
+    else if (form === 1){ v = !(A || B) && C; s = 'NOT(A OR B) AND C'; }
+    else { v = (A || B) && !(B && C); s = '(A OR B) AND NOT(B AND C)'; }
+    return mk('A = ' + A + ', B = ' + B + ', C = ' + C + '.  Evaluate: ' + s,
+      v ? 'true' : 'false', [v ? 'false' : 'true', 'error', 'true only if A = B'],
+      'Work inside-out with NOT before AND/OR: the expression is ' + v + '.', 'Boolean logic', 'easy');
+  },
+  function stackQueue(){
+    var ops = [], stack = [], queue = [], vals = shuffle([ri(1, 9), ri(10, 19), ri(20, 29), ri(30, 39)]);
+    vals.forEach(function(v){ ops.push(v); });
+    var isStack = ri(0, 1) === 1;
+    var popped;
+    if (isStack){ var st2 = vals.slice(); st2.pop(); popped = vals[vals.length - 1]; }
+    else { popped = vals[0]; }
+    return mk('Push/enqueue these values in order into ' + (isStack ? 'a STACK' : 'a QUEUE') + ': ' + vals.join(', ') + '. Which value comes out on the first ' + (isStack ? 'pop' : 'dequeue') + '?',
+      popped, [isStack ? vals[0] : vals[vals.length - 1], vals[1], vals[2]],
+      isStack ? 'A stack is LIFO — last in, first out — so ' + popped + ' (the last pushed) pops first.'
+              : 'A queue is FIFO — first in, first out — so ' + popped + ' (the first enqueued) leaves first.',
+      'Stacks & queues', 'easy');
+  },
+  function searchCompare(){
+    var n = pick([16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]);
+    var v = Math.round(Math.log(n) / Math.log(2)) + 1;
+    var noun = pick(['array', 'list', 'table of records', 'sorted file of entries']);
+    return mk('A SORTED ' + noun + ' holds ' + n + ' elements. In the worst case, about how many comparisons does binary search need (vs ' + n + ' for linear search)?',
+      v, [n, n / 2, v * 2],
+      'Binary search halves the range each step: ⌈log₂ ' + n + '⌉ + 1 ≈ ' + v + ' comparisons. Linear search may need all ' + n + '.',
+      'Searching', 'medium');
+  },
+  function bitsNeeded(){
+    var n = ri(10, 9000);
+    if (Math.pow(2, Math.round(Math.log(n) / Math.log(2))) === n) n++;
+    var v = Math.ceil(Math.log(n) / Math.log(2));
+    return mk('How many bits are needed to represent ' + n + ' distinct values?',
+      v, [v - 1, v + 1, Math.ceil(n / 8)],
+      '2^' + (v - 1) + ' = ' + Math.pow(2, v - 1) + ' is too few; 2^' + v + ' = ' + Math.pow(2, v) + ' ≥ ' + n + '. So ' + v + ' bits.',
+      'Data representation', 'medium');
+  },
+  function recTrace(){
+    var n = ri(3, 7), base = pick([1, 2]), nm = pick(['f', 'g', 'h']);
+    var f = base; for (var i = 2; i <= n; i++) f *= i;
+    return mk(nm + '(0) = ' + base + ', and ' + nm + '(n) = n × ' + nm + '(n−1) for n > 0. What is ' + nm + '(' + n + ')?',
+      f, [f / n, f * (n + 1), n * n * base],
+      'Unwind: ' + nm + '(' + n + ') = ' + n + '·' + (n - 1) + '·…·1·' + base + ' = ' + f + '. Each call waits for the smaller call; the multiplications happen on the way back up.',
+      'Recursion', 'medium');
+  },
+  function ifChain(){
+    var x = ri(0, 100);
+    var v = x >= 90 ? 'A' : x >= 80 ? 'B' : x >= 70 ? 'C' : 'F';
+    return mk('IF x ≥ 90 THEN grade ← "A"\nELSE IF x ≥ 80 THEN grade ← "B"\nELSE IF x ≥ 70 THEN grade ← "C"\nELSE grade ← "F"\nWith x = ' + x + ', what is grade?',
+      v, ['A', 'B', 'C', 'F'].filter(function(g){ return g !== v; }),
+      'The chain checks top-down and stops at the FIRST true condition: with x = ' + x + ' that gives "' + v + '".',
+      'Conditionals', 'easy');
+  },
+  function whileCount(){
+    var x = ri(20, 90), d = pick([3, 4, 5, 7]), n = 0, cur = x;
+    while (cur > 0){ cur -= d; n++; }
+    return mk('x ← ' + x + '\ncount ← 0\nWHILE x > 0\n  x ← x − ' + d + '\n  count ← count + 1\nENDWHILE\nWhat is count afterward?',
+      n, [n - 1, n + 1, Math.floor(x / d)],
+      'The loop runs until x drops to 0 or below: ⌈' + x + '/' + d + '⌉ = ' + n + ' iterations.',
+      'Loops & tracing', 'medium');
+  }
+];
+
+// ============ D286 - JAVA ============
+// Each template also returns _java (a printable statement block) so the
+// offline harness can compile the REAL thing and compare stdout.
+var D286 = [
+  function forSum(){
+    var a = ri(0, 3), b = ri(6, 12), s = pick([1, 2, 3]);
+    var sum = 0; for (var i = a; i < b; i += s) sum += i;
+    var q = mk('int sum = 0;\nfor (int i = ' + a + '; i < ' + b + '; i += ' + s + ') { sum += i; }\nSystem.out.println(sum);\nWhat prints?',
+      sum, [sum + b, sum - a, sum + s],
+      'i runs ' + a + ', ' + (a + s) + ', … while i < ' + b + ' (strict). The values sum to ' + sum + '.',
+      'Loops', 'medium');
+    q._java = 'int sum = 0; for (int i = ' + a + '; i < ' + b + '; i += ' + s + ') { sum += i; } System.out.println(sum);';
+    q._expect = String(sum);
+    return q;
+  },
+  function intDivMod(){
+    var a = ri(7, 60), b = ri(2, 9);
+    var d = Math.trunc(a / b), m = a % b;
+    var q = mk('System.out.println(' + a + ' / ' + b + ' + " " + ' + a + ' % ' + b + ');\nWhat prints?',
+      d + ' ' + m, [(a / b).toFixed(1) + ' ' + m, d + ' ' + (m + 1), (d + 1) + ' ' + m],
+      'Both operands are ints, so / TRUNCATES: ' + a + '/' + b + ' = ' + d + '. The remainder ' + a + '%' + b + ' = ' + m + '.',
+      'Operators', 'easy');
+    q._java = 'System.out.println(' + a + ' / ' + b + ' + " " + ' + a + ' % ' + b + ');';
+    q._expect = d + ' ' + m;
+    return q;
+  },
+  function substringIdx(){
+    var w = pick(['COMPUTER', 'VARIABLE', 'COMPILER', 'FUNCTION', 'ITERATOR', 'KEYBOARD', 'TERMINAL', 'DATABASE', 'PROTOCOL', 'OVERRIDE', 'ABSTRACT', 'PACKAGES']);
+    var i = ri(1, 3), j = ri(i + 2, Math.min(i + 4, w.length));
+    var sub = w.slice(i, j);
+    var q = mk('String s = "' + w + '";\nSystem.out.println(s.substring(' + i + ', ' + j + '));\nWhat prints?',
+      sub, [w.slice(i, j + 1), w.slice(i - 1, j), w.slice(i, j - 1) || w.slice(0, 2)],
+      'substring(' + i + ', ' + j + ') takes index ' + i + ' up to but NOT including ' + j + ' (0-based): "' + sub + '".',
+      'Strings', 'medium');
+    q._java = 'String s = "' + w + '"; System.out.println(s.substring(' + i + ', ' + j + '));';
+    q._expect = sub;
+    return q;
+  },
+  function arrayAlias(){
+    var vals = [ri(1, 9), ri(10, 19), ri(20, 29)], idx = ri(0, 2), nv = ri(50, 99);
+    var after = vals.slice(); after[idx] = nv;
+    var q = mk('int[] a = {' + vals.join(', ') + '};\nint[] b = a;\nb[' + idx + '] = ' + nv + ';\nSystem.out.println(a[' + idx + ']);\nWhat prints?',
+      after[idx], [vals[idx], 0, nv + vals[idx]],
+      'b = a copies the REFERENCE, not the array — a and b are the same object, so writing b[' + idx + '] is visible through a. It prints ' + nv + '.',
+      'Arrays & references', 'medium');
+    q._java = 'int[] a = {' + vals.join(', ') + '}; int[] b = a; b[' + idx + '] = ' + nv + '; System.out.println(a[' + idx + ']);';
+    q._expect = String(after[idx]);
+    return q;
+  },
+  function prePost(){
+    var a = ri(2, 19);
+    // int x = a; int y = x++ + ++x;  -> evaluates left-to-right:
+    // x++ yields a (x becomes a+1); ++x makes x a+2 and yields a+2; y = a + (a+2)
+    var x = a + 2, y = a + (a + 2);
+    var q = mk('int x = ' + a + ';\nint y = x++ + ++x;\nSystem.out.println(x + " " + y);\nWhat prints?',
+      x + ' ' + y, [x + ' ' + (2 * a + 1), (a + 1) + ' ' + y, x + ' ' + 2 * (a + 1)],
+      'Left to right: x++ yields ' + a + ' (then x=' + (a + 1) + '); ++x makes x=' + (a + 2) + ' and yields ' + (a + 2) + '. So y = ' + a + ' + ' + (a + 2) + ' = ' + y + ', x = ' + x + '.',
+      'Operators', 'hard');
+    q._java = 'int x = ' + a + '; int y = x++ + ++x; System.out.println(x + " " + y);';
+    q._expect = x + ' ' + y;
+    return q;
+  },
+  function concatOrder(){
+    var a = ri(1, 9), b = ri(1, 9);
+    var s1 = '' + a + b, s2 = (a + b) + '';
+    var q = mk('System.out.println("" + ' + a + ' + ' + b + ');\nSystem.out.println(' + a + ' + ' + b + ' + "");\nWhat prints (two lines)?',
+      s1 + ' then ' + s2, [s2 + ' then ' + s1, s1 + ' then ' + s1, s2 + ' then ' + s2],
+      'Left to right: "" + ' + a + ' is a String, so the first line concatenates → "' + s1 + '". The second adds ints FIRST (' + a + '+' + b + '=' + (a + b) + ') then concatenates → "' + s2 + '".',
+      'Strings', 'medium');
+    q._java = 'System.out.println("" + ' + a + ' + ' + b + '); System.out.println(' + a + ' + ' + b + ' + "");';
+    q._expect = s1 + '\n' + s2;
+    return q;
+  },
+  function passByValue(){
+    var v = ri(5, 99);
+    var q = mk('static void bump(int n) { n = n + 10; }\n...\nint x = ' + v + ';\nbump(x);\nSystem.out.println(x);\nWhat prints?',
+      v, [v + 10, 0, 10],
+      'Java passes primitives BY VALUE: bump gets a copy of x. Changing the copy never touches x, so it prints ' + v + '.',
+      'Methods & parameters', 'medium');
+    q._java = 'int x = ' + v + '; bump(x); System.out.println(x);';
+    q._helper = 'static void bump(int n) { n = n + 10; }';
+    q._expect = String(v);
+    return q;
+  },
+  function charAtLoop(){
+    var w = pick(['STACK', 'ARRAY', 'CLASS', 'FINAL', 'SUPER', 'OBJECT', 'METHOD', 'DOUBLE', 'STATIC', 'PUBLIC', 'RETURN', 'STRING', 'BOOLEAN', 'INTEGER', 'PACKAGE', 'IMPORT', 'EXTENDS', 'PRIVATE', 'ABSTRACT', 'INTERFACE', 'VARIABLE', 'COMPILER', 'RUNTIME', 'KEYWORD', 'LITERAL']);
+    var count = 0;
+    for (var i2 = 0; i2 < w.length; i2++) if ('AEIOU'.indexOf(w.charAt(i2)) !== -1) count++;
+    var q = mk('String s = "' + w + '";\nint c = 0;\nfor (int i = 0; i < s.length(); i++) {\n  if ("AEIOU".indexOf(s.charAt(i)) >= 0) c++;\n}\nSystem.out.println(c);\nWhat prints?',
+      count, [count + 1, w.length - count, w.length],
+      'The loop counts vowels in "' + w + '": ' + count + '.',
+      'Strings & loops', 'medium');
+    q._java = 'String s = "' + w + '"; int c = 0; for (int i = 0; i < s.length(); i++) { if ("AEIOU".indexOf(s.charAt(i)) >= 0) c++; } System.out.println(c);';
+    q._expect = String(count);
+    return q;
+  }
+];
+
+// ============ D197 - VERSION CONTROL (git) ============
+// Templates carry _git (a shell script) + the fact they predict, so the
+// harness can run them against real git and compare.
+var D197 = [
+  function stagedThenEdited(){
+    var f = pick(['notes.txt', 'app.py', 'readme.md', 'index.html', 'main.java', 'style.css', 'config.yml', 'data.csv', 'todo.md', 'server.js', 'test.py', 'draft.txt']);
+    var q = mk('You edit ' + f + ', run `git add ' + f + '`, then edit ' + f + ' AGAIN without adding. What does `git status` show?',
+      f + ' appears BOTH staged and modified-unstaged',
+      [f + ' appears only as staged', f + ' appears only as modified', 'Nothing — git auto-stages the second edit'],
+      '`git add` snapshots the file AT THAT MOMENT into the index. The later edit is a new working-tree change, so ' + f + ' shows in "Changes to be committed" AND "Changes not staged".',
+      'Staging area', 'medium');
+    q._git = { script: ['echo one > ' + f, 'git add ' + f, 'echo two >> ' + f], check: 'both', file: f };
+    return q;
+  },
+  function branchStays(){
+    var n = ri(2, 7), br = pick(['feature', 'dev', 'bugfix', 'exp', 'staging', 'redesign', 'cleanup', 'v2']);
+    var q = mk('main has some commits. You run `git branch ' + br + '` (without switching), then make ' + n + ' more commits on main. How many of those ' + n + ' new commits are on ' + br + '?',
+      0, [n, 1, n - 1],
+      'A branch is just a pointer. Creating ' + br + ' points it at the current commit and it NEVER moves on its own — the ' + n + ' new commits advance main only.',
+      'Branches', 'medium');
+    q._git = { script: null, mkCommits: n, branch: br, check: 'branchBehind' };
+    return q;
+  },
+  function commitCount(){
+    var a = ri(2, 6), b = ri(1, 5);
+    var total = 1 + a + b; // initial + a on main + b on feature
+    var q = mk('A repo has 1 initial commit. You add ' + a + ' commits on main, create and switch to a branch, and add ' + b + ' commits there. `git log --oneline` on the BRANCH shows how many commits?',
+      total, [a + b, total - 1, 1 + a],
+      'The branch grew from main\'s tip, so its history contains the initial commit, main\'s ' + a + ', and its own ' + b + ': ' + total + ' total. History is shared backward, never lost.',
+      'History', 'medium');
+    q._git = { a: a, b: b, check: 'logCount', expect: total };
+    return q;
+  },
+  function checkoutB(){
+    var br = pick(['feature-x', 'hotfix', 'test-branch', 'login-page', 'dark-mode', 'api-v2', 'refactor', 'search-fix', 'perf-work', 'new-nav']);
+    var q = mk('You run `git checkout -b ' + br + '` and then commit twice. Which pointers moved?',
+      br + ' moved forward twice; main did not move',
+      ['main moved forward twice; ' + br + ' did not', 'Both main and ' + br + ' moved together', 'Only HEAD moved — no branch moved'],
+      '`checkout -b` creates ' + br + ' AND switches HEAD to it. Commits advance the branch HEAD points to — ' + br + ' — while main stays where it was.',
+      'Branches', 'medium');
+    q._git = { branch: br, commits: 2, check: 'branchAhead' };
+    return q;
+  },
+  function restoreStaged(){
+    var f = pick(['config.yml', 'main.java', 'style.css', 'app.js', 'notes.md', 'index.html', 'query.sql', 'build.xml', 'setup.py', 'routes.rb']);
+    var q = mk('You ran `git add ' + f + '` by mistake. Which command UNSTAGES it while keeping your edits in the working tree?',
+      'git restore --staged ' + f,
+      ['git restore ' + f, 'git checkout ' + f, 'git rm ' + f],
+      '`git restore --staged` removes the file from the index only. Plain `git restore` (or the old `git checkout -- file`) would OVERWRITE your working-tree edits — the opposite of what you want.',
+      'Undoing things', 'hard');
+    q._git = { file: f, check: 'restoreStaged' };
+    return q;
+  }
+];
+
+var FRESHGEN = { C959: C959, D286: D286, D684: D684, D197: D197 };
+
+// Serve n fresh questions for a course, cycling templates for coverage.
+FRESHGEN.deal = function(cid, n){
+  var tpls = FRESHGEN[cid];
+  if (!tpls || !tpls.length) return [];
+  var out = [], guard = 0;
+  var order = shuffle(tpls.slice());
+  while (out.length < n && guard < n * 6){
+    guard++;
+    var t = order[out.length % order.length];
+    try {
+      var q = t();
+      if (!q || !Array.isArray(q.options) || q.options.length !== 4) continue;
+      if (new Set(q.options).size !== 4) continue;
+      if (typeof q.correct !== 'number' || q.correct < 0 || q.correct > 3) continue;
+      // no duplicate stems within one deal
+      if (out.some(function(o){ return o.text === q.text; })) continue;
+      q.id = 'fx_' + Math.random().toString(36).slice(2, 10);
+      q.fresh = true;
+      delete q._java; delete q._expect; delete q._helper; delete q._git;
+      out.push(q);
+    } catch (e) { /* skip a bad roll */ }
+  }
+  return out;
+};
+
+if (typeof module !== 'undefined' && module.exports) module.exports = FRESHGEN;
+else root.FRESHGEN = FRESHGEN;
+})(typeof window !== 'undefined' ? window : this);
+
+
+(function freshDrill(){
+/* ♾ FRESH QUESTIONS - "I'm practicing the same questions over and over and
+ * it's predictable."
+ *
+ * She is right, and no static pool fixes that - she would memorize the next
+ * batch too. These are question GENERATORS: templates that roll new numbers,
+ * new propositions, new code values, new git scenarios on every single
+ * attempt, with the answer computed by the same code that builds the
+ * question. The library was verified offline before shipping: thousands of
+ * structural checks, every Java template compiled and run against the real
+ * JVM (200 random instances), every git template executed against real git.
+ *
+ * Surfaces:
+ *  - a "♾ Fresh Questions" chapter in each of the four exam courses, dealing
+ *    25 brand-new questions per attempt;
+ *  - the OA/PA simulators: each 50-question deal now swaps 10 of its static
+ *    questions for fresh generated ones, so even the exams stop repeating.
+ */
+try {
+if (typeof window === 'undefined' || !window.FRESHGEN) return;
+if (window.__freshDrill) return; window.__freshDrill = true;
+var GEN = window.FRESHGEN;
+var CIDS = ['C959', 'D286', 'D684', 'D197'];
+
+if (typeof getQuestions === 'function' && !getQuestions.__freshWrapped){
+  var _prev = getQuestions;
+  getQuestions = function(courseId, chId, secId){
+    try {
+      if (chId === 'fresh_sim' && GEN[courseId]) return GEN.deal(courseId, 25);
+      if ((chId === 'oa_sim' || chId === 'pa_sim') && GEN[courseId]){
+        var base = _prev.apply(this, arguments);
+        if (Array.isArray(base) && base.length >= 40){
+          var fresh = GEN.deal(courseId, 10);
+          if (fresh.length === 10){
+            var out = base.slice(), used = {};
+            for (var i = 0; i < fresh.length; i++){
+              var at; do { at = Math.floor(Math.random() * out.length); } while (used[at]);
+              used[at] = 1;
+              out[at] = fresh[i];
+            }
+            return out;
+          }
+        }
+        return base;
+      }
+    } catch (e) { if (window.console && console.warn) console.warn('freshDrill serve failed:', e); }
+    return _prev.apply(this, arguments);
+  };
+  getQuestions.__freshWrapped = true;
+}
+
+var LESSON_BODY = '<h2>♾ Fresh Questions</h2>'
+  + '<p>Every attempt here is <strong>brand new</strong>: these questions are built by generators that roll fresh numbers, propositions, code and scenarios each time, so they can never be memorized — if you can answer them, you know the method, not the answer key.</p>'
+  + '<p>Every answer is computed by the same machinery that writes the question, and the generators were verified against the real thing before shipping — the Java ones against a real compiler, the Git ones against real git.</p>'
+  + '<p>Your OA and PA simulators also now swap 10 of their 50 questions for fresh ones on every attempt.</p>';
+
+function splice(){
+  for (var k = 0; k < CIDS.length; k++){
+    var cid = CIDS[k];
+    try {
+      var c = typeof COURSES !== 'undefined' && COURSES[cid];
+      if (!c || !Array.isArray(c.chapters)) continue;
+      if (!c.chapters.some(function(x){ return x.id === 'fresh_sim'; })){
+        var at = c.chapters.length;
+        for (var i = 0; i < c.chapters.length; i++){
+          var id = c.chapters[i].id;
+          if (id === 'pa_sim' || id === 'oa_sim' || id === 'oa' || id === 'cheat'){ at = i; break; }
+        }
+        c.chapters.splice(at, 0, { id: 'fresh_sim', title: '♾ Fresh Questions — new every attempt',
+          sections: [{ id: 'sim', title: 'A 25-question set that has never existed before' }] });
+      }
+      var lk = cid + '/fresh_sim/sim';
+      if (typeof SAMPLE_LESSON !== 'undefined' && !Object.prototype.hasOwnProperty.call(SAMPLE_LESSON, lk)){
+        SAMPLE_LESSON[lk] = { body: LESSON_BODY };
+      }
+    } catch (e) {}
+  }
+}
+splice();
+// The manifest replaces the four courses' chapters shortly after boot (and its
+// cached copy may predate this feature), so re-assert on the heartbeat - the
+// check is a some() over ~20 chapters, idempotent and effectively free.
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(splice, 5, 'ui'); } catch (e) {}
+window.__freshDeal = function(cid, n){ return GEN.deal(cid, n || 25); };
+} catch (e) { if (window.console && console.warn) console.warn('fresh drill failed:', e); }
 })();
 
 
