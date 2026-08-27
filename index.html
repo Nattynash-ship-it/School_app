@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.516">
+<meta name="app-build" content="18.517">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -66,11 +66,20 @@
      over 15 seconds, then appeared all at once. That is the "screen turns
      white and 10 seconds later the app comes back".
      media="print" makes it non-blocking: the app paints and runs immediately
-     in its fallback faces, and the moment the fonts arrive the onload swaps
-     them in. Nothing about the typography changes once it has loaded. -->
-<link rel="stylesheet" media="print" onload="this.media='all'; this.onload=null;"
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"></noscript>
+     rather than waiting on someone else's server.
+
+     display=optional is the other half, and it is there for the ink. A font
+     that swaps in AFTER the first paint reflows the text under strokes that
+     are already on the page - measured at 57px of movement, which left ink
+     sitting 49px away from the words it marked. Annotations are anchored to
+     the column, not to the sentence, so nothing puts them back. optional gives
+     the font a moment to arrive and otherwise declines it for that load, so the
+     page never reflows underneath her handwriting. Once the font is in the
+     browser's cache it applies from the very first paint, which for an
+     installed app is every launch after the first. -->
+<link rel="stylesheet" media="print" onload="this.media='all'; this.onload=null; if(window.__reanchorInk)window.__reanchorInk();"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=optional">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=optional"></noscript>
 <style>
  /* ============ DESIGN TOKENS ============ */
  :root {
@@ -28899,6 +28908,35 @@ function gannoInit() {
  }, { passive: false });
  window.addEventListener('scroll', gannoOnScroll, { passive: true });
  window.addEventListener('resize', gannoOnResize);
+ /* WHEN THE WEBFONT LANDS, THE TEXT MOVES - AND THE INK MUST MOVE WITH IT.
+  *
+  * The font stylesheet used to block the first paint, so the page was laid out
+  * in its final fonts and never reflowed. Loading it without blocking made the
+  * app start in under a second, but it also means the text is first laid out in
+  * fallback faces and re-laid-out when the real ones arrive. Ink is anchored to
+  * the text, so anything drawn before that moment sat where the words USED to
+  * be - overlapping the lines instead of marking them.
+  *
+  * The ResizeObserver below catches this only when the body's own height
+  * changes; a reflow that shifts lines without changing total height slips past
+  * it. So the swap is handled explicitly, from both ends: the font loader calls
+  * __reanchorInk, and document.fonts.ready covers fonts that arrive any other
+  * way (cache, a second stylesheet, a system font finishing late).
+  */
+ window.__reanchorInk = function(){
+   try { if (typeof gannoOnResize === 'function') gannoOnResize(); } catch (e) {}
+   try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
+ };
+ try {
+   if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+     document.fonts.ready.then(function(){
+       window.__reanchorInk();
+       // A late relayout can settle a frame or two after the fonts resolve.
+       setTimeout(window.__reanchorInk, 120);
+       setTimeout(window.__reanchorInk, 600);
+     }).catch(function(){});
+   }
+ } catch (e) {}
  // Keep the overlay sized to the document even when content grows WITHOUT a
  // window resize (lesson renders, images load, quiz expands). A stale,
  // too-short overlay was the other latent cause of misplaced/blocked ink.
