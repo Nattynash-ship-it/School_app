@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.496">
+<meta name="app-build" content="18.497">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -58609,6 +58609,365 @@ try {
 } catch (e) {}
 inject();
 window.__eli5Inject = inject;
+})();
+
+
+(function studyPodcast(){
+/* 🎙 SECTION PODCAST - "for every section is it possible to have a podcast
+ * like explanation?"
+ *
+ * One tap on any lesson: the AI tutor writes that section a short two-host
+ * episode - MAYA explains, SAM asks the questions a confused student would -
+ * grounded in the lesson text on screen, then the iPad reads it aloud with
+ * two different voices. The script is written ONCE per section and cached in
+ * the store, so replays are instant and free; the audio uses the device's
+ * own speech voices, so playback works offline and costs nothing.
+ *
+ * iOS realities designed around, not discovered later:
+ *  - speechSynthesis must start from a user gesture -> generation happens on
+ *    open, audio starts only on her Play tap;
+ *  - long utterances get cut off -> the script is spoken sentence by
+ *    sentence, each its own small utterance;
+ *  - pause() is unreliable -> pause is implemented as cancel + remember
+ *    position, resume re-speaks from that sentence;
+ *  - onend sometimes never fires -> a per-utterance watchdog advances the
+ *    queue if the engine goes quiet.
+ * Voice quality is the device's: the enhanced voices (Settings ->
+ * Accessibility -> Spoken Content -> Voices) sound far better than the
+ * compact defaults, and the player says so once.
+ */
+try {
+if (typeof document === 'undefined') return;
+if (window.__studyPodcast) return; window.__studyPodcast = true;
+
+var css = document.createElement('style');
+css.textContent = [
+'.pod-sheet { position: fixed; right: 12px; bottom: 12px; z-index: 9601; width: min(560px, calc(100vw - 24px));',
+'  max-height: min(74vh, 660px); display: flex; flex-direction: column; background: var(--bg, #fff);',
+'  color: var(--text); border: 1px solid var(--border-strong, var(--border)); border-radius: 16px;',
+'  box-shadow: 0 12px 40px rgba(0,0,0,0.3); overflow: hidden; }',
+'.pod-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 14px; }',
+'.pod-head .pod-x { margin-left: auto; border: none; background: none; color: var(--text-3); font-size: 20px; cursor: pointer; }',
+'.pod-sub { padding: 0 14px 8px; font-size: 11.5px; color: var(--text-4); }',
+'.pod-log { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 1.5; min-height: 100px; }',
+'.pod-turn { padding: 7px 11px; border-radius: 11px; background: var(--surface-2); }',
+'.pod-turn .pod-who { font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 2px; }',
+'.pod-turn[data-h="MAYA"] .pod-who { color: var(--accent); }',
+'.pod-turn[data-h="SAM"] .pod-who { color: #f59e0b; }',
+'.pod-turn.live { outline: 2px solid var(--accent); }',
+'.pod-bar { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--border); }',
+'.pod-bar button { border: 1px solid var(--border-strong, var(--border)); background: var(--surface-2); color: var(--text);',
+'  border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px; padding: 8px 12px; }',
+'.pod-bar .pod-play { background: var(--accent); color: var(--accent-text, #fff); border: none; padding: 8px 18px; font-size: 15px; }',
+'.pod-status { padding: 10px 14px; font-size: 13px; color: var(--text-2); }'
+].join('\n');
+document.head.appendChild(css);
+
+var sheet = null, logEl = null, statusEl = null, playBtn = null;
+var script = null;       // raw text
+var turns = [];          // { host, text, el }
+var chunks = [];         // { turn, text }
+var idx = 0, playing = false, watchdog = null, genAbort = null, curKey = null;
+
+function S(){ return window.__podcastSynth || window.speechSynthesis; }
+function U(){ return window.__podcastUtter || window.SpeechSynthesisUtterance; }
+
+function secKey(){
+  try {
+    if (typeof view === 'object' && view && view.name === 'section' && view.courseId)
+      return view.courseId + '/' + view.chId + '/' + view.secId;
+  } catch (e) {}
+  return null;
+}
+
+function lessonText(){
+  try {
+    var L = getLesson(view.courseId, view.chId, view.secId);
+    if (!L || typeof L.body !== 'string') return null;
+    var tpl = document.createElement('template');
+    tpl.innerHTML = L.body;
+    var text = (tpl.content.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 15000);
+    return { title: (L.title || '') + ' (' + view.courseId + ')', lesson: text };
+  } catch (e) { return null; }
+}
+
+// ---- voices: two distinct English voices, best available ----
+var PREF = ['ava', 'samantha', 'allison', 'susan', 'zoe', 'karen', 'moira', 'evan', 'nathan', 'tom', 'daniel', 'alex', 'aaron'];
+function pickVoices(){
+  var vs = [];
+  try { vs = S().getVoices() || []; } catch (e) {}
+  var en = vs.filter(function(v){ return /^en/i.test(v.lang || ''); });
+  if (!en.length) en = vs;
+  var scored = en.map(function(v){
+    var n = (v.name || '').toLowerCase(), s = 0;
+    for (var i = 0; i < PREF.length; i++) if (n.indexOf(PREF[i]) !== -1) { s += (PREF.length - i) * 4; break; }
+    if (/premium|enhanced|natural/.test(n)) s += 30;
+    if (v.localService) s += 8;
+    if (/^en-us/i.test(v.lang || '')) s += 3;
+    return { v: v, s: s };
+  }).sort(function(a, b){ return b.s - a.s; });
+  var a = scored[0] ? scored[0].v : null;
+  var b = null;
+  for (var j = 1; j < scored.length; j++) { if (scored[j].v.name !== (a && a.name)) { b = scored[j].v; break; } }
+  return { maya: a, sam: b || a, same: !b };
+}
+
+function splitSentences(t){
+  var m = String(t).match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) || [String(t)];
+  var out = [], cur = '';
+  for (var i = 0; i < m.length; i++) {
+    if ((cur + m[i]).length > 220 && cur) { out.push(cur.trim()); cur = ''; }
+    cur += m[i];
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+function parseScript(raw){
+  var lines = String(raw).split(/\n+/), t = [];
+  for (var i = 0; i < lines.length; i++) {
+    var mm = lines[i].match(/^\s*(MAYA|SAM)\s*:\s*(.+)$/i);
+    if (mm && mm[2].trim()) t.push({ host: mm[1].toUpperCase(), text: mm[2].trim() });
+  }
+  if (t.length < 4) {
+    // Unexpected shape: read it as a single narrator rather than fail.
+    t = splitSentences(raw).map(function(s){ return { host: 'MAYA', text: s }; });
+  }
+  return t;
+}
+
+function rate(){ var r = 1; try { r = store.podcastRate || 1; } catch (e) {} return r; }
+
+function stopSpeech(){
+  playing = false;
+  if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+  try { S().cancel(); } catch (e) {}
+  if (playBtn) playBtn.textContent = '▶ Play';
+}
+
+function highlight(){
+  for (var i = 0; i < turns.length; i++) turns[i].el && turns[i].el.classList.remove('live');
+  var c = chunks[idx];
+  if (c && turns[c.turn] && turns[c.turn].el) {
+    turns[c.turn].el.classList.add('live');
+    try { turns[c.turn].el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+  }
+}
+
+function speakNext(){
+  if (!playing) return;
+  if (idx >= chunks.length) { stopSpeech(); idx = 0; highlight(); return; }
+  var c = chunks[idx];
+  highlight();
+  var Utter = U();
+  var u = new Utter(c.text);
+  var vv = pickVoices();
+  var voice = (turns[c.turn].host === 'SAM') ? vv.sam : vv.maya;
+  if (voice) u.voice = voice;
+  u.rate = rate();
+  // Same voice for both hosts (older devices): split them by pitch instead.
+  u.pitch = (turns[c.turn].host === 'SAM') ? (vv.same ? 0.88 : 0.98) : (vv.same ? 1.08 : 1.02);
+  var advanced = false;
+  var step = function(){
+    if (advanced) return; advanced = true;
+    if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+    idx++;
+    speakNext();
+  };
+  u.onend = step;
+  u.onerror = step;
+  watchdog = setTimeout(step, Math.max(9000, c.text.length * 110 / rate()));
+  try { S().speak(u); } catch (e) { step(); }
+}
+
+function play(){
+  if (!chunks.length) return;
+  playing = true;
+  if (playBtn) playBtn.textContent = '⏸ Pause';
+  try { S().cancel(); } catch (e) {}
+  speakNext();
+}
+function pause(){ stopSpeech(); }
+
+function jumpTurn(delta){
+  if (!chunks.length) return;
+  var cur = chunks[idx] ? chunks[idx].turn : 0;
+  var target = Math.max(0, Math.min(turns.length - 1, cur + delta));
+  for (var i = 0; i < chunks.length; i++) if (chunks[i].turn === target) { idx = i; break; }
+  var was = playing;
+  stopSpeech();
+  highlight();
+  if (was) play();
+}
+
+var RATES = [0.9, 1, 1.15, 1.3];
+function cycleRate(btn){
+  var r = rate(), at = RATES.indexOf(r); if (at === -1) at = 1;
+  var next = RATES[(at + 1) % RATES.length];
+  try { store.podcastRate = next; if (typeof saveStore === 'function') saveStore(); } catch (e) {}
+  btn.textContent = next + '×';
+  if (playing) { stopSpeech(); play(); }
+}
+
+function setScript(raw){
+  script = raw;
+  turns = parseScript(raw);
+  chunks = [];
+  for (var i = 0; i < turns.length; i++) {
+    var ss = splitSentences(turns[i].text);
+    for (var j = 0; j < ss.length; j++) chunks.push({ turn: i, text: ss[j] });
+  }
+  idx = 0;
+  if (!logEl) return;
+  logEl.innerHTML = '';
+  for (var k = 0; k < turns.length; k++) {
+    var d = document.createElement('div');
+    d.className = 'pod-turn';
+    d.setAttribute('data-h', turns[k].host);
+    var who = document.createElement('div'); who.className = 'pod-who'; who.textContent = turns[k].host === 'SAM' ? 'Sam' : 'Maya';
+    var tx = document.createElement('div'); tx.textContent = turns[k].text;
+    d.appendChild(who); d.appendChild(tx);
+    logEl.appendChild(d);
+    turns[k].el = d;
+  }
+  var words = script.split(/\s+/).length;
+  if (statusEl) statusEl.textContent = '~' + Math.max(1, Math.round(words / 155)) + ' min listen · ' + turns.length + ' turns';
+}
+
+// ---- cache: one script per section, written once ----
+function cacheGet(key){
+  try { var p = store.podcasts && store.podcasts[key]; return p && p.s ? p.s : null; } catch (e) { return null; }
+}
+function cachePut(key, s){
+  try {
+    if (!store.podcasts) store.podcasts = {};
+    store.podcasts[key] = { s: s, at: Date.now() };
+    var ks = Object.keys(store.podcasts);
+    if (ks.length > 16) {
+      ks.sort(function(a, b){ return (store.podcasts[a].at || 0) - (store.podcasts[b].at || 0); });
+      for (var i = 0; i < ks.length - 16; i++) delete store.podcasts[ks[i]];
+    }
+    if (typeof saveStore === 'function') saveStore();
+  } catch (e) {}
+}
+
+function generate(key, force){
+  var cached = !force && cacheGet(key);
+  if (cached) { if (statusEl) statusEl.textContent = ''; setScript(cached); return; }
+  var ctx = lessonText();
+  if (!ctx) { if (statusEl) statusEl.textContent = 'This screen has no lesson to make an episode from.'; return; }
+  if (statusEl) statusEl.textContent = 'Writing this section’s episode…';
+  var aborted = false;
+  genAbort = function(){ aborted = true; };
+  fetch('/.netlify/functions/helper', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode: 'podcast', context: ctx })
+  }).then(function(res){
+    if (res.status === 503 || res.status === 404) { if (statusEl) statusEl.textContent = 'The AI tutor isn’t set up on this deployment yet.'; return null; }
+    if (!res.ok) { if (statusEl) statusEl.textContent = 'Could not write the episode (' + res.status + '). Try again.'; return null; }
+    var reader = res.body.getReader(), dec = new TextDecoder(), full = '';
+    function pump(){
+      return reader.read().then(function(r){
+        if (aborted) { try { reader.cancel(); } catch (e) {} return null; }
+        if (r.done) return full;
+        full += dec.decode(r.value, { stream: true });
+        if (statusEl) statusEl.textContent = 'Writing this section’s episode… ' + full.split(/\s+/).length + ' words';
+        return pump();
+      });
+    }
+    return pump();
+  }).then(function(full){
+    if (aborted || full === null || full === undefined) return;
+    if (!String(full).trim()) { if (statusEl) statusEl.textContent = 'No episode came back. Try again.'; return; }
+    cachePut(key, full);
+    setScript(full);
+  }).catch(function(e){
+    if (!aborted && statusEl) statusEl.textContent = (navigator.onLine === false)
+      ? 'Writing an episode needs internet (replaying a saved one doesn’t).'
+      : 'Could not reach the tutor (' + (e && e.message ? e.message : 'network') + ').';
+  });
+}
+
+function close(){
+  stopSpeech();
+  if (genAbort) { genAbort(); genAbort = null; }
+  if (sheet) sheet.remove();
+  sheet = null; logEl = null; statusEl = null; playBtn = null; curKey = null;
+}
+
+function open(){
+  if (sheet) { close(); return; }
+  var key = secKey();
+  if (!key) { try { if (typeof toast === 'function') toast('Open a lesson first — the podcast explains the section on screen'); } catch (e) {} return; }
+  curKey = key;
+  sheet = document.createElement('div');
+  sheet.className = 'pod-sheet';
+  sheet.innerHTML =
+    '<div class="pod-head">🎙 Study Podcast<button class="pod-x" aria-label="Close">×</button></div>' +
+    '<div class="pod-status"></div>' +
+    '<div class="pod-log"></div>' +
+    '<div class="pod-bar">' +
+      '<button class="pod-play">▶ Play</button>' +
+      '<button data-pod="back" title="Previous turn">⏮</button>' +
+      '<button data-pod="fwd" title="Next turn">⏭</button>' +
+      '<button data-pod="rate" title="Speed"></button>' +
+      '<button data-pod="redo" title="Write a fresh episode" style="margin-left:auto;">↻ New take</button>' +
+    '</div>' +
+    '<div class="pod-sub">Two AI hosts explain this exact section. Voices come from your iPad — enhanced voices (Settings → Accessibility → Spoken Content → Voices) sound much better.</div>';
+  document.body.appendChild(sheet);
+  logEl = sheet.querySelector('.pod-log');
+  statusEl = sheet.querySelector('.pod-status');
+  playBtn = sheet.querySelector('.pod-play');
+  sheet.querySelector('.pod-x').addEventListener('click', close);
+  playBtn.addEventListener('click', function(){ if (playing) pause(); else play(); });
+  sheet.querySelector('[data-pod="back"]').addEventListener('click', function(){ jumpTurn(-1); });
+  sheet.querySelector('[data-pod="fwd"]').addEventListener('click', function(){ jumpTurn(1); });
+  var rb = sheet.querySelector('[data-pod="rate"]');
+  rb.textContent = rate() + '×';
+  rb.addEventListener('click', function(){ cycleRate(rb); });
+  sheet.querySelector('[data-pod="redo"]').addEventListener('click', function(){ stopSpeech(); generate(key, true); });
+  // Warm the voice list (async on most engines).
+  try { S().getVoices(); } catch (e) {}
+  generate(key, false);
+}
+
+var fab = document.createElement('button');
+fab.id = 'pod-fab';
+fab.textContent = '🎙';
+fab.setAttribute('aria-label', 'Listen to this section as a podcast');
+fab.style.cssText = 'position:fixed; right:18px; bottom:280px; z-index:45; width:46px; height:46px;'
+  + 'border-radius:50%; cursor:pointer; background:var(--surface); color:var(--text);'
+  + 'border:1.5px solid var(--border-strong,var(--border)); font-size:20px; line-height:1;'
+  + 'display:none; align-items:center; justify-content:center;'
+  + 'box-shadow:var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));';
+fab.addEventListener('click', open);
+document.body.appendChild(fab);
+
+function place(){
+  try {
+    var onLesson = !!document.querySelector('.lesson') && secKey();
+    fab.style.display = onLesson ? 'flex' : 'none';
+    // Leaving the section stops the episode - audio about a page she is no
+    // longer on is noise, and iOS keeps speaking otherwise.
+    if (sheet && (!onLesson || secKey() !== curKey)) close();
+  } catch (e) {}
+}
+
+if (typeof render === 'function' && !render.__podWrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { place(); setTimeout(place, 150); } catch (e) {}
+    return out;
+  };
+  render.__podWrapped = true;
+}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(place, 2, 'ui'); } catch (e) {}
+place();
+window.__podOpen = open;
+window.__podState = function(){ return { open: !!sheet, turns: turns.length, chunks: chunks.length, idx: idx, playing: playing, key: curKey }; };
+} catch (e) { if (window.console && console.warn) console.warn('study podcast failed:', e); }
 })();
 
 

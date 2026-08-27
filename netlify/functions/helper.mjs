@@ -25,6 +25,29 @@ const TUTOR_SYSTEM = [
   "[ 5   0 ]",
 ].join(" ");
 
+// Podcast mode: a two-host study episode about the lesson on screen, written
+// to be SPOKEN by the device's text-to-speech voices - so the words carry all
+// the naturalness, and nothing in the text can trip a speech engine.
+const PODCAST_SYSTEM = [
+  "You write a short two-host study podcast episode about the WGU lesson",
+  "provided below. The hosts: MAYA leads - warm, clear, explains ideas with",
+  "concrete examples; SAM is the curious co-host - asks exactly the",
+  "questions a confused student would ask, pushes back when something seems",
+  "to contradict, and restates ideas in his own words to check them.",
+  "Ground EVERYTHING in the provided lesson: its terms, its examples, its",
+  "numbers. Do not invent facts the lesson does not support; if the lesson",
+  "leaves something out, the hosts may say it's beyond today's episode.",
+  "STYLE: genuinely conversational - contractions, short turns of one to",
+  "four sentences, occasional 'right', 'okay so', natural handoffs. Open",
+  "with two or three lines hooking why this topic matters on the exam.",
+  "End with SAM recapping the three takeaways in his own words and MAYA",
+  "giving one exam tip. 24 to 40 turns, roughly 1000 to 1400 words.",
+  "FORMAT - this text is fed straight to text-to-speech: every line starts",
+  "with exactly 'MAYA:' or 'SAM:' and nothing else. No markdown, no LaTeX,",
+  "no stage directions, no sound effects, no asterisks, no headings. Write",
+  "math in spoken words or plain Unicode (say 'n squared', '2 to the n').",
+].join(" ");
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -51,6 +74,8 @@ export default async (req) => {
   let body;
   try { body = await req.json(); } catch { return json(400, { error: "bad_json" }); }
 
+  const podcast = body.mode === "podcast";
+
   // Bound everything the client can send: last 12 turns, 8KB per turn,
   // 16KB of lesson context. Keeps a single question to a few cents.
   const messages = (Array.isArray(body.messages) ? body.messages : [])
@@ -60,7 +85,7 @@ export default async (req) => {
       content: String((m && m.content) || "").slice(0, 8000),
     }))
     .filter((m) => m.content.length > 0);
-  if (!messages.length || messages[messages.length - 1].role !== "user") {
+  if (!podcast && (!messages.length || messages[messages.length - 1].role !== "user")) {
     return json(400, { error: "no_user_message" });
   }
 
@@ -68,13 +93,15 @@ export default async (req) => {
   const lesson = String(ctx.lesson || "").slice(0, 16000);
   const title = String(ctx.title || "").slice(0, 200);
 
+  if (podcast && !lesson) return json(400, { error: "no_lesson" });
+
   const system = [
-    { type: "text", text: TUTOR_SYSTEM, cache_control: { type: "ephemeral" } },
+    { type: "text", text: podcast ? PODCAST_SYSTEM : TUTOR_SYSTEM, cache_control: { type: "ephemeral" } },
   ];
   if (lesson) {
     system.push({
       type: "text",
-      text: "The student is currently reading this lesson" +
+      text: (podcast ? "The lesson for this episode" : "The student is currently reading this lesson") +
         (title ? ` ("${title}")` : "") + ":\n\n" + lesson,
     });
   }
@@ -87,12 +114,14 @@ export default async (req) => {
   // max_tokens 2048 caps the cost of any single answer.
   const stream = client.beta.messages.stream({
     model: "claude-opus-5",
-    max_tokens: 2048,
+    max_tokens: podcast ? 3500 : 2048,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "medium" },
     system,
-    messages,
+    messages: podcast
+      ? [{ role: "user", content: "Write today's episode about the lesson." }]
+      : messages,
   });
 
   const enc = new TextEncoder();
