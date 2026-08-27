@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.500">
+<meta name="app-build" content="18.501">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -59389,6 +59389,106 @@ var C959 = [
     return mk('Convert binary ' + toB + ' to decimal.', v, [v + 1, v - 2, parseInt(toB.split('').reverse().join(''), 2)],
       'Add the powers of 2 whose bit is 1: ' + toB + '₂ = ' + v + '.', 'Number bases', 'easy');
   },
+  function gcdLcm(){
+    var a = ri(8, 60), b = ri(8, 60);
+    function gcd(x, y){ while (y){ var t = x % y; x = y; y = t; } return x; }
+    var gg = gcd(a, b), ll = a * b / gg;
+    if (ri(0, 1) === 1){
+      return mk('What is gcd(' + a + ', ' + b + ')?', gg, [ll, gg * 2, gcd(a + 1, b)],
+        'Euclid: gcd(' + a + ', ' + b + ') → gcd(' + b + ', ' + (a % b) + ') → … = ' + gg + '. (The big distractor is the lcm.)',
+        'Number theory', 'medium');
+    }
+    return mk('What is lcm(' + a + ', ' + b + ')?', ll, [gg, a * b, ll / gg > 1 ? ll + gg : ll * 2],
+      'lcm = a·b / gcd = ' + a + '·' + b + ' / ' + gg + ' = ' + ll + '. (a·b alone forgets to divide by the gcd.)',
+      'Number theory', 'medium');
+  },
+  function quantifier(){
+    var D = [1, 2, 3, 4, 5, 6], k = ri(2, 12), isAll = ri(0, 1) === 1;
+    var form = ri(0, 1);
+    var test = form === 0 ? function(x){ return x + k > 8; } : function(x){ return x * x >= k; };
+    var stmt = form === 0 ? 'x + ' + k + ' > 8' : 'x² ≥ ' + k;
+    var v = isAll ? D.every(test) : D.some(test);
+    var wit = null;
+    if (isAll && !v) wit = D.filter(function(x){ return !test(x); })[0];
+    if (!isAll && v) wit = D.filter(test)[0];
+    return mk('Domain {1,2,3,4,5,6}. Is this statement TRUE or FALSE?  ' + (isAll ? '∀x: ' : '∃x: ') + stmt,
+      v ? 'True' : 'False', [v ? 'False' : 'True', 'True only for even x', 'Cannot be determined'],
+      (isAll ? '∀ needs EVERY element to satisfy it' : '∃ needs at least ONE element') + '. ' +
+      (wit !== null ? 'x = ' + wit + ' ' + (isAll ? 'fails' : 'works') + ', so the statement is ' + v + '.' : 'Checking all six values: ' + v + '.'),
+      'Quantifiers', 'medium');
+  },
+  function functionProps(){
+    var toSmaller = ri(0, 1) === 1;
+    var dom = [1, 2, 3, 4].slice(0, toSmaller ? 4 : 3);
+    var codN = toSmaller ? 3 : 4;
+    var map = dom.map(function(){ return ri(1, codN); });
+    var img = {};
+    map.forEach(function(v){ img[v] = 1; });
+    var inj = Object.keys(img).length === dom.length;
+    var sur = Object.keys(img).length === codN;
+    var label = inj && sur ? 'bijective' : inj ? 'injective (one-to-one) but not surjective' : sur ? 'surjective (onto) but not injective' : 'neither injective nor surjective';
+    var opts = ['bijective', 'injective (one-to-one) but not surjective', 'surjective (onto) but not injective', 'neither injective nor surjective'];
+    var fs = dom.map(function(d, i){ return 'f(' + d + ')=' + map[i]; }).join(', ');
+    return mk('f: {' + dom.join(',') + '} → {1..' + codN + '} with ' + fs + '. Which describes f?',
+      label, opts.filter(function(o){ return o !== label; }),
+      'Injective = no two inputs share an output (' + (inj ? 'holds' : 'fails — a repeat output exists') + '). Surjective = every codomain value is hit (' + (sur ? 'holds' : 'fails — image covers only ' + Object.keys(img).length + ' of ' + codN + ') ') + '.',
+      'Functions', 'hard');
+  },
+  function summation(){
+    if (ri(0, 1) === 1){
+      var n = ri(10, 40), v = n * (n + 1) / 2;
+      return mk('Compute the sum 1 + 2 + 3 + … + ' + n + '.', v, [n * n, v - n, n * (n - 1) / 2],
+        'Gauss: n(n+1)/2 = ' + n + '·' + (n + 1) + '/2 = ' + v + '.', 'Summations', 'easy');
+    }
+    var m = ri(4, 12), s = m * m;
+    return mk('Compute the sum of the first ' + m + ' ODD numbers (1 + 3 + 5 + …).', s, [m * (m + 1), s - m, 2 * m - 1],
+      'The first m odd numbers sum to m²: ' + m + '² = ' + s + '.', 'Summations', 'medium');
+  },
+  function graphDegree(){
+    var V = ['A', 'B', 'C', 'D', 'E'], edges = [], have = {};
+    var target = ri(4, 7);
+    while (edges.length < target){
+      var i = ri(0, 4), j = ri(0, 4);
+      if (i === j) continue;
+      var key = Math.min(i, j) + '-' + Math.max(i, j);
+      if (have[key]) continue;
+      have[key] = 1; edges.push([V[Math.min(i, j)], V[Math.max(i, j)]]);
+    }
+    var es = edges.map(function(e){ return e[0] + e[1]; }).join(', ');
+    if (ri(0, 1) === 1){
+      var vx = pick(V);
+      var deg = edges.filter(function(e){ return e[0] === vx || e[1] === vx; }).length;
+      return mk('A graph has edges {' + es + '}. What is the degree of vertex ' + vx + '?',
+        deg, [deg + 1, Math.max(0, deg - 1), edges.length],
+        'Count the edges touching ' + vx + ': ' + deg + '.', 'Graphs', 'easy');
+    }
+    return mk('A graph has ' + edges.length + ' edges: {' + es + '}. What is the SUM of all vertex degrees?',
+      edges.length * 2, [edges.length, edges.length * 2 - 1, edges.length + 5],
+      'Handshake theorem: every edge contributes 2 to the total degree, so the sum is 2·|E| = ' + (edges.length * 2) + '.',
+      'Graphs', 'medium');
+  },
+  function binAdd(){
+    var a = ri(5, 30), b = ri(5, 30), s = a + b;
+    return mk('Add the binary numbers ' + a.toString(2) + ' + ' + b.toString(2) + '. What is the result in binary?',
+      s.toString(2), [(s + 1).toString(2), (s - 1).toString(2), (a ^ b).toString(2)],
+      'In decimal that is ' + a + ' + ' + b + ' = ' + s + ' = ' + s.toString(2) + '₂. Carry exactly as in decimal, but 1+1 = 10₂.',
+      'Number bases', 'medium');
+  },
+  function pigeonhole(){
+    if (ri(0, 1) === 1){
+      var k = ri(3, 8);
+      return mk('A drawer has socks in ' + k + ' colors. How many socks must you pull (blind) to GUARANTEE a matching pair?',
+        k + 1, [k, 2, 2 * k],
+        'Worst case you draw one of each color first — ' + k + ' socks, all different. The next one (' + (k + 1) + ') must repeat a color. That is the pigeonhole principle.',
+        'Pigeonhole', 'medium');
+    }
+    var n = ri(20, 60), boxes = ri(3, 7);
+    var v = Math.ceil(n / boxes);
+    return mk(n + ' items are placed into ' + boxes + ' boxes. By the pigeonhole principle, some box must contain AT LEAST how many items?',
+      v, [v - 1, v + 1, Math.floor(n / boxes) === v ? v + 2 : Math.floor(n / boxes)],
+      'If every box held at most ' + (v - 1) + ', the total would be at most ' + (boxes * (v - 1)) + ' < ' + n + '. So some box holds at least ⌈' + n + '/' + boxes + '⌉ = ' + v + '.',
+      'Pigeonhole', 'hard');
+  },
   function relationProps(){
     // random relation on {1,2,3}; ask which properties hold (single choice among combos)
     var pairs = [];
@@ -59661,6 +59761,79 @@ var D286 = [
     q._expect = String(v);
     return q;
   },
+  function whileBreak(){
+    var s = pick([3, 4, 5, 7]), t = ri(20, 60);
+    var i = 0; while (true){ i += s; if (i >= t) break; }
+    var q = mk('int i = 0;\nwhile (true) {\n  i += ' + s + ';\n  if (i >= ' + t + ') break;\n}\nSystem.out.println(i);\nWhat prints?',
+      i, [i - s, i + s, t],
+      'i climbs by ' + s + ' and the loop exits the FIRST time i reaches ' + t + ' or more — at i = ' + i + '. (Printing exactly ' + t + ' is the trap unless ' + t + ' is a multiple of ' + s + '.)',
+      'Loops', 'medium');
+    q._java = 'int i = 0; while (true) { i += ' + s + '; if (i >= ' + t + ') break; } System.out.println(i);';
+    q._expect = String(i);
+    return q;
+  },
+  function stringCompare(){
+    var w = pick(['apple', 'delta', 'nova', 'candy', 'pixel', 'lemon', 'quartz', 'ember']);
+    var q = mk('String a = new String("' + w + '");\nString b = "' + w + '";\nSystem.out.println((a == b) + " " + a.equals(b));\nWhat prints?',
+      'false true', ['true true', 'true false', 'false false'],
+      '== compares REFERENCES: new String() forces a distinct object, so a == b is false even though the text matches. .equals compares CONTENT: true. This is the single most-tested String trap.',
+      'Strings & references', 'medium');
+    q._java = 'String a = new String("' + w + '"); String b = "' + w + '"; System.out.println((a == b) + " " + a.equals(b));';
+    q._expect = 'false true';
+    return q;
+  },
+  function arraySum(){
+    var n = ri(4, 6), vals = [], sum = 0;
+    for (var i = 0; i < n; i++){ var v = ri(1, 20); vals.push(v); sum += v; }
+    var q = mk('int[] a = {' + vals.join(', ') + '};\nint s = 0;\nfor (int i = 0; i < a.length; i++) { s += a[i]; }\nSystem.out.println(s);\nWhat prints?',
+      sum, [sum - vals[n - 1], sum + n, sum - vals[0]],
+      'i runs 0 … ' + (n - 1) + ' (a.length is ' + n + ', < is strict, so every element is included once): the sum is ' + sum + '. The classic trap answers drop the first or last element.',
+      'Arrays', 'easy');
+    q._java = 'int[] a = {' + vals.join(', ') + '}; int s = 0; for (int i = 0; i < a.length; i++) { s += a[i]; } System.out.println(s);';
+    q._expect = String(sum);
+    return q;
+  },
+  function castTrunc(){
+    var a = ri(7, 40), b = pick([2, 3, 4, 6]), c = ri(2, 5);
+    var v = Math.trunc(a / b) * c;
+    var v2 = Math.trunc((a / b) * c);
+    var q = mk('System.out.println(' + a + ' / ' + b + ' * ' + c + ');\nSystem.out.println((int)((double)' + a + ' / ' + b + ' * ' + c + '));\nWhat prints (two lines)?',
+      v + ' then ' + v2, [v2 + ' then ' + v, v + ' then ' + v, ((a / b) * c).toFixed(1) + ' then ' + v2],
+      'Line 1: int division FIRST — ' + a + '/' + b + ' truncates to ' + Math.trunc(a / b) + ', ×' + c + ' = ' + v + '. Line 2: the (double) cast keeps the fraction through the math, and (int) truncates only at the END: ' + v2 + '. Cast order decides how much precision survives.',
+      'Casting & operators', 'hard');
+    q._java = 'System.out.println(' + a + ' / ' + b + ' * ' + c + '); System.out.println((int)((double)' + a + ' / ' + b + ' * ' + c + '));';
+    q._expect = v + '\n' + v2;
+    return q;
+  },
+  function switchFall(){
+    var x = ri(1, 4);
+    var W = pick([['one', 'two', 'three', 'other'], ['red', 'green', 'blue', 'none'], ['low', 'mid', 'high', 'off'],
+                  ['cat', 'dog', 'bird', 'fish'], ['ok', 'warn', 'fail', 'skip'], ['north', 'south', 'east', 'west']]);
+    var out = [];
+    // switch with a missing break on case 2: falls into case 3
+    if (x === 1) out.push(W[0]);
+    if (x === 2){ out.push(W[1]); out.push(W[2]); }
+    if (x === 3) out.push(W[2]);
+    if (x === 4) out.push(W[3]);
+    var q = mk('switch (' + x + ') {\n  case 1: System.out.println("' + W[0] + '"); break;\n  case 2: System.out.println("' + W[1] + '");\n  case 3: System.out.println("' + W[2] + '"); break;\n  default: System.out.println("' + W[3] + '");\n}\nWhat prints?',
+      out.join(' then '), [W.filter(function(w){ return out.indexOf(w) === -1; })[0], out[0] === W[1] ? W[1] : W[1] + ' then ' + W[2], 'nothing'],
+      'case 2 has NO break, so after printing "two" execution FALLS THROUGH into case 3. With x = ' + x + ' the output is: ' + out.join(', ') + '.',
+      'Switch & fall-through', 'hard');
+    q._java = 'switch (' + x + ') { case 1: System.out.println("' + W[0] + '"); break; case 2: System.out.println("' + W[1] + '"); case 3: System.out.println("' + W[2] + '"); break; default: System.out.println("' + W[3] + '"); }';
+    q._expect = out.join('\n');
+    return q;
+  },
+  function mathMaxAbs(){
+    var a = ri(-20, 20), b = ri(-20, 20), c = ri(-15, -1);
+    var v = Math.max(a, b) + Math.abs(c);
+    var q = mk('System.out.println(Math.max(' + a + ', ' + b + ') + Math.abs(' + c + '));\nWhat prints?',
+      v, [Math.min(a, b) + Math.abs(c), Math.max(a, b) + c, Math.max(a, b) - c === v ? v + 2 : Math.max(a, b) - c],
+      'Math.max(' + a + ', ' + b + ') = ' + Math.max(a, b) + '; Math.abs(' + c + ') = ' + Math.abs(c) + ' (absolute value is never negative). Sum: ' + v + '.',
+      'Math methods', 'easy');
+    q._java = 'System.out.println(Math.max(' + a + ', ' + b + ') + Math.abs(' + c + '));';
+    q._expect = String(v);
+    return q;
+  },
   function charAtLoop(){
     var w = pick(['STACK', 'ARRAY', 'CLASS', 'FINAL', 'SUPER', 'OBJECT', 'METHOD', 'DOUBLE', 'STATIC', 'PUBLIC', 'RETURN', 'STRING', 'BOOLEAN', 'INTEGER', 'PACKAGE', 'IMPORT', 'EXTENDS', 'PRIVATE', 'ABSTRACT', 'INTERFACE', 'VARIABLE', 'COMPILER', 'RUNTIME', 'KEYWORD', 'LITERAL']);
     var count = 0;
@@ -59728,6 +59901,46 @@ var D197 = [
     q._git = { file: f, check: 'restoreStaged' };
     return q;
   }
+,
+  function mergeFF(){
+    var m = ri(2, 5), br = pick(['feature', 'fix-nav', 'api-work', 'styles', 'cleanup']);
+    var q = mk('main has 1 commit. You `git checkout -b ' + br + '`, make ' + m + ' commits there, switch back to main (which has NO new commits), and run `git merge ' + br + '`. What happens?',
+      'Fast-forward: main moves up to ' + br + '\u2019s tip, no merge commit is created',
+      ['A merge commit is always created', 'A conflict — the branches diverged', 'Nothing — merging requires --force'],
+      'main never moved, so ' + br + '\u2019s history simply CONTINUES from main\u2019s tip. Git just slides the main pointer forward — a fast-forward. Both branches end at the same commit, ' + (1 + m) + ' commits total.',
+      'Merging', 'medium');
+    q._git = { commits: m, branch: br, check: 'mergeFF', expect: 1 + m };
+    return q;
+  },
+  function mergeNoFF(){
+    var m = ri(1, 4), br = pick(['feature', 'hotfix', 'redesign', 'search']);
+    var q = mk('Same setup — main has 1 commit, ' + br + ' adds ' + m + ' — but you merge with `git merge --no-ff ' + br + '`. How many commits does main\u2019s history show afterward?',
+      1 + m + 1, [1 + m, m, 2],
+      '--no-ff FORCES a merge commit even though a fast-forward was possible: the initial commit + ' + br + '\u2019s ' + m + ' + 1 new merge commit = ' + (1 + m + 1) + '. Teams use it so a feature\u2019s merge point stays visible in history.',
+      'Merging', 'hard');
+    q._git = { commits: m, branch: br, check: 'mergeNoFF', expect: 1 + m + 1 };
+    return q;
+  },
+  function ignoreTracked(){
+    var f = pick(['debug.log', 'notes.txt', 'local.cfg', 'scratch.md', 'temp.json', 'cache.db', 'session.dat', 'draft.docx', 'output.csv', 'trace.log', 'settings.ini', 'backup.sql']);
+    var q = mk(f + ' is already COMMITTED (tracked). You add "' + f + '" to .gitignore and then modify the file. What does `git status` show?',
+      f + ' still appears as modified — .gitignore does not affect tracked files',
+      [f + ' disappears from status immediately', f + ' is deleted from the repository', 'git shows an error about the conflict'],
+      '.gitignore only stops UNTRACKED files from being noticed. A file already in the index stays tracked until you remove it (`git rm --cached ' + f + '`), so its changes keep showing.',
+      'Ignoring files', 'hard');
+    q._git = { file: f, check: 'ignoreTracked' };
+    return q;
+  },
+  function diffStaged(){
+    var f = pick(['app.py', 'index.html', 'main.java', 'style.css', 'server.js', 'routes.rb', 'schema.sql', 'utils.ts', 'layout.css', 'worker.go', 'config.php', 'tests.py']);
+    var q = mk('You modify tracked file ' + f + ' and run `git add ' + f + '`. Now plain `git diff` shows nothing. Which command shows the change you staged?',
+      'git diff --staged', ['git diff HEAD~1', 'git status -v --all', 'git show ' + f],
+      'Plain `git diff` compares the working tree to the INDEX — after add they match, so it\u2019s empty. `git diff --staged` (also spelled --cached) compares the index to the last commit, which is where your staged change now lives.',
+      'Inspecting changes', 'medium');
+    q._git = { file: f, check: 'diffStaged' };
+    return q;
+  }
+
 ];
 
 var FRESHGEN = { C959: C959, D286: D286, D684: D684, D197: D197 };
@@ -59811,6 +60024,28 @@ if (typeof getQuestions === 'function' && !getQuestions.__freshWrapped){
     return _prev.apply(this, arguments);
   };
   getQuestions.__freshWrapped = true;
+}
+
+// A lesson key that ships in a course FILE but predates no lazy-lace entry
+// (like the concepts sections added after the registry was generated) returns
+// null until something else hydrates that course. Retry once after forcing
+// hydration, so new file-borne lessons work on first touch.
+if (typeof getLesson === 'function' && !getLesson.__freshHydrate){
+  var _gl = getLesson;
+  getLesson = function(courseId, chId, secId){
+    var r = _gl.apply(this, arguments);
+    if (r == null && CIDS.indexOf(courseId) !== -1 && typeof window.__hydrateCourse === 'function'){
+      try {
+        var hyd = (window.__hydratedCourses && window.__hydratedCourses()) || [];
+        if (hyd.indexOf(courseId) === -1){
+          window.__hydrateCourse(courseId);
+          r = _gl.apply(this, arguments);
+        }
+      } catch (e) {}
+    }
+    return r;
+  };
+  getLesson.__freshHydrate = true;
 }
 
 var LESSON_BODY = '<h2>♾ Fresh Questions</h2>'
