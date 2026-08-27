@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.508">
+<meta name="app-build" content="18.509">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -57937,6 +57937,9 @@ function idb(mode, fn){
     };
   });
 }
+// One IndexedDB helper for the app's durable storage. The erase ledger keeps
+// its record in this same database, so the two can never be dropped separately.
+window.__fortressIdb = idb;
 function mirrorWrite(){
   try {
     // Pack from MEMORY, not from localStorage. If localStorage writes are the
@@ -57999,7 +58002,20 @@ function weight(st){
   try { w += (st.xp || 0) > 0 ? 5 : 0; } catch (e) {}
   return w;
 }
-window.__fortress = { mirroredAt: null, recovered: false, rescued: false, skippedErased: false };
+window.__fortress = { mirroredAt: null, recovered: false, rescued: false, skippedErased: false, persisted: null };
+
+// Ask the browser to treat this app's storage as persistent so it is not
+// reclaimed when the device is under pressure - the loss this whole module
+// exists to survive. Safari grants it to installed home-screen apps; where the
+// API does not exist nothing happens and the mirror carries on as before.
+try {
+  if (navigator.storage && navigator.storage.persist && navigator.storage.persisted) {
+    navigator.storage.persisted()
+      .then(function(already){ return already ? true : navigator.storage.persist(); })
+      .then(function(ok){ try { window.__fortress.persisted = !!ok; } catch (e) {} })
+      .catch(function(){ try { window.__fortress.persisted = false; } catch (e) {} });
+  }
+} catch (e) {}
 
 // ---- 3. clobber guard + 1. mirroring, wrapped around every save ----
 var _mirrorT = null;
@@ -58054,7 +58070,15 @@ try {
 } catch (e) {}
 
 // ---- 2. recovery at launch ----
+// The durable copy of the erase record lives in this same database. Load it
+// first, so the decision below is never made against a record that localStorage
+// happened to lose.
 function recover(){
+  var ready = (window.__erase && window.__erase.hydrate) ? window.__erase.hydrate() : null;
+  if (ready && ready.then) ready.then(runRecover, runRecover);
+  else runRecover();
+}
+function runRecover(){
   mirrorRead().then(function(rec){
     if (!rec || !rec.data) { mirrorSoon(); return; }
     // A mirror older than a deliberate erase is not a rescue - it is a copy of
@@ -58106,6 +58130,7 @@ try {
           recovered: window.__fortress.recovered,
           rescued: window.__fortress.rescued,
           skippedErased: window.__fortress.skippedErased,
+          persisted: window.__fortress.persisted,
           // non-zero here means localStorage writes are FAILING on this device
           saveFails: (typeof _saveErrorCount === 'number') ? _saveErrorCount : null,
           storeKB: (function(){ try { return Math.round((localStorage.getItem(STORE_KEY) || '').length / 512) / 2; } catch (e) { return null; } })()
@@ -58149,7 +58174,8 @@ try {
 if (typeof document === 'undefined') return;
 if (window.__erase) return;
 
-var LKEY = 'sh_erased_v1';
+var LKEY = 'sh_erased_v1';       // fast, synchronous copy
+var DKEY = 'erased';             // durable copy, in the backup's own database
 var KINDS = { all: 1, scores: 1, ink: 1 };
 // What "reset my scores & progress" clears; an older copy keeps everything else.
 var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1,
@@ -58165,6 +58191,44 @@ function read(){
 function write(o){
   try { localStorage.setItem(LKEY, JSON.stringify(o)); } catch (e) {}
   try { store.__erased = o; } catch (e) {}
+  idbSave(o);
+}
+/* WHY THIS RECORD IS WRITTEN TWICE.
+ *
+ * The backup lives in IndexedDB; this record used to live only in localStorage.
+ * iOS can reclaim one and keep the other, and that is the single way the backup
+ * can outlive the record of the erase that emptied it - the backup comes back,
+ * the erase does not, and everything she deleted returns. Keeping both in the
+ * same database closes it: if the backup survives, this survives with it, and
+ * if this is gone the backup is gone too, so there is nothing left to restore.
+ * The localStorage copy stays because the guards need an answer synchronously;
+ * the database copy is the one that decides.
+ */
+function idbSave(o){
+  try {
+    if (typeof window.__fortressIdb !== 'function') return;
+    window.__fortressIdb('readwrite', function(os){ os.put({ v: o, at: Date.now() }, DKEY); })
+      .catch(function(){});
+  } catch (e) {}
+}
+var _hydrating = null;
+function hydrate(){
+  if (_hydrating) return _hydrating;
+  _hydrating = new Promise(function(res){
+    try {
+      if (typeof window.__fortressIdb !== 'function') { res(null); return; }
+      window.__fortressIdb('readonly', function(os){
+        var out = { __v: null };
+        var g = os.get(DKEY);
+        g.onsuccess = function(){ out.__v = g.result || null; };
+        return out;
+      }).then(function(rec){
+        try { if (rec && rec.v) absorb(rec.v); } catch (e) {}
+        res((rec && rec.v) || null);
+      }).catch(function(){ res(null); });
+    } catch (e) { res(null); }
+  });
+  return _hydrating;
 }
 function at(kind){
   var o = read();
@@ -58220,7 +58284,11 @@ function filter(incoming, when){
   }
   return incoming;
 }
-window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter, read: read };
+window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter,
+                  read: read, hydrate: hydrate };
+// Bring the durable record back into the synchronous copy at launch, before the
+// sync layers pull anything. The recovery in the backup module awaits this too.
+hydrate();
 
 /* ---- every erase path records itself, by wrapping the primitives ---- */
 try {
