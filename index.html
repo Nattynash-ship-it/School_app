@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.501">
+<meta name="app-build" content="18.502">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -55781,9 +55781,17 @@ function courseAbsorb(cid, p){
   return true;
 }
 var _courseSyncAt = {};
+var _warmAt = {};
 function courseLoadSync(cid){
   if (SRCC[cid] && SRCC[cid].l !== undefined) return;
   var _now = Date.now();
+  // An async warm for this course is already on the wire: do NOT block the
+  // main thread with a synchronous download of the same megabytes. Content
+  // lands in a moment and the warm's re-render picks it up; screens meanwhile
+  // render with empty counts, which the question cache deliberately never
+  // caches. This is what turned a post-update cold start into a 10-13s
+  // frozen render on her iPad.
+  if (_warmAt[cid] && _now - _warmAt[cid] < 15000) return;
   if (_courseSyncAt[cid] && _now - _courseSyncAt[cid] < 3000) return;
   _courseSyncAt[cid] = _now;
   try {
@@ -55797,10 +55805,19 @@ function courseLoadSync(cid){
 window.__courseWarm = function(cid){
   if (CONTENT_CIDS.indexOf(cid) === -1) return;
   if (SRCC[cid] && SRCC[cid].l !== undefined) return;
+  if (_warmAt[cid] && Date.now() - _warmAt[cid] < 15000) return;
+  _warmAt[cid] = Date.now();
   try {
     fetch(courseUrl(cid)).then(function(r){ return r.json(); })
-      .then(function(p){ courseAbsorb(cid, p); }).catch(function(){});
-  } catch (e) {}
+      .then(function(p){
+        courseAbsorb(cid, p);
+        // Anything that rendered with empty counts while this was on the wire
+        // is stale the moment content lands.
+        try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e0) {}
+        setTimeout(function(){ try { if (typeof render === 'function') render(); } catch (e1) {} }, 80);
+      })
+      .catch(function(){ delete _warmAt[cid]; });
+  } catch (e) { delete _warmAt[cid]; }
 };
 try {
   fetch(MANIFEST_URL).then(function(r){ return r.json(); }).then(function(p){
@@ -56186,6 +56203,38 @@ if (_down) {
   };
 }
 } catch (e) { if (window.console) console.error('[penCanvas]', e); }
+})();
+
+
+(function penGhostGuard(){
+/* "The words are still doubling" - her photo shows her own handwriting twice:
+ * once where she wrote it, once overlapping print several paragraphs away.
+ * The live-pen preview canvas is fixed to the VIEWPORT and is wiped at pen
+ * lift - but her crash log has a 13-second main-thread block with the pen
+ * overlay active, and when iOS drops the pen-lift event during a freeze the
+ * wipe never runs. The half-drawn stroke then stays painted on the fixed
+ * canvas: scroll, and it sits on top of different words - a ghost.
+ *
+ * This guard kills any ghost within a beat: on every scroll, on visibility
+ * change, and on the shared heartbeat, if the preview canvas is showing while
+ * no stroke is actually in progress, it is hidden and cleared.
+ */
+try {
+if (window.__penGhostGuard) return; window.__penGhostGuard = true;
+function sweep(){
+  try {
+    var cv = document.querySelector('canvas[data-pen-canvas]');
+    if (!cv || cv.style.display !== 'block') return;
+    var drawing = false;
+    try { drawing = !!(typeof ganno === 'object' && ganno && (ganno.drawing || ganno.current)); } catch (e0) {}
+    if (!drawing && typeof window.__penCanvasHide === 'function') window.__penCanvasHide();
+  } catch (e) {}
+}
+window.addEventListener('scroll', sweep, { passive: true, capture: true });
+document.addEventListener('visibilitychange', sweep);
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(sweep, 2, 'ui'); } catch (e) {}
+window.__penGhostSweep = sweep;
+} catch (e) { if (window.console && console.warn) console.warn('pen ghost guard failed:', e); }
 })();
 
 
@@ -59999,15 +60048,26 @@ if (window.__freshDrill) return; window.__freshDrill = true;
 var GEN = window.FRESHGEN;
 var CIDS = ['C959', 'D286', 'D684', 'D197'];
 
+// Home and class screens call getQuestions on every section just to COUNT
+// questions - dozens of calls per render. Generating a brand-new 25-question
+// set for every one of those calls is what her 18.500 report showed as
+// getQuestions bursts before frozen renders. So the current deal is CACHED
+// and regenerated only when an attempt on that drill ENDS - counting costs
+// an array copy, and two attempts still never share a set.
+var dealCache = {}, topupCache = {}, activeAttempt = {};
 if (typeof getQuestions === 'function' && !getQuestions.__freshWrapped){
   var _prev = getQuestions;
   getQuestions = function(courseId, chId, secId){
     try {
-      if (chId === 'fresh_sim' && GEN[courseId]) return GEN.deal(courseId, 25);
+      if (chId === 'fresh_sim' && GEN[courseId]){
+        if (!dealCache[courseId]) dealCache[courseId] = GEN.deal(courseId, 25);
+        return dealCache[courseId].slice();
+      }
       if ((chId === 'oa_sim' || chId === 'pa_sim') && GEN[courseId]){
         var base = _prev.apply(this, arguments);
         if (Array.isArray(base) && base.length >= 40){
-          var fresh = GEN.deal(courseId, 10);
+          if (!topupCache[courseId]) topupCache[courseId] = GEN.deal(courseId, 10);
+          var fresh = topupCache[courseId];
           if (fresh.length === 10){
             var out = base.slice(), used = {};
             for (var i = 0; i < fresh.length; i++){
@@ -60025,6 +60085,28 @@ if (typeof getQuestions === 'function' && !getQuestions.__freshWrapped){
   };
   getQuestions.__freshWrapped = true;
 }
+
+// Watch for an attempt ending: while a quiz runs on one of these chapters the
+// cache holds steady; the moment she leaves it, that course's set re-rolls.
+function attemptWatch(){
+  try {
+    var qs = (typeof quizState === 'object' && quizState) ? quizState : null;
+    var cur = qs && qs.courseId && qs.chId ? (qs.courseId + '/' + qs.chId) : null;
+    for (var k2 = 0; k2 < CIDS.length; k2++){
+      var cid = CIDS[k2];
+      ['fresh_sim', 'oa_sim', 'pa_sim'].forEach(function(ch){
+        var key = cid + '/' + ch;
+        if (cur === key){ activeAttempt[key] = 1; return; }
+        if (activeAttempt[key]){
+          delete activeAttempt[key];
+          if (ch === 'fresh_sim') delete dealCache[cid]; else delete topupCache[cid];
+        }
+      });
+    }
+  } catch (e) {}
+}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(attemptWatch, 2, 'ui'); } catch (e) {}
+window.__freshCacheState = function(){ return { deal: Object.keys(dealCache), topup: Object.keys(topupCache), active: Object.keys(activeAttempt) }; };
 
 // A lesson key that ships in a course FILE but predates no lazy-lace entry
 // (like the concepts sections added after the registry was generated) returns
@@ -60594,8 +60676,13 @@ window.__dashInject = inject;
 try {
 if (window.__warmAhead) return; window.__warmAhead = true;
 var FOCUS_WARM = ['C959', 'D286', 'D684', 'D197'];
+// Warm FAST: her 18.500 report shows 10-13s renders right after an update
+// cleared the content cache - a screen touched a course before the old 5s
+// warm-up and hydration fell back to a synchronous multi-MB download inside
+// the render. Start the fetches almost immediately (still async, still
+// staggered so the JSON parses never share one frame).
 FOCUS_WARM.forEach(function(cid, i){
-  setTimeout(function(){ try { if (window.__courseWarm) window.__courseWarm(cid); } catch (e) {} }, 5000 + i * 1500);
+  setTimeout(function(){ try { if (window.__courseWarm) window.__courseWarm(cid); } catch (e) {} }, 400 + i * 700);
 });
 if (typeof render === 'function' && !render.__warmWrap) {
   var _r = render;
