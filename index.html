@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.497">
+<meta name="app-build" content="18.498">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -3230,16 +3230,21 @@
 
  .proj-success-list li::marker { color: var(--accent); }
 
+ /* Same accent identity as the top-bar back pill, and height-neutral: the
+    1px border is paid for by 1px less vertical padding, so content below
+    (and any ink anchored to it) does not move. */
  .back-btn {
- background: transparent;
- border: none;
- color: var(--text-3);
+ background: var(--surface);
+ border: 1px solid var(--accent);
+ border-radius: 999px;
+ color: var(--text);
  font-size: 13px;
- padding: 8px 0;
+ font-weight: 650;
+ padding: 7px 14px;
  margin-bottom: 4px;
  cursor: pointer;
  }
- .back-btn:hover { color: var(--text); }
+ .back-btn:hover { background: var(--surface-2); }
 
  /* ============ PROJECTS HOME ENTRY ============ */
  .home-projects-card {
@@ -55103,20 +55108,31 @@ if (typeof document === 'undefined') return;
 if (window.__backNav) return; window.__backNav = true;
 
 var css = ''
+/* Visibility, measured (18.498): the first pill used --surface on a
+   --surface-glass bar - the same material family, so in glass and dark
+   themes it melted into the header ("all of the back buttons are hard to
+   locate"). The pill is now cut from the ACCENT, which every theme defines
+   to stand out against its own surfaces: accent border, accent chevron,
+   and - where color-mix exists - a soft accent wash. Geometry is untouched:
+   same 40px pill, same padding, so nothing below it moves a pixel. */
 + '.top-bar .back[data-back].nav-back {'
 + '  display:inline-flex; align-items:center; gap:7px;'
 + '  min-height:40px; padding:0 15px 0 11px; margin:0;'
 + '  border-radius:999px;'
-+ '  background:var(--surface); border:1px solid var(--border-strong);'
-+ '  color:var(--text); font-size:14.5px; font-weight:600; line-height:1;'
-+ '  box-shadow:0 1px 2px rgba(0,0,0,0.06);'
++ '  background:var(--surface); border:1.5px solid var(--accent);'
++ '  color:var(--text); font-size:14.5px; font-weight:650; line-height:1;'
++ '  box-shadow:0 2px 6px rgba(0,0,0,0.12);'
 + '  max-width:min(46vw, 320px); cursor:pointer;'
 + '  transition:background .16s ease, border-color .16s ease, transform .12s ease;'
++ '}'
++ '@supports (background: color-mix(in srgb, red 10%, white)) {'
++ '  .top-bar .back[data-back].nav-back { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); }'
++ '  .top-bar .back[data-back].nav-back:hover { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }'
 + '}'
 + '.top-bar .back[data-back].nav-back:hover { background:var(--surface-2); border-color:var(--accent); }'
 + '.top-bar .back[data-back].nav-back:active { transform:scale(0.97); }'
 + '.top-bar .back[data-back].nav-back .nav-back-chev {'
-+ '  font-size:17px; line-height:1; color:var(--accent); flex:0 0 auto; margin-top:-1px;'
++ '  font-size:17px; line-height:1; color:var(--accent); font-weight:800; flex:0 0 auto; margin-top:-1px;'
 + '}'
 + '.top-bar .back[data-back].nav-back .nav-back-label {'
 + '  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;'
@@ -58968,6 +58984,234 @@ place();
 window.__podOpen = open;
 window.__podState = function(){ return { open: !!sheet, turns: turns.length, chunks: chunks.length, idx: idx, playing: playing, key: curKey }; };
 } catch (e) { if (window.console && console.warn) console.warn('study podcast failed:', e); }
+})();
+
+
+(function mindMap(){
+/* 🧠 SECTION MIND MAP - the second NotebookLM feature she asked for.
+ *
+ * One tap on any lesson: the tutor reduces the section to a branching map -
+ * a central topic, 4-7 branches, each with a few leaves - as strict JSON,
+ * and the app lays it out visually: color-coded branches, tappable nodes.
+ * Tapping a branch folds or unfolds it; tapping a leaf shows its one-line
+ * explanation in the strip at the bottom. Like the podcast, the map is
+ * generated once per section, cached in the store, and works offline after
+ * the first time.
+ */
+try {
+if (typeof document === 'undefined') return;
+if (window.__mindMap) return; window.__mindMap = true;
+
+var HUES = ['#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
+
+var css = document.createElement('style');
+css.textContent = [
+'.mm-sheet { position: fixed; inset: 12px; z-index: 9601; display: flex; flex-direction: column;',
+'  background: var(--bg, #fff); color: var(--text); border: 1px solid var(--border-strong, var(--border));',
+'  border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.35); overflow: hidden; }',
+'.mm-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 14px; }',
+'.mm-head .mm-x { margin-left: auto; border: none; background: none; color: var(--text-3); font-size: 20px; cursor: pointer; }',
+'.mm-status { padding: 8px 14px 0; font-size: 13px; color: var(--text-2); }',
+'.mm-map { flex: 1; overflow: auto; padding: 16px 14px 10px; }',
+'.mm-root { display: inline-block; font-size: 15px; font-weight: 800; padding: 10px 18px; border-radius: 999px;',
+'  background: var(--accent); color: var(--accent-text, #fff); margin: 0 0 14px 2px; }',
+'.mm-branch { margin: 0 0 10px 10px; }',
+'.mm-bpill { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; padding: 8px 14px;',
+'  border-radius: 999px; background: var(--surface-2); border: 1.5px solid; cursor: pointer; color: var(--text); }',
+'.mm-bpill .mm-count { font-size: 11px; font-weight: 700; color: var(--text-4); }',
+'.mm-kids { margin: 6px 0 2px 16px; padding-left: 14px; border-left: 2px solid; }',
+'.mm-leaf { display: block; margin: 6px 0; font-size: 13px; padding: 7px 12px; border-radius: 10px;',
+'  background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; color: var(--text-2);',
+'  max-width: 640px; text-align: left; }',
+'.mm-leaf.live { border-color: var(--accent); color: var(--text); }',
+'.mm-note { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 13.5px; line-height: 1.5;',
+'  color: var(--text-2); min-height: 44px; }',
+'.mm-note b { color: var(--text); }'
+].join('\n');
+document.head.appendChild(css);
+
+var sheet = null, mapEl = null, statusEl = null, noteEl = null, curKey = null, genAbort = null;
+
+function secKey(){
+  try {
+    if (typeof view === 'object' && view && view.name === 'section' && view.courseId)
+      return view.courseId + '/' + view.chId + '/' + view.secId;
+  } catch (e) {}
+  return null;
+}
+function lessonText(){
+  try {
+    var L = getLesson(view.courseId, view.chId, view.secId);
+    if (!L || typeof L.body !== 'string') return null;
+    var tpl = document.createElement('template');
+    tpl.innerHTML = L.body;
+    return { title: (L.title || '') + ' (' + view.courseId + ')',
+             lesson: (tpl.content.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 15000) };
+  } catch (e) { return null; }
+}
+
+function parseMap(raw){
+  var s = String(raw);
+  var a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a === -1 || b <= a) return null;
+  var d;
+  try { d = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+  if (!d || typeof d.t !== 'string' || !Array.isArray(d.b) || !d.b.length) return null;
+  d.b = d.b.filter(function(br){ return br && typeof br.t === 'string'; });
+  d.b.forEach(function(br){ br.c = (Array.isArray(br.c) ? br.c : []).filter(function(c){ return c && typeof c.t === 'string'; }); });
+  return d.b.length ? d : null;
+}
+
+function renderMap(d){
+  if (!mapEl) return;
+  mapEl.innerHTML = '';
+  var root = document.createElement('div');
+  root.className = 'mm-root';
+  root.textContent = d.t;
+  mapEl.appendChild(root);
+  d.b.forEach(function(br, i){
+    var hue = HUES[i % HUES.length];
+    var wrap = document.createElement('div'); wrap.className = 'mm-branch';
+    var pill = document.createElement('button'); pill.className = 'mm-bpill'; pill.style.borderColor = hue;
+    pill.innerHTML = '<span></span><span class="mm-count"></span>';
+    pill.firstChild.textContent = br.t;
+    pill.lastChild.textContent = br.c.length ? ('· ' + br.c.length) : '';
+    var kids = document.createElement('div'); kids.className = 'mm-kids'; kids.style.borderLeftColor = hue;
+    br.c.forEach(function(leaf){
+      var lb = document.createElement('button'); lb.className = 'mm-leaf'; lb.textContent = leaf.t;
+      lb.addEventListener('click', function(){
+        var was = lb.classList.contains('live');
+        mapEl.querySelectorAll('.mm-leaf.live').forEach(function(x){ x.classList.remove('live'); });
+        if (!was) {
+          lb.classList.add('live');
+          noteEl.innerHTML = '';
+          var bb = document.createElement('b'); bb.textContent = leaf.t + ' — ';
+          noteEl.appendChild(bb);
+          noteEl.appendChild(document.createTextNode(leaf.n || 'No note for this point.'));
+        } else { noteEl.textContent = 'Tap any point for its one-line explanation.'; }
+      });
+      kids.appendChild(lb);
+    });
+    pill.addEventListener('click', function(){
+      kids.style.display = (kids.style.display === 'none') ? '' : 'none';
+    });
+    wrap.appendChild(pill); wrap.appendChild(kids);
+    mapEl.appendChild(wrap);
+  });
+  if (statusEl) statusEl.textContent = '';
+  if (noteEl) noteEl.textContent = 'Tap any point for its one-line explanation. Tap a branch to fold it.';
+  window.__mmLast = d;
+}
+
+function cacheGet(key){ try { var p = store.mindmaps && store.mindmaps[key]; return p && p.d ? p.d : null; } catch (e) { return null; } }
+function cachePut(key, d){
+  try {
+    if (!store.mindmaps) store.mindmaps = {};
+    store.mindmaps[key] = { d: d, at: Date.now() };
+    var ks = Object.keys(store.mindmaps);
+    if (ks.length > 16) {
+      ks.sort(function(a, b){ return (store.mindmaps[a].at || 0) - (store.mindmaps[b].at || 0); });
+      for (var i = 0; i < ks.length - 16; i++) delete store.mindmaps[ks[i]];
+    }
+    if (typeof saveStore === 'function') saveStore();
+  } catch (e) {}
+}
+
+function generate(key, force){
+  var cached = !force && cacheGet(key);
+  if (cached) { renderMap(cached); return; }
+  var ctx = lessonText();
+  if (!ctx) { if (statusEl) statusEl.textContent = 'This screen has no lesson to map.'; return; }
+  if (statusEl) statusEl.textContent = 'Drawing this section’s map…';
+  var aborted = false;
+  genAbort = function(){ aborted = true; };
+  fetch('/.netlify/functions/helper', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode: 'mindmap', context: ctx })
+  }).then(function(res){
+    if (res.status === 503 || res.status === 404) { if (statusEl) statusEl.textContent = 'The AI tutor isn’t set up on this deployment yet.'; return null; }
+    if (!res.ok) { if (statusEl) statusEl.textContent = 'Could not draw the map (' + res.status + '). Try again.'; return null; }
+    return res.text();
+  }).then(function(full){
+    if (aborted || full === null || full === undefined) return;
+    var d = parseMap(full);
+    if (!d) { if (statusEl) statusEl.textContent = 'The map came back malformed — tap ↻ to try again.'; return; }
+    cachePut(key, d);
+    renderMap(d);
+  }).catch(function(e){
+    if (!aborted && statusEl) statusEl.textContent = (navigator.onLine === false)
+      ? 'Drawing a new map needs internet (a saved one doesn’t).'
+      : 'Could not reach the tutor (' + (e && e.message ? e.message : 'network') + ').';
+  });
+}
+
+function close(){
+  if (genAbort) { genAbort(); genAbort = null; }
+  if (sheet) sheet.remove();
+  sheet = null; mapEl = null; statusEl = null; noteEl = null; curKey = null;
+}
+
+function open(){
+  if (sheet) { close(); return; }
+  var key = secKey();
+  if (!key) { try { if (typeof toast === 'function') toast('Open a lesson first — the map is drawn from the section on screen'); } catch (e) {} return; }
+  curKey = key;
+  sheet = document.createElement('div');
+  sheet.className = 'mm-sheet';
+  sheet.innerHTML =
+    '<div class="mm-head">🧠 Mind Map' +
+      '<button data-mm="redo" title="Draw a fresh map" style="margin-left:auto; border:1px solid var(--border-strong,var(--border)); background:var(--surface-2); color:var(--text); border-radius:999px; font-size:12px; font-weight:700; padding:5px 11px; cursor:pointer;">↻ Redraw</button>' +
+      '<button class="mm-x" aria-label="Close">×</button></div>' +
+    '<div class="mm-status"></div>' +
+    '<div class="mm-map"></div>' +
+    '<div class="mm-note"></div>';
+  document.body.appendChild(sheet);
+  mapEl = sheet.querySelector('.mm-map');
+  statusEl = sheet.querySelector('.mm-status');
+  noteEl = sheet.querySelector('.mm-note');
+  sheet.querySelector('.mm-x').addEventListener('click', close);
+  sheet.querySelector('[data-mm="redo"]').addEventListener('click', function(){ generate(key, true); });
+  generate(key, false);
+}
+
+var fab = document.createElement('button');
+fab.id = 'mm-fab';
+fab.textContent = '🧠';
+fab.setAttribute('aria-label', 'See this section as a mind map');
+fab.style.cssText = 'position:fixed; right:18px; bottom:334px; z-index:45; width:46px; height:46px;'
+  + 'border-radius:50%; cursor:pointer; background:var(--surface); color:var(--text);'
+  + 'border:1.5px solid var(--border-strong,var(--border)); font-size:20px; line-height:1;'
+  + 'display:none; align-items:center; justify-content:center;'
+  + 'box-shadow:var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));';
+fab.addEventListener('click', open);
+document.body.appendChild(fab);
+
+function place(){
+  try {
+    var onLesson = !!document.querySelector('.lesson') && secKey();
+    fab.style.display = onLesson ? 'flex' : 'none';
+    if (sheet && (!onLesson || secKey() !== curKey)) close();
+  } catch (e) {}
+}
+if (typeof render === 'function' && !render.__mmWrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { place(); setTimeout(place, 150); } catch (e) {}
+    return out;
+  };
+  render.__mmWrapped = true;
+}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(place, 2, 'ui'); } catch (e) {}
+place();
+window.__mmOpen = open;
+window.__mmState = function(){
+  return { open: !!sheet, key: curKey,
+           branches: mapEl ? mapEl.querySelectorAll('.mm-bpill').length : 0,
+           leaves: mapEl ? mapEl.querySelectorAll('.mm-leaf').length : 0 };
+};
+} catch (e) { if (window.console && console.warn) console.warn('mind map failed:', e); }
 })();
 
 
