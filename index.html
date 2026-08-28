@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.519">
+<meta name="app-build" content="18.520">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -27790,6 +27790,16 @@ function gannoRender(strokes, currentStroke) {
  if (currentStroke) drawOne(currentStroke);
  // After a full render, the live-stroke element (if any) was wiped — clear handle
  ganno.liveEl = null;
+ // A page with NO ink still paid for the whole overlay: while pen mode is on,
+ // this document-sized SVG is a live composited layer (11.6 megapixels on her
+ // iPad — roughly 46MB of GPU memory) even when it contains nothing, and pen
+ // mode stays on all day, on every screen. iOS terminates the app under
+ // memory pressure, and this was the single largest constant weight in it.
+ // visibility, not display: every module that measures the overlay's box
+ // (windowing, the eraser's coordinate mapping, _rectCache) still reads real
+ // geometry — only the paint and its backing store are dropped. Pen-down
+ // restores it before any stroke needs to appear.
+ try { svg.style.visibility = (svg.childElementCount > 1 || currentStroke) ? '' : 'hidden'; } catch (e) {}
 }
 
 // SVG now scrolls naturally with the document (position:absolute, full-height).
@@ -27876,6 +27886,9 @@ function gannoUnfreezePage() {
 
 function gannoPointerDown(e) {
  e.preventDefault();
+ // The overlay hides itself on empty pages (see gannoRender). A stroke is
+ // starting, so it must be paintable again before the commit at pen-lift.
+ try { if (ganno.svg) ganno.svg.style.visibility = ''; } catch (err) {}
  // Snapshot SVG screen transform BEFORE freeze/scroll can change it so the whole
  // stroke maps through one fixed transform and stays aligned when scrolled.
  // Freeze the page so scroll/bounce doesn't shake while drawing
@@ -55119,7 +55132,9 @@ function sample(){
       if (_h) s.dh = Math.round(_h);
       var _on = _sv.classList.contains('active');
       s.pen = _on ? 1 : 0;
-      if (_on && _w && _h) {
+      var _painted = true;
+      try { _painted = getComputedStyle(_sv).visibility !== 'hidden'; } catch (e) {}
+      if (_on && _painted && _w && _h) {
         var _d = window.devicePixelRatio || 1;
         s.ovMP = Math.round(_w * _d * _h * _d / 100000) / 10;   // megapixels
       }
