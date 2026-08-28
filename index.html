@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.522">
+<meta name="app-build" content="18.523">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -46827,7 +46827,10 @@ var cbs = [];
 window.__pulseAdd = function(fn, everySec, cls){
   cbs.push({ f: fn, n: Math.max(1, Math.round(everySec)), cls: cls || 'ui', at: 0 });
 };
-function drawing(){ try { return !!(window.ganno && ganno.drawing); } catch (e) { return false; } }
+// `ganno` is a top-level const, so it never appears on `window` - this used to
+// read window.ganno and was therefore always false, which meant the pulse kept
+// running UI work in the middle of a pen stroke.
+function drawing(){ try { return typeof ganno !== 'undefined' && !!ganno.drawing; } catch (e) { return false; } }
 var t = 0;
 function beat(force){
   t++;
@@ -62000,6 +62003,462 @@ document.addEventListener('visibilitychange', function(){ if (document.visibilit
 window.__smoothStoreState = function(){ return { worker: !!worker, dirty: dirty, busy: busy, lastPackedAgoMs: window.__lastPacked ? Date.now() - window.__lastPacked.at : null, workerBuilt: _dbg.workerBuilt, jobsOk: _dbg.jobsOk, jobsErr: _dbg.jobsErr, workerKilledAt: _dbg.workerKilledAt, heals: _dbg.heals };};
 try { if (window.console) console.log('[store smooth save v2] ready — worker:', !!worker); } catch (e) {}
 } catch (e) { if (window.console && console.warn) console.warn('store smooth save v2 failed:', e); }
+})();
+
+
+(function marginNotes(){
+/* MARGIN NOTES - typed notes beside the lesson, without leaving the lesson.
+ *
+ * "where can we add a notes option ... while on the ipad? in the same screen,
+ *  without leaving the screen? ... a collapsable side option ... that could then
+ *  go away when I need it to ... it cannot show the annotations when closed,
+ *  this happened previously with another design in the app."
+ *
+ * Her per-section notes already exist, already sync and are already backed up -
+ * they just render at the BOTTOM of the lesson, so reaching them means scrolling
+ * away from the thing she is making a note about. This puts the same notes in a
+ * panel over the right edge of the page she is reading.
+ *
+ * THREE RULES THIS MODULE IS BUILT AROUND, each from a bug she has already lived:
+ *
+ * 1. IT MUST NEVER RESIZE THE LESSON. Ink is anchored to the content column, so a
+ *    panel that pushed or narrowed it would displace every stroke on the page -
+ *    the same failure as the font that swapped in late and left ink 49px from its
+ *    words. So: position:fixed, entirely outside document flow, and clipped by a
+ *    fixed wrapper of exactly panel width. A translated panel can add horizontal
+ *    scroll width in some engines, and scroll width IS a reflow; the wrapper's
+ *    overflow:hidden makes that structurally impossible rather than merely
+ *    unobserved.
+ *
+ * 2. CLOSED MEANS GONE. Not faded, not transparent, not off-screen-but-present.
+ *    On close the wrapper is set to display:none once the slide finishes, with a
+ *    timer backstop so an interrupted transition cannot strand it half-open. Zero
+ *    painted pixels, zero hit-testing.
+ *
+ * 3. TYPING MUST NOT DRAW. Pen mode is often left on all day, and the ink capture
+ *    is document-level. Every pointer event inside the panel is stopped in the
+ *    capture phase, so a pen tap into the text box can never become a stroke.
+ */
+if (typeof document === 'undefined') return;
+if (window.__marginNotes) return; window.__marginNotes = true;
+try {
+
+var PANEL_W = 320;          // desktop / landscape
+var ANIM_MS = 260;
+
+var wrap = null, panel = null, listEl = null, taEl = null, headEl = null,
+    fab = null, badgeEl = null, scopeEl = null;
+var isOpen = false, curKey = null, closeTimer = null, scope = 'section';
+var endFn = null, pendingSel = '', seq = 0, draftTimer = null;
+function newId(){ return 'n' + Date.now() + (seq++ ? '_' + seq : ''); }
+
+/* ---------- data: the notes she already has ---------- */
+function secKey(){
+  try {
+    if (typeof view === 'object' && view && view.name === 'section' && view.courseId)
+      return view.courseId + '/' + view.chId + '/' + view.secId;
+  } catch (e) {}
+  return null;
+}
+function notesFor(k){
+  if (!k) return [];
+  try {
+    if (!store.notes) store.notes = {};
+    if (!Array.isArray(store.notes[k])) store.notes[k] = [];
+    return store.notes[k];
+  } catch (e) { return []; }
+}
+function allInCourse(){
+  var out = [];
+  try {
+    var cid = (view && view.courseId) || '';
+    if (!cid || !store.notes) return out;
+    for (var k in store.notes) {
+      if (k.indexOf(cid + '/') !== 0) continue;
+      var arr = store.notes[k] || [];
+      for (var i = 0; i < arr.length; i++) out.push({ n: arr[i], k: k });
+    }
+    out.sort(function(a, b){ return (b.n.createdAt || 0) - (a.n.createdAt || 0); });
+  } catch (e) {}
+  return out;
+}
+function secTitle(k){
+  try {
+    var p = String(k).split('/'), c = COURSES[p[0]];
+    if (!c) return p.join(' · ');
+    var ch = (c.chapters || []).filter(function(x){ return x.id === p[1]; })[0];
+    var sc = ch && (ch.sections || []).filter(function(x){ return x.id === p[2]; })[0];
+    return (sc && sc.title) || (ch && ch.title) || p.join(' · ');
+  } catch (e) { return String(k); }
+}
+function save(){ try { if (typeof saveStore === 'function') saveStore(); } catch (e) {} }
+function stamp(ts){
+  if (!ts) return '';
+  try {
+    var d = new Date(ts), n = new Date();
+    var sameDay = d.toDateString() === n.toDateString();
+    var hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0');
+    return sameDay ? ('Today ' + hh + ':' + mm)
+                   : (d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + hh + ':' + mm);
+  } catch (e) { return ''; }
+}
+/* A draft is never lost: closing mid-sentence keeps the text for that section. */
+function draftGet(k){ try { return (store.noteDrafts && store.noteDrafts[k]) || ''; } catch (e) { return ''; } }
+function draftSet(k, v, now){
+  try {
+    if (!k) return;
+    if (!store.noteDrafts) store.noteDrafts = {};
+    if (v) store.noteDrafts[k] = v; else delete store.noteDrafts[k];
+    if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+    if (now) save(); else draftTimer = setTimeout(function(){ draftTimer = null; save(); }, 600);
+  } catch (e) {}
+}
+function draftFlush(){
+  if (!draftTimer) return;
+  clearTimeout(draftTimer); draftTimer = null; save();
+}
+
+/* ---------- styles ---------- */
+var css = document.createElement('style');
+css.textContent = [
+  /* The wrapper is the reflow guarantee: fixed, exactly panel-width, and
+     overflow:hidden, so the panel sliding inside it can never widen the page. */
+  '#mn-wrap{position:fixed; top:0; right:0; bottom:0; width:' + PANEL_W + 'px; overflow:hidden;',
+  '  z-index:70; display:none; pointer-events:none;}',
+  '#mn-wrap.mn-live{display:block; pointer-events:auto;}',
+  '#mn-panel{position:absolute; inset:0; display:flex; flex-direction:column;',
+  '  background:var(--surface); border-left:1px solid var(--border-strong,var(--border));',
+  '  transform:translateX(100%); transition:transform ' + ANIM_MS + 'ms cubic-bezier(.32,.72,0,1);}',
+  '#mn-wrap.mn-open #mn-panel{transform:translateX(0);}',
+  '@media (prefers-reduced-motion:reduce){#mn-panel{transition:none;}}',
+  '#mn-head{display:flex; align-items:center; gap:8px; padding:12px 12px 10px; flex:0 0 auto;',
+  '  border-bottom:1px solid var(--border);}',
+  '#mn-head .mn-t{flex:1; min-width:0;}',
+  '#mn-head .mn-t span{display:block; font-size:9.5px; font-weight:800; letter-spacing:.1em;',
+  '  text-transform:uppercase; color:var(--text-4);}',
+  '#mn-head .mn-t b{display:block; font-size:13px; font-weight:600; color:var(--text);',
+  '  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}',
+  '#mn-x{width:30px; height:30px; flex:0 0 auto; border-radius:8px; cursor:pointer; font-size:15px;',
+  '  background:transparent; color:var(--text-3); border:1px solid var(--border-strong,var(--border));',
+  '  font-family:inherit; line-height:1;}',
+  '#mn-scope{display:flex; gap:6px; padding:8px 12px 0; flex:0 0 auto;}',
+  '#mn-scope button{flex:1; font-family:inherit; font-size:11px; font-weight:700; cursor:pointer;',
+  '  padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:transparent;',
+  '  color:var(--text-3);}',
+  '#mn-scope button.on{background:var(--accent); border-color:var(--accent); color:var(--accent-text,#042f2e);}',
+  '#mn-list{flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; padding:10px 12px;',
+  '  display:flex; flex-direction:column; gap:8px; -webkit-overflow-scrolling:touch;}',
+  '#mn-list .mn-empty{color:var(--text-4); font-size:12px; line-height:1.6; text-align:center; padding:26px 8px;}',
+  '.mn-card{background:var(--surface-2); border:1px solid var(--border);',
+  '  border-left:3px solid var(--accent); border-radius:10px; padding:9px 11px;}',
+  '.mn-card .mn-meta{display:flex; align-items:center; justify-content:space-between; gap:6px;',
+  '  margin-bottom:5px; font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;',
+  '  color:var(--text-4);}',
+  '.mn-card .mn-meta button{background:none; border:none; color:var(--text-4); cursor:pointer;',
+  '  font-size:15px; line-height:1; padding:0 3px; font-family:inherit;}',
+  '.mn-card .mn-where{font-size:9.5px; color:var(--accent); font-weight:700; margin-bottom:4px;',
+  '  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}',
+  '.mn-card .mn-body{font-size:13px; line-height:1.55; color:var(--text-2); outline:none;',
+  '  white-space:pre-wrap; word-break:break-word; min-height:18px;}',
+  '.mn-card .mn-body:focus{color:var(--text);}',
+  '#mn-compose{flex:0 0 auto; border-top:1px solid var(--border); padding:10px 12px;',
+  '  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); background:var(--surface);}',
+  '#mn-ta{width:100%; box-sizing:border-box; resize:none; min-height:60px; max-height:34vh;',
+  '  font-family:inherit; font-size:13px; line-height:1.5; padding:8px 10px; border-radius:9px;',
+  '  background:var(--bg-2); color:var(--text); border:1px solid var(--border-strong,var(--border));}',
+  '#mn-row{display:flex; align-items:center; gap:8px; margin-top:8px;}',
+  '#mn-hint{flex:1; font-size:10px; color:var(--text-4);}',
+  '#mn-save{font-family:inherit; font-size:12px; font-weight:700; cursor:pointer; padding:7px 14px;',
+  '  border-radius:8px; border:none; background:var(--accent); color:var(--accent-text,#042f2e);}',
+  '#mn-fab .mn-badge{position:absolute; top:-3px; right:-3px; min-width:17px; height:17px; padding:0 4px;',
+  '  border-radius:9px; background:var(--secondary,#f472b6); color:#fff; font-size:10px; font-weight:800;',
+  '  display:none; align-items:center; justify-content:center; line-height:1;}',
+  '@media (max-width:820px){#mn-wrap{width:min(86vw,' + PANEL_W + 'px);}}',
+  '#mn-x:focus-visible,#mn-save:focus-visible,#mn-scope button:focus-visible,#mn-fab:focus-visible{',
+  '  outline:2px solid var(--accent); outline-offset:2px;}'
+].join('\n');
+document.head.appendChild(css);
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+/* ---------- build once ---------- */
+function build(){
+  if (wrap) { if (!wrap.isConnected) document.body.appendChild(wrap); return; }
+  wrap = document.createElement('div');
+  wrap.id = 'mn-wrap';
+  wrap.innerHTML =
+    '<section id="mn-panel" role="dialog" aria-label="Notes for this section">' +
+      '<div id="mn-head">' +
+        '<div class="mn-t"><span>Notes</span><b id="mn-title">This section</b></div>' +
+        '<button id="mn-x" aria-label="Close notes">&times;</button>' +
+      '</div>' +
+      '<div id="mn-scope">' +
+        '<button data-scope="section" class="on">This section</button>' +
+        '<button data-scope="course">All in course</button>' +
+      '</div>' +
+      '<div id="mn-list"></div>' +
+      '<div id="mn-compose">' +
+        '<textarea id="mn-ta" placeholder="Type a note… it saves to this section."></textarea>' +
+        '<div id="mn-row"><span id="mn-hint">⌘↵ to save</span>' +
+        '<button id="mn-save">Save note</button></div>' +
+      '</div>' +
+    '</section>';
+  document.body.appendChild(wrap);
+  panel = wrap.querySelector('#mn-panel');
+  listEl = wrap.querySelector('#mn-list');
+  taEl = wrap.querySelector('#mn-ta');
+  headEl = wrap.querySelector('#mn-title');
+  scopeEl = wrap.querySelector('#mn-scope');
+
+  /* RULE 3: no pointer event inside the panel may reach the document-level ink
+     capture. Capture phase, so it is stopped before ganno ever sees it. */
+  ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove'].forEach(function(t){
+    wrap.addEventListener(t, function(ev){ ev.stopPropagation(); }, true);
+  });
+
+  wrap.querySelector('#mn-x').addEventListener('click', function(){ setOpen(false); });
+  wrap.querySelector('#mn-save').addEventListener('click', commit);
+  scopeEl.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-scope]'); if (!b) return;
+    scope = b.getAttribute('data-scope');
+    var bs = scopeEl.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i] === b);
+    paintList();
+  });
+  taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); });
+  taEl.addEventListener('keydown', function(e){
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); commit(); }
+  });
+  listEl.addEventListener('click', function(ev){
+    var d = ev.target.closest('[data-del]'); if (!d) return;
+    if (!confirm('Delete this note?')) return;
+    var id = d.getAttribute('data-del'), k = d.getAttribute('data-k') || curKey;
+    var arr = notesFor(k);
+    for (var i = 0; i < arr.length; i++) if (String(arr[i].id) === id) { arr.splice(i, 1); break; }
+    save(); paintList(); paintBadge();
+  });
+  /* Edit in place, saved on blur - the same contract as the existing note cards. */
+  listEl.addEventListener('blur', function(ev){
+    var b = ev.target;
+    if (!b || !b.classList || !b.classList.contains('mn-body') || !b.isContentEditable) return;
+    var id = b.getAttribute('data-id'), k = b.getAttribute('data-k') || curKey;
+    var arr = notesFor(k), txt = (b.innerText || '').trim();
+    for (var i = 0; i < arr.length; i++) {
+      if (String(arr[i].id) !== id) continue;
+      if (txt && txt !== arr[i].text) { arr[i].text = txt; save(); }
+      else if (!txt) { arr.splice(i, 1); save(); paintList(); paintBadge(); }
+      break;
+    }
+  }, true);
+}
+
+function commit(){
+  if (!curKey) return;
+  var v = (taEl.value || '').trim();
+  if (!v) return;
+  var arr = notesFor(curKey);
+  arr.unshift({ id: newId(), text: v, createdAt: Date.now() });
+  taEl.value = '';
+  draftSet(curKey, '', true);
+  save(); paintList(); paintBadge();
+  listEl.scrollTop = 0;
+}
+
+function paintList(){
+  if (!listEl) return;
+  listEl.textContent = '';
+  var rows = [];
+  if (scope === 'course') rows = allInCourse();
+  else rows = notesFor(curKey).map(function(n){ return { n: n, k: curKey }; });
+
+  if (!rows.length) {
+    var e = document.createElement('div');
+    e.className = 'mn-empty';
+    e.textContent = scope === 'course'
+      ? 'No notes in this course yet.'
+      : 'No notes on this section yet. Type below and it saves here.';
+    listEl.appendChild(e);
+  } else {
+    for (var i = 0; i < rows.length; i++) {
+      var n = rows[i].n, k = rows[i].k;
+      var c = document.createElement('div');
+      c.className = 'mn-card';
+      c.innerHTML =
+        '<div class="mn-meta"><span>' + esc(stamp(n.createdAt)) + '</span>' +
+        '<button data-del="' + esc(n.id) + '" data-k="' + esc(k) + '" aria-label="Delete note">&times;</button></div>' +
+        (scope === 'course' ? '<div class="mn-where">' + esc(secTitle(k)) + '</div>' : '') +
+        '<div class="mn-body" contenteditable="true" data-id="' + esc(n.id) + '" data-k="' + esc(k) + '">' +
+        esc(n.text) + '</div>';
+      listEl.appendChild(c);
+    }
+  }
+  if (headEl) headEl.textContent = scope === 'course'
+    ? ((view && COURSES[view.courseId] && (COURSES[view.courseId].code || view.courseId)) || 'This course')
+    : (curKey ? secTitle(curKey) : 'This section');
+  var compose = wrap && wrap.querySelector('#mn-compose');
+  if (compose) compose.style.display = (scope === 'course') ? 'none' : '';
+}
+
+function paintBadge(){
+  if (!fab) return;
+  var n = 0;
+  try { n = curKey ? notesFor(curKey).length : 0; } catch (e) {}
+  if (!badgeEl) return;
+  badgeEl.textContent = n > 99 ? '99+' : String(n);
+  badgeEl.style.display = n ? 'flex' : 'none';
+}
+
+/* ---------- open / close ---------- */
+function setOpen(next){
+  build();
+  next = !!next;
+  if (next === isOpen) return;
+  if (next && !secKey()) return;                 // only ever on a lesson
+  isOpen = next;
+  if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+  if (fab) fab.setAttribute('aria-expanded', String(isOpen));
+
+  if (isOpen) {
+    curKey = secKey();
+    scope = 'section';
+    var bs = scopeEl.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i].getAttribute('data-scope') === 'section');
+    taEl.value = draftGet(curKey);
+    // If she had lesson text selected, start the note with it as a quote.
+    try {
+      var sel = pendingSel || String((window.getSelection && window.getSelection().toString()) || '').trim();
+      if (sel && sel.length > 2 && sel.length < 400 && !taEl.value) taEl.value = '“' + sel + '”\n\n';
+    } catch (e) {}
+    pendingSel = '';
+    paintList(); paintBadge();
+    wrap.style.bottom = '';
+    wrap.classList.add('mn-live');
+    void wrap.offsetWidth;                       // commit layout so the slide runs
+    wrap.classList.add('mn-open');
+    panel.setAttribute('aria-hidden', 'false');
+    /* Focus NOW, not after the slide: iOS only raises the keyboard for a focus
+       that happens inside the tap that caused it. preventScroll because the
+       textarea is still translated off-screen at this instant. */
+    try {
+      taEl.focus({ preventScroll: true });
+      taEl.setSelectionRange(taEl.value.length, taEl.value.length);
+    } catch (e) {}
+  } else {
+    draftFlush();
+    wrap.classList.remove('mn-open');
+    panel.setAttribute('aria-hidden', 'true');
+    try { if (document.activeElement && wrap.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
+    /* RULE 2: gone, not hidden. Runs on transitionend AND on a timer, so an
+       interrupted animation can never leave it stranded on screen. */
+    var done = function(){
+      if (isOpen) return;
+      wrap.classList.remove('mn-live');
+      wrap.style.bottom = '';                    // clear any keyboard offset
+      if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+      if (endFn) { panel.removeEventListener('transitionend', endFn); endFn = null; }
+    };
+    if (endFn) panel.removeEventListener('transitionend', endFn);
+    endFn = done;
+    panel.addEventListener('transitionend', done);
+    closeTimer = setTimeout(done, ANIM_MS + 140);
+    try { if (fab && fab.style.display !== 'none') fab.focus({ preventScroll: true }); } catch (e) {}
+  }
+}
+window.__notesPanel = {
+  open: function(){ setOpen(true); },
+  close: function(){ setOpen(false); },
+  toggle: function(){ setOpen(!isOpen); },
+  state: function(){
+    var r = wrap ? wrap.getBoundingClientRect() : null;
+    return { open: isOpen, key: curKey, scope: scope, built: !!wrap,
+             display: wrap ? getComputedStyle(wrap).display : 'none',
+             area: r ? Math.round(r.width * r.height) : 0,
+             notes: curKey ? notesFor(curKey).length : 0 };
+  }
+};
+
+/* ---------- the trigger, in the existing right-edge stack ---------- */
+fab = document.createElement('button');
+fab.id = 'mn-fab';
+fab.setAttribute('aria-label', 'Notes for this section');
+fab.setAttribute('aria-expanded', 'false');
+fab.innerHTML = '📝<span class="mn-badge"></span>';
+fab.style.cssText = 'position:fixed; right:18px; bottom:388px; z-index:45; width:46px; height:46px;'
+  + 'border-radius:50%; cursor:pointer; background:var(--surface); color:var(--text);'
+  + 'border:1.5px solid var(--border-strong,var(--border)); font-size:20px; line-height:1;'
+  + 'display:none; align-items:center; justify-content:center;'
+  + 'box-shadow:var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));';
+document.body.appendChild(fab);
+badgeEl = fab.querySelector('.mn-badge');
+['pointerdown', 'mousedown', 'touchstart'].forEach(function(t){
+  fab.addEventListener(t, function(){
+    try {
+      var s = String((window.getSelection && window.getSelection().toString()) || '').trim();
+      if (s) pendingSel = s;
+    } catch (e) {}
+  }, true);
+});
+fab.addEventListener('click', function(){ setOpen(!isOpen); });
+
+/* Show only where there is a lesson to annotate, exactly like the other
+   right-edge buttons. Leaving the section closes the panel rather than letting
+   it hang over an unrelated screen. */
+function place(){
+  try {
+    var k = secKey();
+    var onLesson = !!k && !!document.querySelector('.my-notes, .lesson');
+    if (!fab.isConnected) document.body.appendChild(fab);
+    var want = onLesson ? 'flex' : 'none';
+    if (fab.style.display !== want) fab.style.display = want;
+    if (!onLesson) { if (isOpen) setOpen(false); return; }
+    if (k !== curKey) {
+      curKey = k;
+      if (isOpen) { taEl.value = draftGet(curKey); scope = 'section'; paintList(); }
+    }
+    paintBadge();
+  } catch (e) {}
+}
+/* Follow the app's own render, so the panel tracks navigation immediately.
+   window.render is addressed explicitly: this module has its own paintList, and
+   a bare `render` here would wrap ourselves instead of the app. */
+if (typeof window.render === 'function' && !window.render.__mnWrapped) {
+  var _appRender = window.render;
+  var wrapped = function(){
+    var out = _appRender.apply(this, arguments);
+    try { place(); setTimeout(place, 150); } catch (e) {}
+    return out;
+  };
+  wrapped.__mnWrapped = true;
+  window.render = wrapped;
+}
+try { (window.__pulseAdd || function(f, s){ setInterval(f, s * 1000); })(place, 2, 'ui'); } catch (e) {}
+
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape' && isOpen) { e.preventDefault(); setOpen(false); }
+}, false);
+
+/* The iPad keyboard shrinks the visual viewport but not the layout viewport, so
+   the panel is resized to the visible area. Nothing here touches the lesson
+   column - only this fixed wrapper moves. */
+try {
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    var fit = function(){
+      if (!wrap || !isOpen) return;
+      var hidden = Math.max(0, (window.innerHeight || 0) - (vv.height + vv.offsetTop));
+      wrap.style.bottom = hidden > 60 ? hidden + 'px' : '';
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+  }
+} catch (e) {}
+
+place();
+} catch (e) { if (window.console && console.warn) console.warn('margin notes failed:', e); }
 })();
 
 </script>
