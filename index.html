@@ -1497,10 +1497,12 @@
  background: var(--surface-glass);
  backdrop-filter: blur(20px) saturate(180%);
  -webkit-backdrop-filter: blur(20px) saturate(180%);
- /* Sticks below the REAL brand bar, not a guessed 56px. In iPad portrait the
-    brand bar is 213px tall (the pen toolbar wraps onto its own row below 1080px),
-    and a fixed 56px offset parked this whole bar - back button included - behind
-    it the moment the page scrolled. --brand-bar-height is measured live. */
+ /* Sticks below the REAL brand bar, not a guessed 56px. The threshold is 900px:
+    at >=900px the nav row is hidden and brandOneLine forces the pen toolbar onto
+    the logo's line, but from 501px to 899px the nav row returns AND the toolbar
+    takes a full-width row of its own, making the bar 213px tall in iPad portrait.
+    A fixed 56px offset parked this whole bar - back button included - behind it
+    the moment the page scrolled. --brand-bar-height is measured live. */
  position: sticky; top: var(--brand-bar-height, 56px); z-index: 50;
  border-bottom: 1px solid var(--border);
  }
@@ -28190,6 +28192,8 @@ function gannoEnsureSvg() {
  return !!(t && t.closest && (
  t.closest('.ganno-bar') ||
  t.closest('.ganno-fab') ||
+ t.closest('#mn-wrap') ||
+ t.closest('#mn-fab') ||
  t.closest('.pomo-sheet') ||
  t.closest('.brand-bar') ||
  t.closest('.tabs') ||
@@ -62045,11 +62049,17 @@ try {
   }
   var watched = null, ro = null;
   try { if (window.ResizeObserver) ro = new ResizeObserver(function(){ sync(); }); } catch (e) { ro = null; }
+  // border box, because syncBrandBarHeight measures getBoundingClientRect - a
+  // padding-only change would otherwise never be noticed
+  var ROOPT = { box: 'border-box' };
   function attach(){
     var bar = document.querySelector('body > .brand-bar');
     if (!bar) { if (watched) { watched = null; sync(); } return; }
     if (bar === watched) return;
-    if (ro) { try { if (watched) ro.unobserve(watched); } catch (e) {} try { ro.observe(bar); } catch (e) {} }
+    if (ro) {
+      try { if (watched) ro.unobserve(watched); } catch (e) {}
+      try { ro.observe(bar, ROOPT); } catch (e) { try { ro.observe(bar); } catch (e2) {} }
+    }
     watched = bar;
     sync();
   }
