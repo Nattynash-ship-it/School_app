@@ -1497,7 +1497,11 @@
  background: var(--surface-glass);
  backdrop-filter: blur(20px) saturate(180%);
  -webkit-backdrop-filter: blur(20px) saturate(180%);
- position: sticky; top: 56px; z-index: 50;
+ /* Sticks below the REAL brand bar, not a guessed 56px. In iPad portrait the
+    brand bar is 213px tall (the pen toolbar wraps onto its own row below 1080px),
+    and a fixed 56px offset parked this whole bar - back button included - behind
+    it the moment the page scrolled. --brand-bar-height is measured live. */
+ position: sticky; top: var(--brand-bar-height, 56px); z-index: 50;
  border-bottom: 1px solid var(--border);
  }
  .top-bar .back { font-size: 22px; color: var(--text-3); padding: 6px; margin: -6px; }
@@ -28494,6 +28498,7 @@ function gannoRenderToolbar() {
  <button class="ganno-action" data-act="clear" title="Clear this page">${icons.clear}</button>
  <button class="ganno-action" data-act="clearall" title="Clear ALL annotations everywhere">${icons.clearAll}</button>
  <button class="ganno-action" data-act="settings" title="Settings">${icons.settings}</button>
+ <button class="ganno-action ganno-done" data-act="done" title="Put the pen away">Done</button>
  `;
 
  // Wire tool clicks
@@ -28554,6 +28559,9 @@ function gannoRenderToolbar() {
  try { if (typeof ganno === 'object' && ganno) ganno.liveEl = null; } catch (e) {}
  gannoRender([], null);
  toast(wiped ? 'All annotations cleared' : 'There were no annotations to clear');
+ });
+ primary.querySelector('[data-act="done"]').addEventListener('click', () => {
+  try { gannoSetActive(false); } catch (e) {}
  });
  primary.querySelector('[data-act="settings"]').addEventListener('click', () => {
  showGannoSettings();
@@ -62005,6 +62013,54 @@ try { if (window.console) console.log('[store smooth save v2] ready — worker:'
 } catch (e) { if (window.console && console.warn) console.warn('store smooth save v2 failed:', e); }
 })();
 
+
+(function brandBarMetrics(){
+/* --brand-bar-height is what every sticky thing below the brand bar measures
+ * itself against, but it was only recomputed on resize and orientationchange.
+ * Turning the pen on INSERTS the toolbar into the brand row, and below 1080px
+ * that toolbar wraps onto its own line - the bar jumps from ~145px to 213px with
+ * no resize event to notice. The lesson header then stuck at a stale offset and
+ * sat underneath it, taking the back button and the pen toggle with it.
+ * A ResizeObserver on the bar itself catches every cause: the toolbar, compact
+ * mode, a theme change, text wrapping, a font arriving late. */
+if (typeof document === 'undefined') return;
+if (window.__brandBarMetrics) return; window.__brandBarMetrics = true;
+try {
+  var css = document.createElement('style');
+  css.textContent = [
+    /* The toolbar row scrolls sideways when it does not fit. Done is pinned to
+       its right edge so putting the pen away never requires finding it first,
+       and flex:0 0 auto stops it being squeezed to zero width. */
+    '.ganno-bar .ganno-action.ganno-done{width:auto !important; min-width:56px; flex:0 0 auto !important;',
+    '  padding:0 12px; font-family:inherit; font-size:12px; font-weight:800; letter-spacing:.04em;',
+    '  color:var(--accent-text,#042f2e); background:var(--accent); border-color:var(--accent);',
+    '  margin-left:4px; position:sticky; right:0; z-index:3;',
+    '  box-shadow:-8px 0 10px -6px var(--surface-2,var(--surface));}',
+    '.ganno-bar .ganno-action.ganno-done:hover{filter:brightness(1.06);}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  function sync(){
+    try { if (typeof syncBrandBarHeight === 'function') syncBrandBarHeight(); } catch (e) {}
+  }
+  var watched = null, ro = null;
+  try { if (window.ResizeObserver) ro = new ResizeObserver(function(){ sync(); }); } catch (e) { ro = null; }
+  function attach(){
+    var bar = document.querySelector('body > .brand-bar');
+    if (!bar) { if (watched) { watched = null; sync(); } return; }
+    if (bar === watched) return;
+    if (ro) { try { if (watched) ro.unobserve(watched); } catch (e) {} try { ro.observe(bar); } catch (e) {} }
+    watched = bar;
+    sync();
+  }
+  attach();
+  // renders can replace the brand bar wholesale; the pulse re-attaches cheaply
+  try { (window.__pulseAdd || function(f, sec){ setInterval(f, sec * 1000); })(attach, 2, 'ui'); } catch (e) {}
+  try { window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); }); } catch (e) {}
+  // and once more after fonts settle, which changes the bar's height
+  try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ setTimeout(sync, 0); }); } catch (e) {}
+} catch (e) { if (window.console && console.warn) console.warn('brand bar metrics failed:', e); }
+})();
 
 (function marginNotes(){
 /* MARGIN NOTES - typed notes beside the lesson, without leaving the lesson.
