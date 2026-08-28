@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.520">
+<meta name="app-build" content="18.521">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -58317,6 +58317,17 @@ window.__fortressErased = function(){
   try { flush(); } catch (e) {}
   try { localStorage.removeItem(RESCUE); } catch (e) {}
 };
+// "Reset all data" is different from the partial erases: it fires from inside
+// the removeItem wrapper, BEFORE the settings handler swaps the in-memory
+// store for defaults. Flushing at that moment would write the still-full
+// store into the mirror, stamped NEWER than the erase - so the very guard
+// meant to honour the erase would see a fresh mirror and restore everything.
+// A full wipe therefore clears the mirror instead of flushing it.
+window.__fortressWiped = function(){
+  try { if (_mirrorT) { clearTimeout(_mirrorT); _mirrorT = null; } } catch (e) {}
+  try { mirrorClear(); } catch (e) {}
+  try { localStorage.removeItem(RESCUE); } catch (e) {}
+};
 try { document.addEventListener('visibilitychange', function(){ if (document.hidden) flush(); }); } catch (e) {}
 try { window.addEventListener('pagehide', flush); } catch (e) {}
 
@@ -58582,7 +58593,12 @@ function mark(kind, rk){
   write(o);
   // Rewrite the mirror from the erased store immediately, and send the erased
   // state outward, so the copies the other layers hold stop being the old one.
-  try { if (window.__fortressErased) window.__fortressErased(); } catch (e) {}
+  // EXCEPT a full wipe: it fires before memory is emptied, so flushing here
+  // would mirror the very data being erased - it clears the mirror instead.
+  try {
+    if (kind === 'all') { if (window.__fortressWiped) window.__fortressWiped(); }
+    else if (window.__fortressErased) window.__fortressErased();
+  } catch (e) {}
   setTimeout(function(){
     try {
       if (window.__sync && window.__sync.state().on && navigator.onLine)
