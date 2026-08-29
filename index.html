@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.529">
+<meta name="app-build" content="18.530">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62197,6 +62197,7 @@ var isOpen=false, curKey=null, tab='write', closeTimer=null, endFn=null;
 var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, penId=null;
 var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
+var wideSuspended=false;        // we turned Full width off to make room; put it back
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62252,9 +62253,58 @@ function sideGeom(){
     var W = Math.min(want, gutter + room);
     var pref = +prefs().sideW;
     if (pref > 0) W = Math.min(Math.max(280, pref), gutter + room);
-    if (W < 280) return null;                          // too tight - use the bottom dock
+    if (W < 250) return null;                          // too tight - use the bottom dock
     return { w: Math.round(W), shift: Math.max(0, Math.ceil(W - gutter)) };
   } catch (e) { return null; }
+}
+/* WHY THE PANEL SOMETIMES CANNOT FIT.
+ *
+ * Full width (body.wide-mode) lets the lesson fill the whole screen, so there
+ * is nothing left to slide into - measured, the free space goes from 378px to
+ * exactly 0 on every iPad size. The panel then has nowhere to go and the
+ * notebook falls back to the bottom dock, which looks like the setting simply
+ * being ignored.
+ *
+ * So when a side panel is wanted and Full width is what is in the way, Full
+ * width is turned off for as long as the notebook is open, and turned back on
+ * when it closes. That reflow is safe: strokes on a lesson are anchored to the
+ * paragraph they were drawn over, and measured across this exact change the
+ * ink tracked its words to within a pixel.
+ */
+function placement(){ return prefs().place || 'auto'; }
+function suspendWide(){
+  if (wideSuspended) return false;
+  var on = false;
+  try { on = document.body.classList.contains('wide-mode') || store.wideMode === true; } catch (e) {}
+  if (!on) return false;
+  wideSuspended = true;
+  try {
+    document.body.classList.remove('wide-mode');
+    document.body.classList.remove('wide-mode-margin-notes');
+  } catch (e) {}
+  return true;
+}
+function restoreWide(){
+  if (!wideSuspended) return;
+  wideSuspended = false;
+  try {
+    if (store.wideMode === true) {
+      document.body.classList.add('wide-mode');
+      if (store.wideModeMarginNotes) document.body.classList.add('wide-mode-margin-notes');
+    }
+  } catch (e) {}
+}
+/* The geometry we can actually have, given the placement setting. */
+function wantSide(){
+  if (placement() === 'bottom') return null;
+  var g = sideGeom();
+  if (g) return g;
+  if (suspendWide()) {
+    g = sideGeom();
+    if (g) return g;
+    restoreWide();                 // Full width was not the problem after all
+  }
+  return null;
 }
 function dockH(){
   var p = prefs(), h = +p.h;
@@ -62597,9 +62647,9 @@ function build(){
      with no room for the panel that caused it. */
   var reflow = function(){
     if (!isOpen) return;
-    var g = sideGeom();
+    var g = wantSide();
     if (g) { side = true; applySide(g); }
-    else if (side) { side = false; releaseSide();
+    else if (side) { side = false; releaseSide(); restoreWide();
                      document.documentElement.style.setProperty('--mn-h', dockH() + 'px'); }
     sizeSvg(); redraw();
   };
@@ -62622,7 +62672,9 @@ function buildTools(){
   var clB  = mk('button','mn-tool','🗑','Clear this page'); clB.dataset.t='clear';
   var cvB  = mk('button','mn-tool','👁','Cover the notes and quiz yourself'); cvB.dataset.t='cover';
   var pgB  = mk('button','mn-tool','＋','Add another page'); pgB.dataset.t='page';
-  [penB, erB, unB, clB, cvB, pgB].forEach(function(b){ toolsEl.appendChild(b); });
+  var plB  = mk('button','mn-tool', side ? '⬓' : '⬒',
+                'Put the notebook at the side or along the bottom'); plB.dataset.t='place';
+  [penB, erB, unB, clB, cvB, pgB, plB].forEach(function(b){ toolsEl.appendChild(b); });
   SWATCHES.forEach(function(c){
     var s = mk('button','mn-sw',null,'Ink colour ' + c);
     s.style.background = c; s.dataset.c = c;
@@ -62648,6 +62700,22 @@ function buildTools(){
     if (t === 'undo') { undo(); return; }
     if (t === 'clear') { clearPage(); return; }
     if (t === 'page') { addPage(); return; }
+    if (t === 'place') {
+      prefs().place = side ? 'bottom' : 'side';
+      save();
+      var g2 = wantSide();
+      if (g2) { side = true; applySide(g2); }
+      else {
+        if (side) { side = false; releaseSide(); }
+        restoreWide();
+        document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
+      }
+      b.textContent = side ? '⬓' : '⬒';
+      sizeSvg(); redraw(); paintList();
+      try { if (typeof toast === 'function')
+        toast(side ? 'Notebook beside the lesson' : 'Notebook along the bottom'); } catch (e) {}
+      return;
+    }
     if (t === 'cover') {
       covered = !covered;
       b.classList.toggle('on', covered);
@@ -63093,6 +63161,12 @@ function loadSection(k){
 /* Applying and releasing the shift. The ink is re-anchored explicitly right
    afterwards: moving #app fires no resize event, so without this the strokes
    would sit where they were until something else happened to repaint them. */
+function markPlaceBtn(){
+  try {
+    var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="place"]');
+    if (b) b.textContent = side ? '⬓' : '⬒';
+  } catch (e) {}
+}
 function applySide(g){
   var root = document.documentElement;
   root.style.setProperty('--mn-w', g.w + 'px');
@@ -63100,6 +63174,7 @@ function applySide(g){
   shiftPx = g.shift;
   dock.classList.add('mn-side');
   document.body.classList.add('mn-side-open');
+  markPlaceBtn();
   reanchor();
 }
 function releaseSide(){
@@ -63107,6 +63182,7 @@ function releaseSide(){
   dock.classList.remove('mn-side');
   shiftPx = 0;
   try { document.documentElement.style.removeProperty('--mn-shift'); } catch (e) {}
+  markPlaceBtn();
   reanchor();
 }
 /* Never mid-stroke: the ink windower early-returns while a stroke is live, so
@@ -63132,10 +63208,21 @@ function setOpen(next){
 
   if (isOpen) {
     if (endFn) { dock.removeEventListener('transitionend', endFn); endFn = null; }
-    var g = sideGeom();
+    var wasWide = false;
+    try { wasWide = document.body.classList.contains('wide-mode'); } catch (e) {}
+    var g = wantSide();
     side = !!g;
-    if (side) applySide(g);
-    else { releaseSide(); document.documentElement.style.setProperty('--mn-h', dockH() + 'px'); }
+    if (side) {
+      applySide(g);
+      if (wideSuspended && wasWide) {
+        try { if (typeof toast === 'function')
+          toast('Full width paused so the notebook fits beside the lesson'); } catch (e) {}
+      }
+    } else {
+      restoreWide();
+      releaseSide();
+      document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
+    }
     if (curKey !== secKey()) loadSection(secKey());
     setTab(prefs().tab === 'type' ? 'type' : 'write');
     try {
@@ -63157,7 +63244,8 @@ function setOpen(next){
     prefs().tab = tab; save();
     dock.classList.remove('mn-open');
     document.body.classList.remove('mn-open');
-    if (side) { releaseSide(); side = false; }
+    if (side) { side = false; releaseSide(); }   // side=false first: the icon reads it
+    restoreWide();
     try { if (document.activeElement && dock.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     var done = function(){
       if (isOpen) return;
