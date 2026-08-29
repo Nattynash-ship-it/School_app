@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.524">
+<meta name="app-build" content="18.525">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -46551,7 +46551,15 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     // !important and the same specificity, and this stylesheet is injected
     // later, so the test pages ignored the setting entirely. This selector is
     // more specific, so the user's choice wins wherever it is set.
-    '  body.wide-mode.quiz-split .app { max-width: 100% !important; }',
+    // ...and on a test in landscape that was still a no-op: the app is already
+    // at the full 1110px of a 1194px iPad either way, so raising the cap changes
+    // nothing visible. What actually squeezes the question is the 42% reserved
+    // here for the scratch pad. Full width on a test therefore means giving the
+    // question the room, while keeping the pad comfortably usable.
+    '  body.wide-mode.quiz-split .app {',
+    '    max-width: 100% !important;',
+    '    grid-template-columns: minmax(0, 1fr) minmax(300px, 33%) !important;',
+    '  }',
     '  body.quiz-split .app > .scratch-host {',
     '    grid-column: 2;',
     '    grid-row: 1 / span 60;',
