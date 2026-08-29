@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.528">
+<meta name="app-build" content="18.529">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62196,6 +62196,7 @@ var dock=null, bar=null, pagesEl=null, svg=null, typedEl=null, listEl=null,
 var isOpen=false, curKey=null, tab='write', closeTimer=null, endFn=null;
 var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, penId=null;
 var pendingSel='', seq=0, draftTimer=null, covered=false;
+var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62213,6 +62214,47 @@ function prefs(){
     if (!store.padPrefs) store.padPrefs = {};
     return store.padPrefs;
   } catch (e) { return {}; }
+}
+/* SIDE MODE.
+ *
+ * The lesson makes room by MOVING, not by narrowing: #app gets
+ * `position:relative; left:-Npx`. That is the one shift the ink survives, and
+ * not by luck - gannoGetAnchor measures #app itself, and gannoReanchor maps a
+ * stroke as `cur.x + (x - a.x) * sx` with `sx = cur.w / a.w`. A pure sideways
+ * move leaves the width alone, so sx is exactly 1 and every stroke translates
+ * by exactly the same pixels as the words under it. Narrowing #app instead
+ * would make sx < 1 and SCALE the ink away from text that never reflowed,
+ * because .app is capped at 720px and would not have re-wrapped.
+ *
+ * relative/left rather than a transform: a transform on #app would become the
+ * containing block for the sticky lesson header, and the screenEnter animation
+ * overwrites transforms on #app's children after every render.
+ */
+function sideGeom(){
+  try {
+    var app = document.getElementById('app');
+    var col = document.querySelector('#app > .app') || app;
+    if (!app || !col) return null;
+    var vw = window.innerWidth || 0;
+    var cr = col.getBoundingClientRect();
+    if (!cr.width) return null;
+    var railW = 0;
+    var rail = document.querySelector('.side-rail');
+    try {
+      if (rail) {
+        var rs = getComputedStyle(rail);
+        if (rs.display !== 'none' && rs.position === 'fixed') railW = rail.getBoundingClientRect().width;
+      }
+    } catch (e) {}
+    var gutter = Math.max(0, vw - cr.right);          // free space to the right
+    var room   = Math.max(0, cr.left - railW - 12);   // how far it may move left
+    var want   = Math.min(400, Math.round(vw * 0.34));
+    var W = Math.min(want, gutter + room);
+    var pref = +prefs().sideW;
+    if (pref > 0) W = Math.min(Math.max(280, pref), gutter + room);
+    if (W < 280) return null;                          // too tight - use the bottom dock
+    return { w: Math.round(W), shift: Math.max(0, Math.ceil(W - gutter)) };
+  } catch (e) { return null; }
 }
 function dockH(){
   var p = prefs(), h = +p.h;
@@ -62327,11 +62369,47 @@ css.textContent = [
   '@media (min-width:900px){body.has-rail #mn-dock{left:84px;}}',
   /* THE ROOM. padding-bottom changes the page's HEIGHT only. Both ink
      re-anchoring paths scale by width alone, so this cannot move a stroke. */
-  'body.mn-open #app{padding-bottom:calc(var(--mn-h) + 26px + env(safe-area-inset-bottom,0px));}',
+  /* bottom dock: room is made below. Never both - the side variant moves the
+     lesson sideways instead, and adding padding as well would be a second,
+     pointless page-geometry change. */
+  'body.mn-open:not(.mn-side-open) #app{padding-bottom:calc(var(--mn-h) + 26px + env(safe-area-inset-bottom,0px));}',
+
+  /* SIDE MODE - a tall panel down the right, full height */
+  /* starts below the brand bar, which is sticky at z-index 60 and would
+     otherwise sit on top of the panel's own toolbar */
+  '#mn-dock.mn-side{top:var(--brand-bar-height,0px); bottom:0; right:0; left:auto; height:auto;',
+  '  width:var(--mn-w,360px); transform:translateX(100%);',
+  '  border-top:none; border-left:1px solid var(--border-strong,var(--border));',
+  '  box-shadow:-10px 0 34px rgba(0,0,0,0.22); padding-bottom:0;}',
+  '#mn-dock.mn-side.mn-open{transform:translateX(0);}',
+  '@media (min-width:900px){body.has-rail #mn-dock.mn-side{left:auto;}}',
+  /* the lesson moves - it does not narrow. See sideGeom() for why. */
+  'body.mn-side-open #app{position:relative; left:calc(-1 * var(--mn-shift,0px));}',
+  /* the grip becomes a vertical handle on the panel's left edge */
+  '#mn-dock.mn-side #mn-grip{position:absolute; left:0; top:0; bottom:0; width:16px;',
+  '  height:auto; cursor:ew-resize; z-index:5;}',
+  '#mn-dock.mn-side #mn-grip::before{width:4px; height:44px;}',
+  /* A side panel is much narrower than the bottom dock, so the one-row toolbar
+     ran off the edge and took the close button with it. Two rows: tabs and
+     close on top, tools underneath. */
+  '#mn-dock.mn-side #mn-bar{padding-left:20px; flex-wrap:wrap; row-gap:6px; overflow:visible;}',
+  '#mn-dock.mn-side #mn-tabs{order:1;}',
+  '#mn-dock.mn-side #mn-x{order:2; margin-left:auto;}',
+  '#mn-dock.mn-side #mn-tools{order:3; flex:1 1 100%; min-width:0; overflow-x:auto;',
+  '  scrollbar-width:none;}',
+  '#mn-dock.mn-side #mn-tools::-webkit-scrollbar{display:none;}',
+  '#mn-dock.mn-side #mn-where{display:none;}',
+  '#mn-dock.mn-side #mn-tabs button{padding:5px 9px;}',
+  /* right-edge buttons sit under a side panel: move them left, not up */
+  'body.mn-side-open #mn-fab,body.mn-side-open .aih-fab,body.mn-side-open #eli5-fab,',
+  'body.mn-side-open #wb-fab,body.mn-side-open #pod-fab,body.mn-side-open #mm-fab,',
+  'body.mn-side-open #calc-fab{transform:translateX(calc(-1 * var(--mn-w,360px))) !important;}',
   /* The dock would sit on top of the right-edge buttons. Fixing an unreachable
      pencil by burying the calculator is not a fix. */
-  'body.mn-open #mn-fab,body.mn-open .aih-fab,body.mn-open #eli5-fab,body.mn-open #wb-fab,',
-  'body.mn-open #pod-fab,body.mn-open #mm-fab,body.mn-open #calc-fab{',
+  'body.mn-open:not(.mn-side-open) #mn-fab,body.mn-open:not(.mn-side-open) .aih-fab,',
+  'body.mn-open:not(.mn-side-open) #eli5-fab,body.mn-open:not(.mn-side-open) #wb-fab,',
+  'body.mn-open:not(.mn-side-open) #pod-fab,body.mn-open:not(.mn-side-open) #mm-fab,',
+  'body.mn-open:not(.mn-side-open) #calc-fab{',
   '  transform:translateY(calc(-1 * var(--mn-h))); transition:transform ' + ANIM + 'ms cubic-bezier(.32,.72,0,1);}',
 
   '#mn-grip{height:16px; flex:0 0 auto; cursor:ns-resize; display:flex; align-items:center;',
@@ -62514,7 +62592,19 @@ function build(){
 
   wireGrip();
   wireInk();
-  try { window.addEventListener('resize', function(){ if (isOpen) sizeSvg(); }); } catch (e) {}
+  /* Turning the iPad can take a landscape side panel into a portrait where one
+     does not fit, and back. Re-decide rather than leaving the lesson shifted
+     with no room for the panel that caused it. */
+  var reflow = function(){
+    if (!isOpen) return;
+    var g = sideGeom();
+    if (g) { side = true; applySide(g); }
+    else if (side) { side = false; releaseSide();
+                     document.documentElement.style.setProperty('--mn-h', dockH() + 'px'); }
+    sizeSvg(); redraw();
+  };
+  try { window.addEventListener('resize', function(){ setTimeout(reflow, 80); }); } catch (e) {}
+  try { window.addEventListener('orientationchange', function(){ setTimeout(reflow, 320); }); } catch (e) {}
 }
 
 function mk(tag, cls, txt, label){
@@ -62906,13 +62996,24 @@ function wireInk(){
 function wireGrip(){
   var g = dock.querySelector('#mn-grip');
   var startY = 0, startH = 0, dragging = false, gid = null;
+  var startX = 0, startW = 0;
   g.addEventListener('pointerdown', function(e){
-    dragging = true; gid = e.pointerId; startY = e.clientY; startH = dockH();
+    dragging = true; gid = e.pointerId;
+    startY = e.clientY; startH = dockH();
+    startX = e.clientX; startW = dock.getBoundingClientRect().width;
     try { g.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
   });
   g.addEventListener('pointermove', function(e){
     if (!dragging || e.pointerId !== gid) return;
+    if (side) {
+      /* Width only while dragging - the lesson's shift and the ink re-anchor
+         are left until the drag ends, so the page is not re-laid-out and the
+         overlay is not re-measured on every frame. */
+      var wNew = Math.max(280, Math.min(560, startW + (startX - e.clientX)));
+      document.documentElement.style.setProperty('--mn-w', Math.round(wNew) + 'px');
+      return;
+    }
     var h = Math.max(MINH, Math.min(MAXH, startH + (startY - e.clientY)));
     document.documentElement.style.setProperty('--mn-h', h + 'px');
   });
@@ -62920,6 +63021,14 @@ function wireGrip(){
     if (!dragging) return;
     dragging = false; gid = null;
     try { if (e && e.pointerId != null) g.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (side) {
+      var wNow = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mn-w'), 10);
+      if (wNow > 0) { prefs().sideW = wNow; save(); }
+      var g2 = sideGeom();
+      if (g2) applySide(g2);
+      sizeSvg(); redraw();
+      return;
+    }
     var h = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mn-h'), 10);
     if (h > 0) { prefs().h = h; save(); }
     sizeSvg();
@@ -62981,6 +63090,37 @@ function loadSection(k){
   if (isOpen) { sizeSvg(); redraw(); paintList(); }
   paintBadge();
 }
+/* Applying and releasing the shift. The ink is re-anchored explicitly right
+   afterwards: moving #app fires no resize event, so without this the strokes
+   would sit where they were until something else happened to repaint them. */
+function applySide(g){
+  var root = document.documentElement;
+  root.style.setProperty('--mn-w', g.w + 'px');
+  root.style.setProperty('--mn-shift', g.shift + 'px');
+  shiftPx = g.shift;
+  dock.classList.add('mn-side');
+  document.body.classList.add('mn-side-open');
+  reanchor();
+}
+function releaseSide(){
+  document.body.classList.remove('mn-side-open');
+  dock.classList.remove('mn-side');
+  shiftPx = 0;
+  try { document.documentElement.style.removeProperty('--mn-shift'); } catch (e) {}
+  reanchor();
+}
+/* Never mid-stroke: the ink windower early-returns while a stroke is live, so
+   a re-anchor during one would be dropped and leave the strokes behind. */
+function reanchor(){
+  var run = function(){
+    try { if (typeof window.gannoOnResize === 'function') window.gannoOnResize(); } catch (e) {}
+  };
+  var drawing = false;
+  try { drawing = typeof ganno !== 'undefined' && !!ganno.drawing; } catch (e) {}
+  if (drawing) { setTimeout(reanchor, 160); return; }
+  run();
+  setTimeout(run, 60);
+}
 function setOpen(next){
   build();
   next = !!next;
@@ -62992,7 +63132,10 @@ function setOpen(next){
 
   if (isOpen) {
     if (endFn) { dock.removeEventListener('transitionend', endFn); endFn = null; }
-    document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
+    var g = sideGeom();
+    side = !!g;
+    if (side) applySide(g);
+    else { releaseSide(); document.documentElement.style.setProperty('--mn-h', dockH() + 'px'); }
     if (curKey !== secKey()) loadSection(secKey());
     setTab(prefs().tab === 'type' ? 'type' : 'write');
     try {
@@ -63014,6 +63157,7 @@ function setOpen(next){
     prefs().tab = tab; save();
     dock.classList.remove('mn-open');
     document.body.classList.remove('mn-open');
+    if (side) { releaseSide(); side = false; }
     try { if (document.activeElement && dock.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     var done = function(){
       if (isOpen) return;
@@ -63060,6 +63204,9 @@ window.__notesPanel = {
   state: function(){
     var r = dock ? dock.getBoundingClientRect() : null;
     return { open: isOpen, key: curKey, tab: tab, built: !!dock,
+             side: side, shift: shiftPx,
+             appLeft: (function(){ try { var a = document.getElementById('app');
+               return a ? Math.round(a.getBoundingClientRect().left) : null; } catch (e) { return null; } })(),
              display: dock ? getComputedStyle(dock).display : 'none',
              area: r ? Math.round(r.width * r.height) : 0,
              notes: curKey ? notesFor(curKey).length : 0,
