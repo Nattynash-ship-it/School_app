@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.525">
+<meta name="app-build" content="18.526">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -43546,6 +43546,13 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       for (var i = 0; i < anchors.length; i++) {
         var a = anchors[i];
         if (!a.parentNode || a.parentNode.querySelector('[data-act="boldtext-toggle"]')) continue;
+        /* There are TWO theme buttons: a full-width row in the settings menu,
+           and an ICON button in the brand bar. This runs 250ms after every tap
+           anywhere in the app, so matching the icon one put a full-width
+           "Text weight: Bolder" text button into the header on every single
+           tap - and grew the brand bar, which the sticky lesson header measures
+           itself against. Menu rows only. */
+        if (!a.classList || !a.classList.contains('pomo-btn')) continue;
         var b = document.createElement('button');
         b.className = a.className || 'pomo-btn';
         b.setAttribute('data-act', 'boldtext-toggle');
@@ -62154,9 +62161,19 @@ if (typeof document === 'undefined') return;
 if (window.__marginNotes) return; window.__marginNotes = true;
 try {
 
-var UNITS = 1000;               // logical width of a pad page
-var PAGE0 = 1500;               // starting page height, in the same units
-var GROW  = 700;                // added when she writes near the bottom
+/* CORNELL PAPER, in the pad's own units. Letter proportions, so a page on the
+ * iPad has the shape of a page in a notebook:
+ *   cue column   2.5 of 8.5 inches wide   -> 290 / 1000
+ *   summary band 2   of 11  inches tall   -> 236 / 1294
+ * The header strip along the top is for the date and topic. Pages are whole:
+ * writing near the bottom of the last one adds another, so the summary band
+ * always sits at the foot of a page rather than drifting into the middle. */
+var UNITS  = 1000;              // logical width of a page
+var PAGE_H = 1294;              // one whole page, same units
+var CUE_X  = 290;               // cue / notes divider
+var SUM_H  = 236;               // summary band at the foot of each page
+var HEAD_H = 74;                // title strip at the head of each page
+var PAGE0  = PAGE_H;            // start with exactly one page
 var MINH = 200, MAXH = 620;     // dock height in CSS px
 var ANIM = 240;
 
@@ -62164,7 +62181,7 @@ var dock=null, bar=null, pagesEl=null, svg=null, typedEl=null, listEl=null,
     taEl=null, fab=null, badgeEl=null, tabsEl=null, toolsEl=null;
 var isOpen=false, curKey=null, tab='write', closeTimer=null, endFn=null;
 var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, penId=null;
-var pendingSel='', seq=0, draftTimer=null;
+var pendingSel='', seq=0, draftTimer=null, covered=false;
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62261,16 +62278,20 @@ function persist(){
     save();
   } catch (e) {}
 }
-function pageHFor(){
-  var h = PAGE0;
-  try { var m = (store.padNotes || {})[curKey]; if (m && m.h > 0) h = m.h; } catch (e) {}
+function lowestInk(){
   var lowest = 0;
   for (var i = 0; i < strokes.length; i++) {
     var pts = strokes[i] && strokes[i].points;
     if (!pts) continue;
     for (var j = 0; j < pts.length; j++) if (pts[j].y > lowest) lowest = pts[j].y;
   }
-  return Math.max(h, lowest + GROW / 2, PAGE0);
+  return lowest;
+}
+function pageHFor(){
+  var stored = 0;
+  try { var m = (store.padNotes || {})[curKey]; if (m && m.h > 0) stored = m.h; } catch (e) {}
+  var need = Math.max(stored, lowestInk() + 1);
+  return Math.max(1, Math.ceil(need / PAGE_H)) * PAGE_H;
 }
 
 /* ---------- styles ---------- */
@@ -62336,10 +62357,21 @@ css.textContent = [
   '  background-image:linear-gradient(var(--surface),var(--surface)),',
   '                   linear-gradient(var(--surface),var(--surface)),',
   '                   linear-gradient(var(--surface),var(--surface));}',
-  '#mn-ink .mn-rule{stroke:var(--text-4,#94a3b8); stroke-width:1; opacity:.38;',
+  '#mn-ink .mn-rule{stroke:var(--text-4,#94a3b8); stroke-width:1; opacity:.30;',
   '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-margin{stroke:var(--secondary,#f472b6); stroke-width:1; opacity:.5;',
+  /* the three Cornell divisions, drawn stronger than the writing lines */
+  '#mn-ink .mn-margin{stroke:var(--secondary,#f472b6); stroke-width:1.5; opacity:.75;',
   '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-head{stroke:var(--secondary,#f472b6); stroke-width:1.5; opacity:.55;',
+  '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-pagebreak{stroke:var(--text-4,#94a3b8); stroke-width:2; opacity:.5;',
+  '  stroke-dasharray:10 8; vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-label{fill:var(--text-4,#94a3b8); opacity:.62; font-size:13px; font-weight:700;',
+  '  letter-spacing:1.6px; font-family:inherit;}',
+  '#mn-ink .mn-cover{fill:var(--bg-2,var(--bg)); stroke:var(--secondary,#f472b6);',
+  '  stroke-width:1; vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-cover-label{fill:var(--text-4,#94a3b8); font-size:20px; font-weight:600;',
+  '  font-family:inherit; text-anchor:middle; opacity:.85;}',
 
   '#mn-typed{flex:1 1 auto; display:none; flex-direction:column; min-height:0;}',
   '#mn-dock.tab-type #mn-pages{display:none;}',
@@ -62462,7 +62494,9 @@ function buildTools(){
   var erB  = mk('button','mn-tool','🩹','Eraser'); erB.dataset.t='erase';
   var unB  = mk('button','mn-tool','↩︎','Undo'); unB.dataset.t='undo';
   var clB  = mk('button','mn-tool','🗑','Clear this page'); clB.dataset.t='clear';
-  [penB, erB, unB, clB].forEach(function(b){ toolsEl.appendChild(b); });
+  var cvB  = mk('button','mn-tool','👁','Cover the notes and quiz yourself'); cvB.dataset.t='cover';
+  var pgB  = mk('button','mn-tool','＋','Add another page'); pgB.dataset.t='page';
+  [penB, erB, unB, clB, cvB, pgB].forEach(function(b){ toolsEl.appendChild(b); });
   SWATCHES.forEach(function(c){
     var s = mk('button','mn-sw',null,'Ink colour ' + c);
     s.style.background = c; s.dataset.c = c;
@@ -62485,6 +62519,14 @@ function buildTools(){
     var t = b.dataset.t;
     if (t === 'undo') { undo(); return; }
     if (t === 'clear') { clearPage(); return; }
+    if (t === 'page') { addPage(); return; }
+    if (t === 'cover') {
+      covered = !covered;
+      b.classList.toggle('on', covered);
+      redraw();
+      try { if (typeof toast === 'function') toast(covered ? 'Notes hidden — answer from the cues' : 'Notes showing'); } catch (e) {}
+      return;
+    }
     if (t === 'width') {
       var i = WIDTHS.indexOf(penWidth());
       prefs().w = WIDTHS[(i + 1) % WIDTHS.length]; save();
@@ -62559,22 +62601,71 @@ function el(s){
   return n;
 }
 var RULE = 46;                  // line spacing, in the pad's own units
+var NS = 'http://www.w3.org/2000/svg';
+function pageCount(){ return Math.max(1, Math.round(pageH / PAGE_H)); }
+function line(g, cls, x1, y1, x2, y2){
+  var l = document.createElementNS(NS, 'line');
+  l.setAttribute('class', cls);
+  l.setAttribute('x1', String(x1)); l.setAttribute('y1', String(y1));
+  l.setAttribute('x2', String(x2)); l.setAttribute('y2', String(y2));
+  g.appendChild(l);
+  return l;
+}
+function label(g, x, y, txt, anchor){
+  var t = document.createElementNS(NS, 'text');
+  t.setAttribute('class', 'mn-label');
+  t.setAttribute('x', String(x)); t.setAttribute('y', String(y));
+  if (anchor) t.setAttribute('text-anchor', anchor);
+  t.textContent = txt;
+  g.appendChild(t);
+}
 function drawRules(){
-  var NS = 'http://www.w3.org/2000/svg';
   var g = document.createElementNS(NS, 'g');
   g.setAttribute('aria-hidden', 'true');
-  for (var y = RULE; y < pageH; y += RULE) {
-    var l = document.createElementNS(NS, 'line');
-    l.setAttribute('class', 'mn-rule');
-    l.setAttribute('x1', '28'); l.setAttribute('x2', String(UNITS - 16));
-    l.setAttribute('y1', String(y)); l.setAttribute('y2', String(y));
-    g.appendChild(l);
+  var pages = pageCount();
+  for (var p = 0; p < pages; p++) {
+    var top = p * PAGE_H;
+    var headY = top + HEAD_H;                 // under the title strip
+    var sumY  = top + PAGE_H - SUM_H;         // top of the summary band
+    // writing lines, across the whole page above the summary and inside it
+    for (var y = headY + RULE; y < sumY - 4; y += RULE) line(g, 'mn-rule', 24, y, UNITS - 20, y);
+    for (var y2 = sumY + RULE; y2 < top + PAGE_H - 6; y2 += RULE) line(g, 'mn-rule', 24, y2, UNITS - 20, y2);
+    // the three Cornell divisions
+    line(g, 'mn-head', 20, headY, UNITS - 20, headY);
+    line(g, 'mn-margin', CUE_X, headY, CUE_X, sumY);
+    line(g, 'mn-head', 20, sumY, UNITS - 20, sumY);
+    // short labels: anything longer runs across the cue divider into the notes
+    label(g, 26, headY - 20, 'DATE / TOPIC');
+    label(g, 26, headY + 26, 'CUE');
+    label(g, CUE_X + 14, headY + 26, 'NOTES');
+    label(g, 26, sumY + 26, 'SUMMARY');
+    if (p === 0) label(g, UNITS - 20, headY - 20, 'CORNELL', 'end');
+    if (p < pages - 1) line(g, 'mn-pagebreak', 0, top + PAGE_H, UNITS, top + PAGE_H);
   }
-  var m = document.createElementNS(NS, 'line');
-  m.setAttribute('class', 'mn-margin');
-  m.setAttribute('x1', '64'); m.setAttribute('x2', '64');
-  m.setAttribute('y1', '0'); m.setAttribute('y2', String(pageH));
-  g.appendChild(m);
+  svg.appendChild(g);
+}
+/* Cornell's actual purpose: cover the notes, read the cues, say the answer.
+   The cover is painted, not stored, so it can never touch a stroke. */
+function drawCover(){
+  var g = document.createElementNS(NS, 'g');
+  g.setAttribute('class', 'mn-cover-g');
+  g.setAttribute('aria-hidden', 'true');
+  var pages = pageCount();
+  for (var p = 0; p < pages; p++) {
+    var top = p * PAGE_H, headY = top + HEAD_H, sumY = top + PAGE_H - SUM_H;
+    var r = document.createElementNS(NS, 'rect');
+    r.setAttribute('class', 'mn-cover');
+    r.setAttribute('x', String(CUE_X + 1)); r.setAttribute('y', String(headY + 1));
+    r.setAttribute('width', String(UNITS - CUE_X - 1));
+    r.setAttribute('height', String(Math.max(0, sumY - headY - 1)));
+    g.appendChild(r);
+    var t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'mn-cover-label');
+    t.setAttribute('x', String(CUE_X + (UNITS - CUE_X) / 2));
+    t.setAttribute('y', String(headY + 46));
+    t.textContent = 'notes hidden — answer from the cues';
+    g.appendChild(t);
+  }
   svg.appendChild(g);
 }
 function redraw(){
@@ -62584,15 +62675,22 @@ function redraw(){
   for (var i = 0; i < strokes.length; i++) {
     if (strokes[i] && strokes[i].points && strokes[i].points.length) svg.appendChild(el(strokes[i]));
   }
+  // LAST, so it actually covers the notes. Painted after the ink, never before.
+  if (covered) drawCover();
   liveEl = null;
 }
+/* A new page is added only when she reaches the very foot of the last one.
+   The earlier rule fired anywhere in the last fifth of the page - which is the
+   summary band - so simply writing the summary spawned a blank page every time.
+   There is also an explicit "+ page" button, so this never has to be guessed. */
+var GROW_AT = 58;               // units from the foot of the last page
+function addPage(){
+  pageH = (pageCount() + 1) * PAGE_H;
+  sizeSvg(); redraw(); persist();
+  try { if (pagesEl) pagesEl.scrollTop = pagesEl.scrollHeight; } catch (e) {}
+}
 function grewIfNeeded(){
-  var lowest = 0;
-  for (var i = 0; i < strokes.length; i++) {
-    var pts = strokes[i].points;
-    for (var j = 0; j < pts.length; j++) if (pts[j].y > lowest) lowest = pts[j].y;
-  }
-  if (lowest > pageH - GROW / 2) { pageH = Math.ceil(lowest + GROW); sizeSvg(); return true; }
+  if (lowestInk() > pageH - GROW_AT) { pageH = (pageCount() + 1) * PAGE_H; sizeSvg(); return true; }
   return false;
 }
 function undo(){
@@ -62602,7 +62700,7 @@ function undo(){
 function clearPage(){
   if (!strokes.length) return;
   if (!confirm('Clear the handwriting on this page? Your typed notes are kept.')) return;
-  strokes = []; pageH = PAGE0; sizeSvg(); redraw(); persist(); paintBadge();
+  strokes = []; pageH = PAGE_H; sizeSvg(); redraw(); persist(); paintBadge();
 }
 function eraseAt(p){
   var before = strokes.length;
@@ -62626,6 +62724,7 @@ function eraseAt(p){
 function wireInk(){
   svg.addEventListener('pointerdown', function(e){
     if (e.pointerType === 'touch') return;        // a finger scrolls the pad
+    if (covered) return;                          // reviewing, not writing
     e.preventDefault();
     try { svg.setPointerCapture(e.pointerId); } catch (err) {}
     penId = e.pointerId;
