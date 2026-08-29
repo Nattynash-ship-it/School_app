@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.526">
+<meta name="app-build" content="18.527">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -28658,11 +28658,13 @@ function openGannoPopover(kind, anchor) {
  `<button class="ganno-color ${currentColor === c ? 'active' : ''}" data-color="${c}" style="background:${c};" title="${c}"></button>`
  ).join('');
  } else if (kind === 'width') {
- const widths = ganno.tool === 'highlighter' ? [3, 5, 8, 12, 16] : [1, 2, 3, 5, 8, 12];
+ // 0.4 and 0.7 added: the finest point used to be 1, which is still a broad
+ // nib once the pressure curve has multiplied it by up to 1.55.
+ const widths = ganno.tool === 'highlighter' ? [3, 5, 8, 12, 16] : [0.4, 0.7, 1, 2, 3, 5, 8, 12];
  const currentColor = gannoColor();
  const currentWidth = gannoWidth();
  pop.innerHTML = widths.map(w => {
- const dotSize = ganno.tool === 'highlighter' ? Math.min(w * 2, 26) : Math.max(w + 2, 4);
+ const dotSize = ganno.tool === 'highlighter' ? Math.min(w * 2, 26) : Math.max(w + 3, 3);
  const opacity = ganno.tool === 'highlighter' ? '0.5' : '1';
  return `<button class="ganno-width-btn ${currentWidth === w ? 'active' : ''}" data-width="${w}" title="${w}px"><span class="dot" style="width:${dotSize}px;height:${dotSize}px;background:${currentColor};opacity:${opacity};"></span></button>`;
  }).join('');
@@ -62161,18 +62163,30 @@ if (typeof document === 'undefined') return;
 if (window.__marginNotes) return; window.__marginNotes = true;
 try {
 
-/* CORNELL PAPER, in the pad's own units. Letter proportions, so a page on the
- * iPad has the shape of a page in a notebook:
- *   cue column   2.5 of 8.5 inches wide   -> 290 / 1000
- *   summary band 2   of 11  inches tall   -> 236 / 1294
- * The header strip along the top is for the date and topic. Pages are whole:
- * writing near the bottom of the last one adds another, so the summary band
- * always sits at the foot of a page rather than drifting into the middle. */
-var UNITS  = 1000;              // logical width of a page
-var PAGE_H = 1294;              // one whole page, same units
-var CUE_X  = 290;               // cue / notes divider
-var SUM_H  = 236;               // summary band at the foot of each page
-var HEAD_H = 74;                // title strip at the head of each page
+/* CORNELL PAPER, to the published specification, on US Letter.
+ *
+ *   page                8.5 x 11 in
+ *   cue column          2.5 in from the left edge
+ *   note-taking column  6   in
+ *   summary             2   in across the foot
+ *   heading             1   in across the head
+ *
+ * The pad's unit of width is 1/1000 of the page, so 1 inch = 1000/8.5 =
+ * 117.647 units and every number below is that spec converted and rounded:
+ *
+ *   PAGE_H = 11   in -> 1294      CUE_X  = 2.5 in -> 294
+ *   SUM_H  = 2    in ->  235      HEAD_H = 1   in ->  118
+ *   RULE   = 9/32 in ->   33      (college ruled, what Cornell paper is)
+ *
+ * 294 + 706 = 1000, i.e. 2.5 in + 6 in = 8.5 in exactly. Pages are whole:
+ * writing to the foot of the last one adds another, so the summary always
+ * sits at the foot of a page rather than adrift in the middle of one. */
+var IN     = 1000 / 8.5;        // one inch, in pad units
+var UNITS  = 1000;              // page width  = 8.5 in
+var PAGE_H = Math.round(11 * IN);   // 1294
+var CUE_X  = Math.round(2.5 * IN);  //  294
+var SUM_H  = Math.round(2 * IN);    //  235
+var HEAD_H = Math.round(1 * IN);    //  118
 var PAGE0  = PAGE_H;            // start with exactly one page
 var MINH = 200, MAXH = 620;     // dock height in CSS px
 var ANIM = 240;
@@ -62210,7 +62224,7 @@ function penColor(){
   try { if (typeof adaptColor === 'function') return adaptColor(c); } catch (e) {}
   return c;
 }
-function penWidth(){ var w = +prefs().w; return (w > 0) ? w : 3; }
+function penWidth(){ var w = +prefs().w; return (w > 0) ? w : DEFAULT_W; }
 function save(){ try { if (typeof saveStore === 'function') saveStore(); } catch (e) {} }
 
 /* ---------- typed notes (kept as the second tab) ---------- */
@@ -62396,6 +62410,17 @@ css.textContent = [
   '#mn-save{font-family:inherit; font-size:12px; font-weight:700; cursor:pointer; padding:7px 14px;',
   '  border-radius:8px; border:none; background:var(--accent); color:var(--accent-text,#042f2e);}',
 
+  '.mn-dot{border-radius:50%; display:block; flex:0 0 auto;}',
+  /* a fixed-width well so the rows line up while each dot keeps its real size */
+  '.mn-size-w{flex:0 0 22px; width:22px; display:flex; align-items:center; justify-content:center;}',
+  '#mn-sizes{position:absolute; z-index:4; background:var(--surface); border-radius:12px;',
+  '  border:1px solid var(--border-strong,var(--border)); padding:5px; min-width:162px;',
+  '  box-shadow:0 10px 30px rgba(0,0,0,0.26);}',
+  '.mn-size{display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;',
+  '  padding:7px 10px; border-radius:8px; border:none; background:transparent;',
+  '  font-family:inherit; font-size:12.5px; color:var(--text-2); text-align:left;}',
+  '.mn-size.on{background:var(--surface-2); color:var(--text); font-weight:700;}',
+  '.mn-size-t{flex:1 1 auto;}',
   '#mn-fab .mn-badge{position:absolute; top:-3px; right:-3px; min-width:17px; height:17px; padding:0 4px;',
   '  border-radius:9px; background:var(--secondary,#f472b6); color:#fff; font-size:10px; font-weight:800;',
   '  display:none; align-items:center; justify-content:center; line-height:1;}',
@@ -62405,7 +62430,18 @@ css.textContent = [
 document.head.appendChild(css);
 
 var SWATCHES = ['#2563eb', '#111827', '#dc2626', '#059669'];
-var WIDTHS = [2, 3.5, 6];
+/* Pen points, in pad units - 1 unit is 1/1000 of the page width, so these hold
+   their thickness whatever size the dock is. The old set started at 2, which is
+   a broad nib for small handwriting; it now goes down to a 0.5 needlepoint. */
+var WIDTHS = [
+  { w: 0.5, name: 'Extra fine' },
+  { w: 0.9, name: 'Fine' },
+  { w: 1.4, name: 'Medium' },
+  { w: 2.2, name: 'Broad' },
+  { w: 3.4, name: 'Bold' },
+  { w: 5.0, name: 'Marker' }
+];
+var DEFAULT_W = 1.4;
 
 /* ---------- build ---------- */
 function build(){
@@ -62503,7 +62539,8 @@ function buildTools(){
     if (c === (prefs().color || SWATCHES[0])) s.classList.add('on');
     toolsEl.appendChild(s);
   });
-  var wB = mk('button','mn-tool','◍','Stroke width'); wB.dataset.t='width';
+  var wB = mk('button','mn-tool',null,'Pen point size'); wB.dataset.t='width';
+  wB.appendChild(sizeDot(penWidth()));
   toolsEl.appendChild(wB);
 
   toolsEl.addEventListener('click', function(ev){
@@ -62512,6 +62549,7 @@ function buildTools(){
       prefs().color = sw.dataset.c; save();
       var all = toolsEl.querySelectorAll('.mn-sw');
       for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === sw);
+      refreshSizeBtn();
       if (tool !== 'pen') setTool('pen');
       return;
     }
@@ -62527,14 +62565,74 @@ function buildTools(){
       try { if (typeof toast === 'function') toast(covered ? 'Notes hidden — answer from the cues' : 'Notes showing'); } catch (e) {}
       return;
     }
-    if (t === 'width') {
-      var i = WIDTHS.indexOf(penWidth());
-      prefs().w = WIDTHS[(i + 1) % WIDTHS.length]; save();
-      b.style.fontSize = (11 + penWidth()) + 'px';
-      return;
-    }
+    if (t === 'width') { openSizes(b); return; }
     setTool(t);
   });
+}
+/* A dot drawn at the size the pen actually is, so the button shows the point
+   rather than describing it. Clamped to something tappable at the fine end. */
+function sizeDot(w){
+  var d = document.createElement('span');
+  d.className = 'mn-dot';
+  var px = Math.max(3, Math.min(18, w * 2.6 + 2));
+  d.style.width = px + 'px'; d.style.height = px + 'px';
+  d.style.background = prefs().color || SWATCHES[0];
+  return d;
+}
+function refreshSizeBtn(){
+  var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="width"]');
+  if (!b) return;
+  b.textContent = '';
+  b.appendChild(sizeDot(penWidth()));
+}
+function closeSizes(){
+  var old = dock && dock.querySelector('#mn-sizes');
+  if (old && old.parentNode) old.parentNode.removeChild(old);
+}
+function openSizes(anchor){
+  if (dock.querySelector('#mn-sizes')) { closeSizes(); return; }
+  var pop = document.createElement('div');
+  pop.id = 'mn-sizes';
+  pop.setAttribute('role', 'listbox');
+  pop.setAttribute('aria-label', 'Pen point size');
+  var cur = penWidth();
+  for (var i = 0; i < WIDTHS.length; i++) {
+    (function(opt){
+      var row = document.createElement('button');
+      row.className = 'mn-size' + (Math.abs(opt.w - cur) < 0.01 ? ' on' : '');
+      row.setAttribute('role', 'option');
+      var well = document.createElement('span');
+      well.className = 'mn-size-w';
+      well.appendChild(sizeDot(opt.w));
+      row.appendChild(well);
+      var t = document.createElement('span');
+      t.className = 'mn-size-t';
+      t.textContent = opt.name;
+      row.appendChild(t);
+      row.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        prefs().w = opt.w; save();
+        refreshSizeBtn();
+        closeSizes();
+        if (tool !== 'pen') setTool('pen');
+      });
+      pop.appendChild(row);
+    })(WIDTHS[i]);
+  }
+  dock.appendChild(pop);
+  try {
+    var ar = anchor.getBoundingClientRect(), dr = dock.getBoundingClientRect();
+    var left = Math.max(6, Math.min(ar.left - dr.left - 20, dr.width - 168));
+    pop.style.left = left + 'px';
+    pop.style.top = (ar.bottom - dr.top + 6) + 'px';
+  } catch (e) {}
+  setTimeout(function(){
+    document.addEventListener('pointerdown', function once(ev){
+      if (pop.contains(ev.target)) return;
+      document.removeEventListener('pointerdown', once, true);
+      closeSizes();
+    }, true);
+  }, 0);
 }
 function setTool(t){
   tool = t;
@@ -62600,7 +62698,7 @@ function el(s){
   }
   return n;
 }
-var RULE = 46;                  // line spacing, in the pad's own units
+var RULE = Math.round(9 / 32 * IN);   // 33 - college ruled, as Cornell paper is
 var NS = 'http://www.w3.org/2000/svg';
 function pageCount(){ return Math.max(1, Math.round(pageH / PAGE_H)); }
 function line(g, cls, x1, y1, x2, y2){
@@ -62635,11 +62733,11 @@ function drawRules(){
     line(g, 'mn-margin', CUE_X, headY, CUE_X, sumY);
     line(g, 'mn-head', 20, sumY, UNITS - 20, sumY);
     // short labels: anything longer runs across the cue divider into the notes
-    label(g, 26, headY - 20, 'DATE / TOPIC');
-    label(g, 26, headY + 26, 'CUE');
-    label(g, CUE_X + 14, headY + 26, 'NOTES');
-    label(g, 26, sumY + 26, 'SUMMARY');
-    if (p === 0) label(g, UNITS - 20, headY - 20, 'CORNELL', 'end');
+    label(g, 26, headY - 34, 'TOPIC');
+    label(g, UNITS - 20, headY - 34, 'DATE', 'end');
+    label(g, 26, headY + 24, 'CUE COLUMN');
+    label(g, CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN');
+    label(g, 26, sumY + 24, 'SUMMARY');
     if (p < pages - 1) line(g, 'mn-pagebreak', 0, top + PAGE_H, UNITS, top + PAGE_H);
   }
   svg.appendChild(g);
