@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.530">
+<meta name="app-build" content="18.531">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62197,7 +62197,6 @@ var isOpen=false, curKey=null, tab='write', closeTimer=null, endFn=null;
 var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, penId=null;
 var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
-var wideSuspended=false;        // we turned Full width off to make room; put it back
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62257,54 +62256,35 @@ function sideGeom(){
     return { w: Math.round(W), shift: Math.max(0, Math.ceil(W - gutter)) };
   } catch (e) { return null; }
 }
-/* WHY THE PANEL SOMETIMES CANNOT FIT.
+/* WHY THE PANEL SOMETIMES CANNOT FIT, AND WHY IT IS LEFT THAT WAY.
  *
- * Full width (body.wide-mode) lets the lesson fill the whole screen, so there
- * is nothing left to slide into - measured, the free space goes from 378px to
- * exactly 0 on every iPad size. The panel then has nowhere to go and the
- * notebook falls back to the bottom dock, which looks like the setting simply
- * being ignored.
+ * Full width lets the lesson fill the whole screen, so there is nothing left to
+ * slide into - measured, the free space goes from 378px to exactly 0 on every
+ * iPad size. The panel has nowhere to go and the notebook uses the bottom dock.
  *
- * So when a side panel is wanted and Full width is what is in the way, Full
- * width is turned off for as long as the notebook is open, and turned back on
- * when it closes. That reflow is safe: strokes on a lesson are anchored to the
- * paragraph they were drawn over, and measured across this exact change the
- * ink tracked its words to within a pixel.
+ * An earlier build turned Full width off automatically to make room, on the
+ * strength of a test that showed the ink surviving. That test was wrong, and it
+ * could not have failed: it measured each stroke against its PARAGRAPH'S
+ * CORNER, which is exactly what block anchoring preserves by construction. It
+ * never asked whether the ink was still over the same WORDS.
+ *
+ * It is not. Taking the column from 1038px to 680px re-wraps every paragraph -
+ * the line breaks are completely different - so a mark drawn across line two of
+ * a wide paragraph lands on unrelated words afterwards. Block anchoring can
+ * translate a whole paragraph; nothing can re-flow ink inside one. That is not
+ * a bug to fix, it is arithmetic.
+ *
+ * So the lesson is never reflowed on her behalf. Full width is hers to turn off
+ * if she wants the side panel; the notebook only says why it cannot fit.
  */
 function placement(){ return prefs().place || 'auto'; }
-function suspendWide(){
-  if (wideSuspended) return false;
-  var on = false;
-  try { on = document.body.classList.contains('wide-mode') || store.wideMode === true; } catch (e) {}
-  if (!on) return false;
-  wideSuspended = true;
-  try {
-    document.body.classList.remove('wide-mode');
-    document.body.classList.remove('wide-mode-margin-notes');
-  } catch (e) {}
-  return true;
+function wideOn(){
+  try { return document.body.classList.contains('wide-mode') || store.wideMode === true; }
+  catch (e) { return false; }
 }
-function restoreWide(){
-  if (!wideSuspended) return;
-  wideSuspended = false;
-  try {
-    if (store.wideMode === true) {
-      document.body.classList.add('wide-mode');
-      if (store.wideModeMarginNotes) document.body.classList.add('wide-mode-margin-notes');
-    }
-  } catch (e) {}
-}
-/* The geometry we can actually have, given the placement setting. */
 function wantSide(){
   if (placement() === 'bottom') return null;
-  var g = sideGeom();
-  if (g) return g;
-  if (suspendWide()) {
-    g = sideGeom();
-    if (g) return g;
-    restoreWide();                 // Full width was not the problem after all
-  }
-  return null;
+  return sideGeom();
 }
 function dockH(){
   var p = prefs(), h = +p.h;
@@ -62649,7 +62629,7 @@ function build(){
     if (!isOpen) return;
     var g = wantSide();
     if (g) { side = true; applySide(g); }
-    else if (side) { side = false; releaseSide(); restoreWide();
+    else if (side) { side = false; releaseSide();
                      document.documentElement.style.setProperty('--mn-h', dockH() + 'px'); }
     sizeSvg(); redraw();
   };
@@ -62707,8 +62687,9 @@ function buildTools(){
       if (g2) { side = true; applySide(g2); }
       else {
         if (side) { side = false; releaseSide(); }
-        restoreWide();
         document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
+        if (wideOn()) { try { if (typeof toast === 'function')
+          toast('Full width leaves no room beside the lesson'); } catch (e) {} }
       }
       b.textContent = side ? '⬓' : '⬒';
       sizeSvg(); redraw(); paintList();
@@ -63208,20 +63189,19 @@ function setOpen(next){
 
   if (isOpen) {
     if (endFn) { dock.removeEventListener('transitionend', endFn); endFn = null; }
-    var wasWide = false;
-    try { wasWide = document.body.classList.contains('wide-mode'); } catch (e) {}
     var g = wantSide();
     side = !!g;
     if (side) {
       applySide(g);
-      if (wideSuspended && wasWide) {
-        try { if (typeof toast === 'function')
-          toast('Full width paused so the notebook fits beside the lesson'); } catch (e) {}
-      }
     } else {
-      restoreWide();
       releaseSide();
       document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
+      // Say why, once per session, rather than looking like the setting is ignored.
+      if (placement() !== 'bottom' && wideOn() && !window.__mnWideToldOnce) {
+        window.__mnWideToldOnce = true;
+        try { if (typeof toast === 'function')
+          toast('Full width leaves no room beside the lesson — turn it off for a side notebook'); } catch (e) {}
+      }
     }
     if (curKey !== secKey()) loadSection(secKey());
     setTab(prefs().tab === 'type' ? 'type' : 'write');
@@ -63245,7 +63225,6 @@ function setOpen(next){
     dock.classList.remove('mn-open');
     document.body.classList.remove('mn-open');
     if (side) { side = false; releaseSide(); }   // side=false first: the icon reads it
-    restoreWide();
     try { if (document.activeElement && dock.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     var done = function(){
       if (isOpen) return;
