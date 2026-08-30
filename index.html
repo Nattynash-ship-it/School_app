@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.532">
+<meta name="app-build" content="18.533">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -3156,6 +3156,7 @@
  .proj-level-beginner { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
  .proj-level-intermediate { background: rgba(251,146,60,0.15); color: #fb923c; border: 1px solid rgba(251,146,60,0.3); }
  .proj-level-advanced { background: rgba(225,29,72,0.15); color: #fb7185; border: 1px solid rgba(225,29,72,0.3); }
+ .proj-level-graded { background: rgba(94,234,212,0.15); color: #2dd4bf; border: 1px solid rgba(94,234,212,0.35); }
  .proj-time { font-size: 11px; color: var(--text-4); }
  .proj-card-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
  .proj-card-summary { font-size: 13px; color: var(--text-3); line-height: 1.5; }
@@ -16129,6 +16130,68 @@ function drawParticles(theme) {
 const PROJECTS = {
  tracks: [
  {
+ id: 'wgu-pa',
+ name: 'WGU Performance Assessments',
+ icon: '🎓',
+ color: 'teal',
+ blurb: 'The graded tasks, broken into the rubric\'s own criteria so nothing is missed. Tick each one off as the evidence is captured.',
+ projects: [
+ {
+ id: 'pa-d197',
+ level: 'graded',
+ title: 'D197 Version Control — PA',
+ time: '1 focused day',
+ summary: 'YDM3 Task 1 — Version Control Using Git for GitLab. Every rubric criterion as its own step, with the exact names the rubric marks against. D197 has no objective exam: this task IS the assessment.',
+ youll_learn: [
+ 'Cloning from GitLab and working entirely from the command line',
+ 'Committing with messages an evaluator can follow, and pushing branches and tags',
+ 'Creating a merge conflict on purpose, then resolving it and proving it on the remote',
+ 'Assembling screenshot evidence that maps one-to-one onto a rubric',
+ ],
+ requirements: [
+ 'Git Bash (Windows) or Terminal (macOS) — the rubric requires the command line interface, not a GUI',
+ 'Your GitLab subgroup and project, from the task\'s GitLab web link and the "GitLab How-To" PDF',
+ 'Your student ID to hand (it goes into README.md)',
+ 'Word or PDF for the screenshot document — cloud links are not accepted',
+ ],
+ tasks: [
+ 'THE TRAP THAT COSTS THE MOST MARKS: every command-line screenshot must show YOUR REPOSITORY NAME IN THE COMMAND PROMPT. The rubric drops B, C1, C2, D and F to Approaching Competence for this alone. Set your prompt or widen the window before you start, not after.',
+ 'FOUR SEPARATE GRAPH SCREENSHOTS are required, at four different moments: A2 (after creating Working), D1 (after pushing Test), E1 (after resolving the conflict), F1 (showing the V.1.0.0 tag). Take each one at the time — you cannot reconstruct them at the end.',
+ 'A1 CREATE BRANCH — in GitLab, create your subgroup and project, then create a branch named exactly "Working". Capital W. The rubric explicitly separates "created" from "named correctly".',
+ 'A2 REPOSITORY GRAPH SCREENSHOT — screenshot the repository graph in GitLab now. Capture the entire graph window.',
+ 'B CLONING REMOTE REPOSITORY — git clone <gitlab-url> from Git Bash or Terminal. Screenshot must show the clone command, that it came from GitLab, and the repository name in the prompt.',
+ 'C1 COMMIT WITH A MESSAGE — modify THREE HTML files on the Working branch. Commit each one separately with a short, meaningful message that explains what you changed. A SCREENSHOT FOR EACH GIT COMMAND FOR EACH CHANGE — that is roughly six screenshots (add + commit, three times), not three.',
+ 'C2 PUSH TO REMOTE — git push origin Working. One screenshot of the command line action, repository name visible in the prompt.',
+ 'D MODIFY A FILE — create a branch named exactly "Test" from the command line (git checkout -b Test), add YOUR STUDENT ID to README.md, then push: git push origin Test. Screenshot the command line action with the repository name in the prompt. All three actions must be done or this drops a band.',
+ 'D1 PROOF OF REMOTE CHANGES — screenshot the repository graph in GitLab AFTER pushing Test.',
+ 'E INTRODUCE A MERGE CONFLICT — switch to Working (git checkout Working), add THE GIT VERSION NUMBER to README.md (get it with git --version) and commit, then git merge Test. Because both branches changed README.md, it conflicts. Screenshot the conflict output with the repository name in the prompt. All three actions are marked.',
+ 'E1 RESOLUTION AND PROOF OF REMOTE CHANGES — open README.md, remove the <<<<<<< ======= >>>>>>> markers and keep both the student ID and the version number, then git add README.md, git commit, git push origin Working. Screenshot the GitLab repository graph showing the merge resolved.',
+ 'F TAG WORKING BRANCH — on Working: git tag V.1.0.0 then git push origin V.1.0.0. The name is exactly V.1.0.0 (dots, capital V). A plain git push does not send tags. Screenshot the command line action with the repository name in the prompt.',
+ 'F1 PROOF OF REMOTE CHANGES — screenshot the GitLab repository graph showing the V.1.0.0 tag label. The rubric checks the tag label specifically.',
+ 'G1 RETROSPECTIVE DIRECTORY — on the Working branch, create a directory named exactly "retrospective" (lowercase). It must be on Working, not Test.',
+ 'G2 LOG.TXT FILE — inside retrospective: git log > log.txt. Open it and confirm it actually contains the log before committing — an empty file scores Not Evident.',
+ 'G3 SUMMARY.TXT — inside retrospective, a summary.txt containing BOTH: how you resolved the merge conflict from E1, AND a description of the three changes you made in C1. Missing either half drops it to Approaching Competence.',
+ 'G4 FILE WITH SCREENSHOTS — ONE Word or PDF file containing ALL screenshots AND comments from parts A through F, placed inside the retrospective directory. Label each screenshot with its rubric letter. This is the file most often returned incomplete.',
+ 'G5 PUSH ALL CHANGES — git add, commit and push everything from G1–G4 to GitLab. Refresh GitLab in the browser and confirm the retrospective directory and all four files are actually there.',
+ 'H REPOSITORY LINK — paste your GitLab repository link into the "Comments to Evaluator" box when you submit. Test it in a private window first; a broken or wrong link is marked Approaching Competence.',
+ 'I PROFESSIONAL COMMUNICATION — run your document through Grammarly for Education and clear the Correctness category before submitting. The rubric states the submission will not pass without this aspect passing.',
+ ],
+ success: [
+ 'Every command-line screenshot shows the repository name in the prompt',
+ 'Four GitLab graph screenshots exist: after Working, after Test, after the conflict resolution, and showing V.1.0.0',
+ 'Three HTML files were changed, each with its own commit and its own screenshots',
+ 'README.md ends up containing BOTH the student ID and the git version number',
+ 'retrospective/ on Working contains log.txt, summary.txt and the screenshot document',
+ 'Grammarly Correctness is clean and the repository link is in Comments to Evaluator',
+ ],
+ stretch: [
+ 'Practise the whole sequence on a throwaway repository first — a conflict is much less alarming the second time',
+ 'Keep the screenshots in the document as you go, rather than collecting them at the end',
+ ],
+ },
+ ],
+ },
+ {
  id: 'python-llms',
  name: 'Python & LLMs',
  icon: '🐍',
@@ -17225,7 +17288,7 @@ function renderProjects() {
  <div class="hero slide-up">
  <div class="hero-greet">Build something real</div>
  <h1>Projects</h1>
- <p class="hero-sub">${totalProjects} hands-on projects across 5 tracks. Pick a track, start at your level, ship something.</p>
+ <p class="hero-sub">${totalProjects} hands-on projects across ${PROJECTS.tracks.length} tracks. Pick a track, start at your level, ship something.</p>
  <div class="hero-stats">
  <div class="stat-tile">
  <div class="stat-tile-num accent">${started + completed}</div>
@@ -17422,18 +17485,24 @@ function renderProject(trackId, projectId) {
  }
  });
 
- // Task checkboxes (only when started)
- if (status.status === 'started') {
+ // Ticking a task used to do NOTHING until the project had been Started, which
+ // reads as a broken checkbox rather than a hint. The first tick now starts the
+ // project as well, which is what tapping a task plainly means.
  wrap.querySelectorAll('[data-task-idx]').forEach(el => {
  el.addEventListener('click', () => {
  const idx = parseInt(el.getAttribute('data-task-idx'));
- const cur = (getProjectStatus(project.id) || {}).completedTasks || [];
+ const st = getProjectStatus(project.id) || {};
+ const cur = st.completedTasks || [];
  const newList = cur.includes(idx) ? cur.filter(i => i !== idx) : [...cur, idx];
- setProjectStatus(project.id, { completedTasks: newList });
+ const patch = { completedTasks: newList };
+ if (st.status !== 'started' && st.status !== 'completed') {
+ patch.status = 'started';
+ patch.startedAt = st.startedAt || Date.now();
+ }
+ setProjectStatus(project.id, patch);
  render();
  });
  });
- }
 
  return wrap;
 }
