@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.531">
+<meta name="app-build" content="18.532">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62681,20 +62681,49 @@ function buildTools(){
     if (t === 'clear') { clearPage(); return; }
     if (t === 'page') { addPage(); return; }
     if (t === 'place') {
-      prefs().place = side ? 'bottom' : 'side';
+      var goingToSide = !side;
+      prefs().place = goingToSide ? 'side' : 'bottom';
       save();
       var g2 = wantSide();
+      /* Asking for the side panel while Full width is on is the one case where
+         the lesson has to be reflowed. It is never done silently: the reflow
+         re-wraps every paragraph, and marks already drawn on a later line will
+         not follow. So she is told exactly that and decides. */
+      if (!g2 && goingToSide && wideOn()) {
+        var marked = false;
+        try {
+          marked = (typeof gannoGetStrokes === 'function' &&
+                    gannoGetStrokes(ganno.routeKey).length > 0) ||
+                   (window.__textHL && window.__textHL.countPage() > 0);
+        } catch (e) {}
+        var msg = marked
+          ? 'Turn Full width off so the notebook can sit beside the lesson?\n\n' +
+            'The text will re-wrap, and pen marks already on this page may not line ' +
+            'up until you turn Full width back on.'
+          : 'Turn Full width off so the notebook can sit beside the lesson?';
+        if (confirm(msg)) {
+          try {
+            store.wideMode = false;
+            document.body.classList.remove('wide-mode');
+            document.body.classList.remove('wide-mode-margin-notes');
+            save();
+          } catch (e) {}
+          try { if (typeof window.gannoOnResize === 'function') window.gannoOnResize(); } catch (e) {}
+          g2 = wantSide();
+        } else {
+          prefs().place = 'bottom'; save();
+        }
+      }
       if (g2) { side = true; applySide(g2); }
       else {
         if (side) { side = false; releaseSide(); }
         document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
-        if (wideOn()) { try { if (typeof toast === 'function')
-          toast('Full width leaves no room beside the lesson'); } catch (e) {} }
       }
       b.textContent = side ? '⬓' : '⬒';
       sizeSvg(); redraw(); paintList();
       try { if (typeof toast === 'function')
-        toast(side ? 'Notebook beside the lesson' : 'Notebook along the bottom'); } catch (e) {}
+        toast(side ? 'Notebook beside the lesson — nothing covered'
+                   : 'Notebook along the bottom'); } catch (e) {}
       return;
     }
     if (t === 'cover') {
