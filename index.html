@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.537">
+<meta name="app-build" content="18.538">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62416,6 +62416,7 @@ var isOpen=false, curKey=null, tab='write', closeTimer=null, endFn=null;
 var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, penId=null;
 var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
+var maxed=false;                // big writing mode: the dock overlays the lesson
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62455,7 +62456,22 @@ function sideGeom(){
     var col = document.querySelector('#app > .app') || app;
     if (!app || !col) return null;
     var vw = window.innerWidth || 0;
+    /* Measure the column PRISTINE - with no shift and no squeeze applied.
+       Measuring while shifted was the "pane covers the document" bug: the
+       shift moved cr.right left, that inflated the measured gutter, and the
+       recomputed shift collapsed to zero - leaving the panel on top of the
+       lesson after any grip drag. Classes off, measure, classes back on, all
+       in one synchronous block so nothing is painted in between. */
+    var bd = document.body;
+    var hadOpen = bd.classList.contains('mn-side-open');
+    var hadSq = bd.classList.contains('mn-squeeze');
+    if (hadOpen) bd.classList.remove('mn-side-open');
+    if (hadSq) bd.classList.remove('mn-squeeze');
+    if (hadOpen || hadSq) void col.offsetWidth;
     var cr = col.getBoundingClientRect();
+    if (hadOpen) bd.classList.add('mn-side-open');
+    if (hadSq) bd.classList.add('mn-squeeze');
+    if (hadOpen || hadSq) void col.offsetWidth;
     if (!cr.width) return null;
     var railW = 0;
     var rail = document.querySelector('.side-rail');
@@ -62467,12 +62483,24 @@ function sideGeom(){
     } catch (e) {}
     var gutter = Math.max(0, vw - cr.right);          // free space to the right
     var room   = Math.max(0, cr.left - railW - 12);   // how far it may move left
+    var natural = gutter + room;                      // widest with NO reflow
+    /* Beyond `natural` the panel would cover the lesson. She asked for the
+       opposite: "make the document screen smaller without covering the
+       content". So a wider drag SQUEEZES the lesson column - a real,
+       text-re-wrapping narrowing, done only at her explicit drag, never by
+       default. The column keeps at least 440px so the lesson stays readable. */
+    var maxSq  = Math.max(0, Math.round(cr.width - 440));
     var want   = Math.min(400, Math.round(vw * 0.34));
-    var W = Math.min(want, gutter + room);
+    var W = Math.min(want, natural);                   // the default never squeezes
     var pref = +prefs().sideW;
-    if (pref > 0) W = Math.min(Math.max(280, pref), gutter + room);
+    if (pref > 0) W = Math.min(Math.max(280, pref), natural + maxSq);
     if (W < 250) return null;                          // too tight - use the bottom dock
-    return { w: Math.round(W), shift: Math.max(0, Math.ceil(W - gutter)) };
+    var squeeze = Math.max(0, Math.round(W - natural));
+    /* Squeezing re-centres the column, so half the squeeze frees space on the
+       right and half adds to the room on the left; the shift uses both. */
+    var shift = Math.max(0, Math.min(Math.ceil(W - gutter - squeeze / 2),
+                                     Math.floor(room + squeeze / 2)));
+    return { w: Math.round(W), shift: shift, squeeze: squeeze, colW: Math.round(cr.width) };
   } catch (e) { return null; }
 }
 /* WHY THE PANEL SOMETIMES CANNOT FIT, AND WHY IT IS LEFT THAT WAY.
@@ -62495,6 +62523,12 @@ function sideGeom(){
  *
  * So the lesson is never reflowed on her behalf. Full width is hers to turn off
  * if she wants the side panel; the notebook only says why it cannot fit.
+ *
+ * One exception, at her explicit request ("make the document screen smaller
+ * without covering the content"): dragging the panel's grip wider than fits
+ * narrows the lesson column (body.mn-squeeze). That IS a re-wrap and marks
+ * drawn at the old width will sit off their words while squeezed - said out
+ * loud in a toast, and fully reversed by dragging the panel narrow again.
  */
 function placement(){
   var pr = prefs();
@@ -62666,6 +62700,9 @@ css.textContent = [
   '@media (min-width:900px){body.has-rail #mn-dock.mn-side{left:auto;}}',
   /* the lesson moves - it does not narrow. See sideGeom() for why. */
   'body.mn-side-open #app{position:relative; left:calc(-1 * var(--mn-shift,0px));}',
+  /* THE SQUEEZE - only ever from her own drag past what fits. The lesson
+     column narrows (a real re-wrap) instead of being covered by the panel. */
+  'body.mn-squeeze #app > .app{max-width:var(--mn-colmax,720px) !important;}',
   /* the grip becomes a vertical handle on the panel's left edge */
   '#mn-dock.mn-side #mn-grip{position:absolute; left:0; top:0; bottom:0; width:16px;',
   '  height:auto; cursor:ew-resize; z-index:5;}',
@@ -62681,6 +62718,18 @@ css.textContent = [
   '#mn-dock.mn-side #mn-tools::-webkit-scrollbar{display:none;}',
   '#mn-dock.mn-side #mn-where{display:none;}',
   '#mn-dock.mn-side #mn-tabs button{padding:5px 9px;}',
+  /* BIG WRITING MODE (the ⛶ button). The side geometry cannot grow past
+     ~378px on an iPad - the lesson may not narrow (ink re-flow) and may not
+     slide under the rail - so writing-size comes from the dock itself growing
+     OVER the lesson for a while. The dock is a fixed overlay: #app keeps its
+     width, its shift and its padding, so the lesson ink cannot move. */
+  '#mn-dock.mn-side.mn-max{width:calc(100vw - 8px) !important;}',
+  '@media (min-width:900px){body.has-rail #mn-dock.mn-side.mn-max{width:calc(100vw - 92px) !important;}}',
+  '#mn-dock.mn-max:not(.mn-side){height:calc(100vh - var(--brand-bar-height,56px) - 4px) !important;}',
+  /* the floating buttons out-z-index the dock and would sit on the big page */
+  'body.mn-max-open .aih-fab,body.mn-max-open #eli5-fab,body.mn-max-open #wb-fab,',
+  'body.mn-max-open #pod-fab,body.mn-max-open #mm-fab,body.mn-max-open #calc-fab{',
+  '  opacity:0 !important; pointer-events:none !important;}',
   /* right-edge buttons sit under a side panel: move them left, not up */
   'body.mn-side-open #mn-fab,body.mn-side-open .aih-fab,body.mn-side-open #eli5-fab,',
   'body.mn-side-open #wb-fab,body.mn-side-open #pod-fab,body.mn-side-open #mm-fab,',
@@ -62905,7 +62954,9 @@ function buildTools(){
   var pgB  = mk('button','mn-tool','＋','Add another page'); pgB.dataset.t='page';
   var plB  = mk('button','mn-tool', side ? '⬓' : '⬒',
                 'Put the notebook at the side or along the bottom'); plB.dataset.t='place';
-  [penB, erB, unB, clB, cvB, pgB, plB].forEach(function(b){ toolsEl.appendChild(b); });
+  var mxB  = mk('button','mn-tool' + (maxed ? ' on' : ''), maxed ? '⇲' : '⛶',
+                'Make the page big for writing'); mxB.dataset.t='max';
+  [penB, erB, unB, clB, cvB, pgB, plB, mxB].forEach(function(b){ toolsEl.appendChild(b); });
   SWATCHES.forEach(function(c){
     var s = mk('button','mn-sw',null,'Ink colour ' + c);
     s.style.background = c; s.dataset.c = c;
@@ -62948,6 +62999,7 @@ function buildTools(){
                    : 'Notebook along the bottom'); } catch (e) {}
       return;
     }
+    if (t === 'max') { setMax(!maxed); return; }
     if (t === 'cover') {
       covered = !covered;
       b.classList.toggle('on', covered);
@@ -63321,6 +63373,7 @@ function wireGrip(){
   var startX = 0, startW = 0, engaged = false;
   g.addEventListener('pointerdown', function(e){
     if (drawing) return;                       // a palm while the pen is down
+    if (side && maxed) return;                 // big mode: nothing to resize
     dragging = true; gid = e.pointerId;
     // A finger must travel a little before the resize engages, so a palm
     // resting across the grip cannot jiggle the dock while she writes.
@@ -63341,7 +63394,10 @@ function wireGrip(){
       /* Width only while dragging - the lesson's shift and the ink re-anchor
          are left until the drag ends, so the page is not re-laid-out and the
          overlay is not re-measured on every frame. */
-      var wNew = Math.max(280, Math.min(560, startW + (startX - e.clientX)));
+      /* The drag may go past what fits - the release squeezes the lesson to
+         make the room (sideGeom). Cap: the lesson keeps at least ~440px. */
+      var wMax = Math.max(560, Math.round((window.innerWidth || 1200) * 0.62));
+      var wNew = Math.max(280, Math.min(wMax, startW + (startX - e.clientX)));
       document.documentElement.style.setProperty('--mn-w', Math.round(wNew) + 'px');
       return;
     }
@@ -63430,10 +63486,45 @@ function markPlaceBtn(){
     if (b) b.textContent = side ? '⬓' : '⬒';
   } catch (e) {}
 }
+/* BIG WRITING MODE. "I see the vertical notes but it's so tiny" - and the side
+   panel genuinely cannot get bigger (see sideGeom). So the ⛶ button grows the
+   dock itself over the lesson while she writes; ⇲ tucks it back. Only the
+   dock's own size changes - never --mn-w, --mn-h, the shift or the padding -
+   so the lesson page and its ink stay byte-identical underneath. Deliberately
+   not remembered across launches: the notebook's resting state is "beside the
+   lesson, blocking nothing", exactly as she asked. */
+function setMax(on){
+  maxed = !!on;
+  dock.classList.toggle('mn-max', maxed);
+  document.body.classList.toggle('mn-max-open', maxed && isOpen);
+  var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="max"]');
+  if (b) { b.textContent = maxed ? '⇲' : '⛶'; b.classList.toggle('on', maxed); }
+  sizeSvg(); redraw();
+  try { if (typeof toast === 'function')
+    toast(maxed ? 'Full-size page — ⇲ tucks the notebook back' : 'Notebook tucked back'); } catch (e) {}
+}
 function applySide(g){
   var root = document.documentElement;
   root.style.setProperty('--mn-w', g.w + 'px');
   root.style.setProperty('--mn-shift', g.shift + 'px');
+  if (g.squeeze > 0) {
+    /* Her drag went past what fits: narrow the lesson column rather than
+       cover it. The max-width is set in CSS pixels, so under text-zoom the
+       rect measurement (visual px) is divided back by the body zoom. */
+    var z = 1;
+    try { z = parseFloat(getComputedStyle(document.body).zoom) || 1; } catch (e) {}
+    root.style.setProperty('--mn-colmax',
+      Math.max(320, Math.round((g.colW - g.squeeze) / z)) + 'px');
+    document.body.classList.add('mn-squeeze');
+    if (!window.__mnSqueezeToldOnce) {
+      window.__mnSqueezeToldOnce = true;
+      try { if (typeof toast === 'function')
+        toast('Lesson narrowed to make room — marks drawn at full width sit right again when you widen it back'); } catch (e) {}
+    }
+  } else {
+    document.body.classList.remove('mn-squeeze');
+    try { root.style.removeProperty('--mn-colmax'); } catch (e) {}
+  }
   shiftPx = g.shift;
   dock.classList.add('mn-side');
   document.body.classList.add('mn-side-open');
@@ -63442,9 +63533,11 @@ function applySide(g){
 }
 function releaseSide(){
   document.body.classList.remove('mn-side-open');
+  document.body.classList.remove('mn-squeeze');
   dock.classList.remove('mn-side');
   shiftPx = 0;
   try { document.documentElement.style.removeProperty('--mn-shift'); } catch (e) {}
+  try { document.documentElement.style.removeProperty('--mn-colmax'); } catch (e) {}
   markPlaceBtn();
   reanchor();
 }
@@ -63493,6 +63586,7 @@ function setOpen(next){
     void dock.offsetHeight;
     dock.classList.add('mn-open');
     document.body.classList.add('mn-open');
+    if (maxed) document.body.classList.add('mn-max-open');
     requestAnimationFrame(function(){ sizeSvg(); redraw(); });
     setTimeout(function(){ if (isOpen) { sizeSvg(); redraw(); } }, ANIM + 30);
   } else {
@@ -63500,6 +63594,7 @@ function setOpen(next){
     prefs().tab = tab; save();
     dock.classList.remove('mn-open');
     document.body.classList.remove('mn-open');
+    document.body.classList.remove('mn-max-open');
     if (side) { side = false; releaseSide(); }   // side=false first: the icon reads it
     try { if (document.activeElement && dock.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     var done = function(){
