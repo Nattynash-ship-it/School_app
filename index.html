@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.534">
+<meta name="app-build" content="18.535">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62346,14 +62346,46 @@ function sideGeom(){
  * So the lesson is never reflowed on her behalf. Full width is hers to turn off
  * if she wants the side panel; the notebook only says why it cannot fit.
  */
-function placement(){ return prefs().place || 'auto'; }
+function placement(){
+  var pr = prefs();
+  /* Migration: an earlier build wrote place='bottom' whenever its confirm
+     dialog was DECLINED, which then pinned the notebook to the bottom forever
+     and read as "the side panel does not work". Clear that once; a deliberate
+     bottom choice is one tap on the placement button. */
+  try {
+    if (pr.place === 'bottom' && !pr.placeM2) { delete pr.place; pr.placeM2 = 1; save(); }
+  } catch (e) {}
+  return pr.place || 'auto';
+}
 function wideOn(){
   try { return document.body.classList.contains('wide-mode') || store.wideMode === true; }
   catch (e) { return false; }
 }
+/* She asked for the notebook beside the lesson three times; the only thing in
+   the way was Full width, and a build that hid the answer behind a small button
+   and a confirm dialog. No more asking: if Full width is what blocks the side
+   panel, it is turned off - as a real setting, said out loud in a toast, and
+   reversible in More -> Layout. One deliberate consequence: this is also the
+   layout her existing marks were drawn in, so they line up again. */
 function wantSide(){
   if (placement() === 'bottom') return null;
-  return sideGeom();
+  var g = sideGeom();
+  if (g) return g;
+  if (!wideOn()) return null;
+  try {
+    store.wideMode = false;
+    document.body.classList.remove('wide-mode');
+    document.body.classList.remove('wide-mode-margin-notes');
+    save();
+  } catch (e) { return null; }
+  try { if (typeof window.gannoOnResize === 'function') window.gannoOnResize(); } catch (e) {}
+  g = sideGeom();
+  if (g && !window.__mnWideOffToldOnce) {
+    window.__mnWideOffToldOnce = true;
+    try { if (typeof toast === 'function')
+      toast('Full width turned off so the notebook fits beside the lesson — More → Layout turns it back'); } catch (e) {}
+  }
+  return g;
 }
 function dockH(){
   var p = prefs(), h = +p.h;
@@ -62750,39 +62782,10 @@ function buildTools(){
     if (t === 'clear') { clearPage(); return; }
     if (t === 'page') { addPage(); return; }
     if (t === 'place') {
-      var goingToSide = !side;
-      prefs().place = goingToSide ? 'side' : 'bottom';
+      prefs().place = side ? 'bottom' : 'side';
+      prefs().placeM2 = 1;                       // a deliberate choice, not the old stuck one
       save();
       var g2 = wantSide();
-      /* Asking for the side panel while Full width is on is the one case where
-         the lesson has to be reflowed. It is never done silently: the reflow
-         re-wraps every paragraph, and marks already drawn on a later line will
-         not follow. So she is told exactly that and decides. */
-      if (!g2 && goingToSide && wideOn()) {
-        var marked = false;
-        try {
-          marked = (typeof gannoGetStrokes === 'function' &&
-                    gannoGetStrokes(ganno.routeKey).length > 0) ||
-                   (window.__textHL && window.__textHL.countPage() > 0);
-        } catch (e) {}
-        var msg = marked
-          ? 'Turn Full width off so the notebook can sit beside the lesson?\n\n' +
-            'The text will re-wrap, and pen marks already on this page may not line ' +
-            'up until you turn Full width back on.'
-          : 'Turn Full width off so the notebook can sit beside the lesson?';
-        if (confirm(msg)) {
-          try {
-            store.wideMode = false;
-            document.body.classList.remove('wide-mode');
-            document.body.classList.remove('wide-mode-margin-notes');
-            save();
-          } catch (e) {}
-          try { if (typeof window.gannoOnResize === 'function') window.gannoOnResize(); } catch (e) {}
-          g2 = wantSide();
-        } else {
-          prefs().place = 'bottom'; save();
-        }
-      }
       if (g2) { side = true; applySide(g2); }
       else {
         if (side) { side = false; releaseSide(); }
@@ -63325,12 +63328,6 @@ function setOpen(next){
     } else {
       releaseSide();
       document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
-      // Say why, once per session, rather than looking like the setting is ignored.
-      if (placement() !== 'bottom' && wideOn() && !window.__mnWideToldOnce) {
-        window.__mnWideToldOnce = true;
-        try { if (typeof toast === 'function')
-          toast('Full width leaves no room beside the lesson — turn it off for a side notebook'); } catch (e) {}
-      }
     }
     if (curKey !== secKey()) loadSection(secKey());
     setTab(prefs().tab === 'type' ? 'type' : 'write');
