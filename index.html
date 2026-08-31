@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.536">
+<meta name="app-build" content="18.537">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -2486,14 +2486,32 @@
 
  /* ============ FLASHCARD ============ */
  .flash-stage {
- padding: 2rem 1.25rem;
+ padding: 1.75rem 1.25rem 1.5rem;
  min-height: 280px;
  display: flex; flex-direction: column; justify-content: center; align-items: center;
- text-align: center;
  }
- .flash-front { font-size: 22px; font-weight: 500; color: var(--text); margin-bottom: 16px; line-height: 1.4; }
- .flash-divider { width: 60%; height: 0.5px; background: var(--surface-3); margin: 16px 0; }
- .flash-back { font-size: 15px; line-height: 1.65; color: var(--text-2); }
+ .flash-cue { text-align: center; max-width: 34em; }
+ .flash-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-4); margin-bottom: 6px; }
+ .flash-front { font-size: 22px; font-weight: 600; color: var(--text); line-height: 1.35; text-wrap: balance; }
+ .flash-front.sm { font-size: 19px; }
+ .flash-front.xs { font-size: 17px; }
+ .flash-anslabel { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 560px; margin: 20px 0 12px; }
+ .flash-anslabel::before, .flash-anslabel::after { content: ''; flex: 1; height: 0.5px; background: var(--surface-3); }
+ .flash-anslabel span { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; color: var(--text-4); text-transform: uppercase; }
+ .flash-answer { width: 100%; max-width: 560px; text-align: left; }
+ .flash-key { font-size: 17px; font-weight: 600; color: var(--text); line-height: 1.5; text-wrap: pretty; }
+ .flash-key.solo { font-size: 18px; }
+ .flash-details { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+ .flash-details li { position: relative; padding-left: 16px; font-size: 14.5px; line-height: 1.6; color: var(--text-2); }
+ .flash-details li::before { content: ''; position: absolute; left: 2px; top: 0.68em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: 0.55; }
+ .flash-steps { list-style: none; margin: 0; padding: 0; counter-reset: fstep; display: flex; flex-direction: column; gap: 8px; }
+ .flash-key + .flash-steps { margin-top: 10px; }
+ .flash-steps li { position: relative; padding-left: 30px; font-size: 14.5px; line-height: 1.6; color: var(--text-2); counter-increment: fstep; }
+ .flash-steps li::before { content: counter(fstep); position: absolute; left: 0; top: 0.12em; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--accent); border: 0.5px solid var(--surface-3); background: var(--surface-2); }
+ .flash-terms { display: flex; flex-direction: column; gap: 9px; }
+ .flash-terms .frow { font-size: 14.5px; line-height: 1.6; color: var(--text-2); }
+ .flash-terms .fterm { font-weight: 600; color: var(--text); }
+ .flash-note { margin-top: 12px; padding-top: 10px; border-top: 0.5px solid var(--surface-3); font-size: 13.5px; line-height: 1.6; color: var(--text-3); }
  .flash-reveal-btn {
  background: var(--surface-2);
  color: var(--text);
@@ -2502,7 +2520,7 @@
  border-radius: 999px;
  font-size: 14px;
  font-weight: 500;
- margin-top: 12px;
+ margin-top: 22px;
  }
  .flash-rate { padding: 0.5rem 1.25rem 1rem; }
  .flash-rate-label { font-size: 11px; color: var(--text-4); margin-bottom: 8px; text-align: center; font-weight: 600; letter-spacing: 0.08em; }
@@ -21158,6 +21176,81 @@ function openCustomCourseEditor(cid) {
 }
 
 // ==================== FLASHCARDS ====================
+// Card text is authored as one flat string, but most backs carry structure:
+// a lead sentence, supporting sentences, (1)(2) step chains, or "TERM: meaning"
+// glossaries. These helpers detect that structure and lay it out. Everything
+// user-visible passes through esc() AFTER splitting, so no card text is ever
+// interpreted as HTML.
+const FLASH_ABBR = /(?:^|\()(?:e\.g|i\.e|vs|etc|cf|ex|approx|Mr|Mrs|Ms|Dr|St)\.$/i;
+function flashSentences(text) {
+ const words = String(text == null ? '' : text).trim().split(/\s+/).filter(Boolean);
+ const out = []; let buf = [];
+ for (let i = 0; i < words.length; i++) {
+ buf.push(words[i]);
+ const w = words[i];
+ if (/[.!?]["')]?$/.test(w) && !FLASH_ABBR.test(w)) {
+ const nxt = words[i + 1];
+ // Only break where the next word starts a sentence — keeps code fragments
+ // like validator.validate(part) and mid-sentence abbreviations intact.
+ if (nxt === undefined || /^["'(`]?[A-Z0-9@]/.test(nxt)) { out.push(buf.join(' ')); buf = []; }
+ }
+ }
+ if (buf.length) out.push(buf.join(' '));
+ return out;
+}
+function flashBackHTML(raw) {
+ const text = String(raw == null ? '' : raw).trim();
+ if (!text) return '';
+ // Step chains: "(1) ... (2) ..." or "1) ... 2) ...". Requires an actual 1 AND 2
+ // so math like sin(2π·h/24) can never be mistaken for a list.
+ const stepRe = /(^|[\s.;:—–-])\(?(\d{1,2})\)\s/g;
+ const marks = []; let m;
+ while ((m = stepRe.exec(text))) marks.push({ n: +m[2], at: m.index + m[1].length });
+ const nums = marks.map(x => x.n);
+ if (nums.indexOf(1) !== -1 && nums.indexOf(2) !== -1) {
+ const first = marks.find(x => x.n === 1);
+ const use = marks.filter(x => x.at >= first.at);
+ const intro = text.slice(0, first.at).trim();
+ const items = [];
+ for (let i = 0; i < use.length; i++) {
+ const end = i + 1 < use.length ? use[i + 1].at : text.length;
+ items.push(text.slice(use[i].at, end).replace(/^\(?\d{1,2}\)\s*/, '').trim());
+ }
+ let note = '';
+ const tail = flashSentences(items[items.length - 1]);
+ if (tail.length > 1) { items[items.length - 1] = tail[0]; note = tail.slice(1).join(' '); }
+ return (intro ? `<div class="flash-key">${esc(intro)}</div>` : '')
+ + `<ol class="flash-steps">${items.map(it => `<li>${esc(it)}</li>`).join('')}</ol>`
+ + (note ? `<div class="flash-note">${esc(note)}</div>` : '');
+ }
+ const sents = flashSentences(text);
+ // Glossary backs: two or more "TERM (…): meaning." sentences become term rows.
+ const termRe = /^([^.:]{2,48}):\s+(.+)$/;
+ if (sents.filter(s => termRe.test(s)).length >= 2) {
+ const rows = []; const extra = [];
+ for (const s of sents) {
+ const t = s.match(termRe);
+ if (t) rows.push(`<div class="frow"><span class="fterm">${esc(t[1])}:</span> ${esc(t[2])}</div>`);
+ else extra.push(s);
+ }
+ return `<div class="flash-terms">${rows.join('')}</div>`
+ + (extra.length ? `<div class="flash-note">${esc(extra.join(' '))}</div>` : '');
+ }
+ if (sents.length <= 1) return `<div class="flash-key solo">${esc(text)}</div>`;
+ return `<div class="flash-key">${esc(sents[0])}</div>`
+ + `<ul class="flash-details">${sents.slice(1).map(s => `<li>${esc(s)}</li>`).join('')}</ul>`;
+}
+function flashFrontHTML(front) {
+ const raw = String(front == null ? '' : front).trim();
+ const lead = raw.match(/^(Explain|Define|Describe|Compare|Contrast|List|Name|Identify)\s*:\s*(.+)$/i);
+ const body = lead ? lead[2] : raw;
+ const size = body.length > 96 ? ' xs' : (body.length > 64 ? ' sm' : '');
+ return `<div class="flash-cue">`
+ + (lead ? `<div class="flash-eyebrow">${esc(lead[1])}</div>` : '')
+ + `<div class="flash-front${size}">${esc(body)}</div></div>`;
+}
+window.__flashBackHTML = flashBackHTML;
+window.__flashFrontHTML = flashFrontHTML;
 let flashState = null;
 function renderFlashcards(v) {
  const { courseId, chId, secId } = v;
@@ -21231,12 +21324,12 @@ function renderFlashcards(v) {
  </div>`}
  <div class="flash-stage">
  <div class="quiz-topic">${(COURSES[card._courseId || courseId] || COURSES[courseId] || {code:''}).code}</div>
- <div class="flash-front">${esc(card.front)}</div>
+ ${flashFrontHTML(card.front)}
  ${flashState.revealed ? `
- <div class="flash-divider"></div>
- <div class="flash-back">${esc(card.back)}</div>
+ <div class="flash-anslabel"><span>Answer</span></div>
+ <div class="flash-answer">${flashBackHTML(card.back)}</div>
  ${mnemonic ? `
- <div style="margin-top: 16px; padding: 12px 14px; background: rgba(94, 234, 212, 0.08); border: 1px solid rgba(94, 234, 212, 0.3); border-radius: 10px; border-left: 3px solid var(--accent); text-align: left;">
+ <div style="margin-top: 16px; padding: 12px 14px; width: 100%; max-width: 560px; box-sizing: border-box; background: rgba(94, 234, 212, 0.08); border: 1px solid rgba(94, 234, 212, 0.3); border-radius: 10px; border-left: 3px solid var(--accent); text-align: left;">
  <div style="font-size: 11px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">🪄 Mnemonic</div>
  <div style="font-size: 14px; color: var(--text); line-height: 1.5;">${esc(mnemonic)}</div>
  </div>
