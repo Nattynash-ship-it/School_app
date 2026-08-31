@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.535">
+<meta name="app-build" content="18.536">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -21173,21 +21173,26 @@ function renderFlashcards(v) {
  cards: fcs,
  idx: 0,
  revealed: false,
+ mode: 'flip',          // 'memorize': missed cards repeat until they stick
+ queue: null, mastered: 0, retries: 0,
  };
  }
 
  const wrap = document.createElement('div');
  wrap.className = 'app';
 
- if (flashState.idx >= flashState.cards.length) {
+ const memDone = flashState.mode === 'memorize' && flashState.queue && flashState.queue.length === 0;
+ if (memDone || (flashState.mode !== 'memorize' && flashState.idx >= flashState.cards.length)) {
  wrap.innerHTML = `
  <div class="quiz-header">
  <button class="back" data-back style="color: var(--text-3); font-size: 18px;">✕</button>
  <div style="flex: 1; font-size: 14px; font-weight: 500;">Done</div>
  </div>
  <div class="empty" style="padding-top: 4rem;">
- <div class="ico">✓</div>
- <p>You finished all ${flashState.cards.length} cards.<br>Come back tomorrow for review.</p>
+ <div class="ico">${memDone ? '🧠' : '✓'}</div>
+ <p>${memDone
+   ? `All ${flashState.mastered} cards memorized${flashState.retries ? ` — ${flashState.retries} took another look` : ' on the first pass'}.<br>They are in tomorrow's review too.`
+   : `You finished all ${flashState.cards.length} cards.<br>Come back tomorrow for review.`}</p>
  <button class="primary" data-back style="margin-top: 1.5rem; padding: 12px 24px; border-radius: 999px; background: var(--accent); color: var(--accent-text); border: none; font-size: 14px; font-weight: 500;">Done</button>
  </div>
  `;
@@ -21200,7 +21205,7 @@ function renderFlashcards(v) {
  return wrap;
  }
 
- const card = flashState.cards[flashState.idx];
+ const card = flashState.mode === 'memorize' ? flashState.queue[0] : flashState.cards[flashState.idx];
  // Mnemonic key for this card
  const mnemKey = `${courseId}/${chId}/${secId}/${card.id || flashState.idx}`;
  const mnemonic = (store.mnemonics && store.mnemonics[mnemKey]) || '';
@@ -21208,10 +21213,22 @@ function renderFlashcards(v) {
  wrap.innerHTML = `
  <div class="quiz-header">
  <button class="back" data-back style="color: var(--text-3); font-size: 18px;">✕</button>
- <div style="flex: 1; font-size: 14px; font-weight: 500;">Daily review</div>
+ <div style="flex: 1; font-size: 14px; font-weight: 500;">${flashState.isReview ? 'Daily review' : (flashState.mode === 'memorize' ? 'Memorize' : 'Flashcards')}</div>
  <button class="back" data-mnem-edit title="Edit mnemonic" style="color: ${mnemonic ? 'var(--accent)' : 'var(--text-3)'}; font-size: 16px; padding: 0 10px;">🪄</button>
- <div class="quiz-counter">${flashState.idx + 1} of ${flashState.cards.length}</div>
+ <div class="quiz-counter">${flashState.mode === 'memorize'
+   ? `${flashState.mastered} done · ${flashState.queue.length} to go`
+   : `${flashState.idx + 1} of ${flashState.cards.length}`}</div>
  </div>
+ ${flashState.isReview ? '' : `
+ <div style="display:flex; justify-content:center; padding:6px 0 0;">
+ <button data-memorize style="font-family:inherit; font-size:12px; font-weight:700; cursor:pointer;
+   padding:6px 14px; border-radius:999px;
+   border:1px solid ${flashState.mode === 'memorize' ? 'var(--accent)' : 'var(--border-strong, var(--border))'};
+   background:${flashState.mode === 'memorize' ? 'var(--accent)' : 'transparent'};
+   color:${flashState.mode === 'memorize' ? 'var(--accent-text, #042f2e)' : 'var(--text-3)'};">
+   ${flashState.mode === 'memorize' ? '🧠 Memorizing — missed cards repeat until they stick' : '🧠 Memorize — missed cards repeat until you know them'}
+ </button>
+ </div>`}
  <div class="flash-stage">
  <div class="quiz-topic">${(COURSES[card._courseId || courseId] || COURSES[courseId] || {code:''}).code}</div>
  <div class="flash-front">${esc(card.front)}</div>
@@ -21240,6 +21257,23 @@ function renderFlashcards(v) {
  </div>` : ''}
  `;
 
+ wrap.querySelector('[data-memorize]')?.addEventListener('click', () => {
+ if (flashState.mode === 'memorize') {
+ flashState.mode = 'flip';
+ flashState.queue = null; flashState.idx = 0; flashState.revealed = false;
+ } else {
+ // a fresh shuffled queue - order changes every run, so position is never the cue
+ const q = flashState.cards.slice();
+ for (let i = q.length - 1; i > 0; i--) {
+ const j = Math.floor(Math.random() * (i + 1));
+ [q[i], q[j]] = [q[j], q[i]];
+ }
+ flashState.mode = 'memorize';
+ flashState.queue = q; flashState.mastered = 0; flashState.retries = 0;
+ flashState.revealed = false;
+ }
+ render();
+ });
  wrap.querySelector('[data-mnem-edit]').addEventListener('click', () => {
  showMnemonicEditor(mnemKey, card.front);
  });
@@ -21279,6 +21313,29 @@ function renderFlashcards(v) {
  flashSessionCount += 1;
  saveStore();
  updateStreak();
+ if (flashState.mode === 'memorize') {
+ /* The whole point of the mode: a card leaves the session only when it was
+    actually known (Good or Easy). Forgot or Hard puts it back a few cards
+    ahead, so it returns while the answer is still warm - and keeps
+    returning until it earns its way out. */
+ const cur = flashState.queue.shift();
+ if (q >= 4) {
+ flashState.mastered += 1;
+ } else {
+ flashState.retries += 1;
+ flashState.queue.splice(Math.min(3, flashState.queue.length), 0, cur);
+ }
+ flashState.revealed = false;
+ if (flashState.queue.length === 0 && flashSessionStart) {
+ const dur = Math.round((Date.now() - flashSessionStart) / 1000);
+ logSession({ type: 'cards', durationSec: dur, cards: flashSessionCount });
+ flashSessionStart = null;
+ flashSessionCount = 0;
+ }
+ render();
+ if (typeof gannoUpdateRoute === 'function') gannoUpdateRoute();
+ return;
+ }
  flashState.idx += 1;
  flashState.revealed = false;
  // Auto-log if user reaches end
