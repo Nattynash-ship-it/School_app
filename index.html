@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.538">
+<meta name="app-build" content="18.539">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62417,6 +62417,7 @@ var strokes=[], pageH=PAGE0, tool='pen', live=null, liveEl=null, drawing=false, 
 var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
 var maxed=false;                // big writing mode: the dock overlays the lesson
+var lastPenTs=0;                // when the pen last touched the paper
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -62769,12 +62770,13 @@ css.textContent = [
   '#mn-where{flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;',
   '  color:var(--text-4); max-width:26vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}',
 
-  /* pen strokes must not scroll the pad; a finger still can (pan-y) */
-  '#mn-pages{flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; background:var(--bg-2);',
-  '  -webkit-overflow-scrolling:touch;}',
+  /* pen strokes must not scroll the pad; a finger still can (pan-x pan-y).
+     overflow-x too: at writing scale the page can be wider than the panel. */
+  '#mn-pages{flex:1 1 auto; overflow-y:auto; overflow-x:auto; overscroll-behavior:contain;',
+  '  background:var(--bg-2); -webkit-overflow-scrolling:touch;}',
   /* paper over desk: the surface tint composited on an opaque base, so the
      page is never see-through even in themes where --surface is translucent */
-  '#mn-ink{display:block; width:100%; touch-action:pan-y;',
+  '#mn-ink{display:block; width:100%; touch-action:pan-x pan-y;',
   '  background-color:var(--bg-2,var(--bg));',
   '  background-image:linear-gradient(var(--surface),var(--surface)),',
   '                   linear-gradient(var(--surface),var(--surface)),',
@@ -63099,11 +63101,29 @@ function scale(){                       // logical units per CSS pixel
   var w = svg ? svg.clientWidth : 0;
   return w > 0 ? (UNITS / w) : 1;
 }
+/* WRITING SCALE. A whole 8.5in page pressed into a ~378px panel renders the
+   ruling ~15px apart - unwritable ("so tiny", "I'd like it to be scrollable
+   and the rule wider"). The paper now refuses to draw its lines closer than
+   MIN_GAP screen pixels: when the panel is too narrow for that, the page is
+   rendered LARGER than the panel and scrolls both ways, like a real notes
+   app. In big writing mode or a widened panel the scale lands at 1 and the
+   page simply fits. Ink is stored in page units, so this is pure rendering -
+   nothing about the strokes changes. */
+var MIN_GAP = 36;
+function paperScale(){
+  var w = (pagesEl && pagesEl.clientWidth) || 0;
+  if (!(w > 0)) return 1;
+  var gap = RULE * w / UNITS;
+  var z = Math.max(1, Math.min(3, MIN_GAP / gap));
+  return (z < 1.15) ? 1 : z;    // a near-fit page just fits - no 5% overflow
+}
 function sizeSvg(){
   if (!svg) return;
-  var w = svg.clientWidth || (pagesEl ? pagesEl.clientWidth : 0);
-  if (!(w > 0)) return;
+  var base = (pagesEl && pagesEl.clientWidth) || svg.clientWidth || 0;
+  if (!(base > 0)) return;
+  var w = Math.round(base * paperScale());
   svg.setAttribute('viewBox', '0 0 ' + UNITS + ' ' + pageH);
+  svg.style.width = w + 'px';
   svg.style.height = (pageH / UNITS * w) + 'px';
 }
 function pt(e){
@@ -63273,6 +63293,7 @@ function wireInk(){
     e.preventDefault();
     try { svg.setPointerCapture(e.pointerId); } catch (err) {}
     penId = e.pointerId;
+    lastPenTs = Date.now();
     var p = pt(e);
     if (tool === 'erase') { drawing = true; eraseAt(p); return; }
     drawing = true;
@@ -63307,6 +63328,7 @@ function wireInk(){
     if (!drawing) return;
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
+    lastPenTs = Date.now();
     try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
     if (tool === 'erase') { live = null; liveEl = null; return; }
     if (live && live.points.length >= 2) {
@@ -63329,9 +63351,12 @@ function wireInk(){
      A mid-stroke nudge smeared the letters themselves.
 
      So on the paper, in Write mode:
-       - a single touch (a palm is always one) never scrolls - preventDefault
        - while a pen stroke is in progress, NO touch scrolls
-       - two fingers, pen up, scroll normally - the drawing-app convention
+       - within a couple of seconds of pen use - a palm is resting - a single
+         touch never scrolls; two fingers do (the drawing-app convention)
+       - once the pen has been idle a moment, one finger scrolls normally
+         again ("what I'd like is for it to be scrollable") - a palm only
+         rests on the glass while she is actually writing
      This also covers the stylus itself, which the app-wide Pencil-scroll
      blocker deliberately skips inside the dock (it is a UI surface to it). */
   var toldTwoFinger = false;
@@ -63342,6 +63367,13 @@ function wireInk(){
       if (!n) return;
       if (drawing) { e.preventDefault(); return; }
       if (n === 1) {
+        /* The Pencil itself arrives as a stylus TOUCH alongside its pointer
+           events - it is about to write, so it never scrolls, idle or not. */
+        var t1 = e.touches[0];
+        if (!(t1 && t1.touchType === 'stylus')) {
+          var idleMs = (typeof window.__mnPenIdleMs === 'number') ? window.__mnPenIdleMs : 2500;
+          if (Date.now() - lastPenTs > idleMs) return;   // browsing, not writing
+        }
         e.preventDefault();
         if (!toldTwoFinger && e.type === 'touchmove') {
           toldTwoFinger = true;
@@ -63352,8 +63384,8 @@ function wireInk(){
       /* Two fingers must actually scroll - but the annotation layer (active by
          default) preventDefaults every two-finger touchmove at the document to
          stop palm pinch-zoom. Stop the event here so that blocker never sees
-         it: the paper's touch-action:pan-y already forbids pinching, so this
-         hands the gesture to native scrolling and nothing else. */
+         it: the paper's touch-action (pan-x pan-y) already forbids pinching,
+         so this hands the gesture to native scrolling and nothing else. */
       e.stopPropagation();
     } catch (err) {}
   }
