@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.533">
+<meta name="app-build" content="18.534">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -63117,25 +63117,47 @@ function wireInk(){
   svg.addEventListener('pointercancel', end);
   svg.addEventListener('lostpointercapture', end);
 
-  /* The app-wide Pencil-scroll blocker deliberately skips every UI surface, and
-     the dock is registered as one - without this the Pencil would scroll the pad
-     instead of writing on it. Scoped to the writing surface, and only to a
-     stylus, so a finger still scrolls her notes normally. */
-  function blockStylus(e){
+  /* THE PALM GUARD. Her first real session came back with every word doubled
+     and displaced. The paper scrolled with touch-action:pan-y, and a resting
+     PALM is a touch: it nudged the page a few pixels between words, so each
+     stroke landed offset from the last, she rewrote, and both copies stayed.
+     A mid-stroke nudge smeared the letters themselves.
+
+     So on the paper, in Write mode:
+       - a single touch (a palm is always one) never scrolls - preventDefault
+       - while a pen stroke is in progress, NO touch scrolls
+       - two fingers, pen up, scroll normally - the drawing-app convention
+     This also covers the stylus itself, which the app-wide Pencil-scroll
+     blocker deliberately skips inside the dock (it is a UI surface to it). */
+  var toldTwoFinger = false;
+  function guardTouch(e){
     try {
-      var t = e.touches && e.touches[0];
-      if (!t) return;
-      if (t.touchType !== 'stylus') return;
-      if (!svg.contains(e.target) && e.target !== svg) return;
-      e.preventDefault();
+      if (tab !== 'write') return;
+      var n = (e.touches && e.touches.length) || 0;
+      if (!n) return;
+      if (drawing) { e.preventDefault(); return; }
+      if (n === 1) {
+        e.preventDefault();
+        if (!toldTwoFinger && e.type === 'touchmove') {
+          toldTwoFinger = true;
+          try { if (typeof toast === 'function') toast('Scroll the page with two fingers while writing'); } catch (err2) {}
+        }
+        return;
+      }
+      /* Two fingers must actually scroll - but the annotation layer (active by
+         default) preventDefaults every two-finger touchmove at the document to
+         stop palm pinch-zoom. Stop the event here so that blocker never sees
+         it: the paper's touch-action:pan-y already forbids pinching, so this
+         hands the gesture to native scrolling and nothing else. */
+      e.stopPropagation();
     } catch (err) {}
   }
   try {
-    svg.addEventListener('touchstart', blockStylus, { capture: true, passive: false });
-    svg.addEventListener('touchmove', blockStylus, { capture: true, passive: false });
+    pagesEl.addEventListener('touchstart', guardTouch, { capture: true, passive: false });
+    pagesEl.addEventListener('touchmove', guardTouch, { capture: true, passive: false });
   } catch (err) {
-    svg.addEventListener('touchstart', blockStylus, true);
-    svg.addEventListener('touchmove', blockStylus, true);
+    pagesEl.addEventListener('touchstart', guardTouch, true);
+    pagesEl.addEventListener('touchmove', guardTouch, true);
   }
 }
 
@@ -63143,9 +63165,13 @@ function wireInk(){
 function wireGrip(){
   var g = dock.querySelector('#mn-grip');
   var startY = 0, startH = 0, dragging = false, gid = null;
-  var startX = 0, startW = 0;
+  var startX = 0, startW = 0, engaged = false;
   g.addEventListener('pointerdown', function(e){
+    if (drawing) return;                       // a palm while the pen is down
     dragging = true; gid = e.pointerId;
+    // A finger must travel a little before the resize engages, so a palm
+    // resting across the grip cannot jiggle the dock while she writes.
+    engaged = e.pointerType !== 'touch';
     startY = e.clientY; startH = dockH();
     startX = e.clientX; startW = dock.getBoundingClientRect().width;
     try { g.setPointerCapture(e.pointerId); } catch (err) {}
@@ -63153,6 +63179,11 @@ function wireGrip(){
   });
   g.addEventListener('pointermove', function(e){
     if (!dragging || e.pointerId !== gid) return;
+    if (!engaged) {
+      var dx0 = e.clientX - startX, dy0 = e.clientY - startY;
+      if (dx0 * dx0 + dy0 * dy0 < 100) return;   // 10px of slop
+      engaged = true;
+    }
     if (side) {
       /* Width only while dragging - the lesson's shift and the ink re-anchor
          are left until the drag ends, so the page is not re-laid-out and the
