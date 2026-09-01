@@ -145,7 +145,7 @@ export default async (req) => {
   }
 
   // How many questions to write - bounded so one section stays a few cents.
-  const qCount = Math.max(4, Math.min(15, parseInt(body.count, 10) || 12));
+  const qCount = Math.max(4, Math.min(10, parseInt(body.count, 10) || 10));
 
   const client = new Anthropic({ apiKey: key });
 
@@ -155,7 +155,7 @@ export default async (req) => {
   // max_tokens 2048 caps the cost of any single answer.
   const stream = client.beta.messages.stream({
     model: "claude-opus-5",
-    max_tokens: podcast ? 3500 : (mindmap ? 2000 : (questions ? 4000 : 2048)),
+    max_tokens: podcast ? 3500 : (mindmap ? 2000 : (questions ? 6400 : 2048)),
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "medium" },
@@ -179,10 +179,13 @@ export default async (req) => {
           }
         }
         const final = await stream.finalMessage();
+        // questions mode is machine-parsed JSON: appending prose to a
+        // truncated or refused response would only corrupt the parse -
+        // let bad JSON fail clean so the client falls back.
         if (final.stop_reason === "refusal") {
-          controller.enqueue(enc.encode("\n\nI can't help with that particular request."));
+          if (!questions) controller.enqueue(enc.encode("\n\nI can't help with that particular request."));
         } else if (final.stop_reason === "max_tokens") {
-          controller.enqueue(enc.encode("\n\n[Answer trimmed - ask me to continue if you need more.]"));
+          if (!questions) controller.enqueue(enc.encode("\n\n[Answer trimmed - ask me to continue if you need more.]"));
         }
       } catch (e) {
         const msg = e && e.message ? String(e.message).slice(0, 300) : "unknown error";
