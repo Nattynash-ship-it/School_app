@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.541">
+<meta name="app-build" content="18.542">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -2451,13 +2451,25 @@
  background: var(--accent-bg);
  padding: 14px 1.25rem;
  border-top: 0.5px solid var(--surface-3);
+ animation: expl-in 0.28s cubic-bezier(.32,.72,0,1);
  }
- .explanation.wrong { background: var(--danger-bg); }
- .explanation .label { margin-bottom: 6px; display: block; color: var(--accent); }
- .explanation.wrong .label { color: var(--danger); }
- .explanation .why { font-size: 13px; line-height: 1.65; color: var(--text-2); margin-bottom: 8px; }
+ /* the miss must CATCH THE EYE - "before, I never looked at it" */
+ .explanation.wrong {
+ background: var(--danger-bg);
+ border-left: 4px solid var(--danger);
+ box-shadow: inset 0 0 0 1px rgba(239,68,68,0.25);
+ }
+ .explanation .label { margin-bottom: 8px; display: block; color: var(--accent); font-weight: 700; }
+ .explanation.wrong .label { color: var(--danger); font-size: 14px; letter-spacing: 0.04em; }
+ .explanation .picked-why { font-size: 13px; line-height: 1.6; color: var(--text); margin-bottom: 8px;
+ padding: 9px 12px; border-radius: 8px; background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.30); }
+ .explanation .picked-why strong { color: var(--danger); }
+ .explanation .why { font-size: 13.5px; line-height: 1.65; color: var(--text); margin: 8px 0; }
+ .explanation.wrong .why { font-weight: 500; }
  .explanation .distractors { font-size: 12px; line-height: 1.6; color: var(--text-3); }
  .explanation .distractors strong { color: var(--text-2); font-weight: 500; }
+ @keyframes expl-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+ @media (prefers-reduced-motion: reduce) { .explanation { animation: none; } }
 
  .quiz-actions { display: flex; gap: 8px; padding: 12px 1.25rem; }
   .quiz-workspace { position: relative; clear: both; display: block; width: 100%; min-height: 60vh; margin-top: 20px; padding-top: 12px; border-top: 1px dashed var(--border, #d8dcd9); }
@@ -13436,6 +13448,9 @@ function updateStreak() {
  store.streak.count = 1;
  }
  store.streak.lastStudy = today;
+ // Personal best - read by the dashboard and hub, but never written until now,
+ // so "Personal best!" showed on every single day. Track it for real.
+ if ((store.streak.count || 0) > (store.streak.best || 0)) store.streak.best = store.streak.count;
 
  // Earn a new freeze every 14 consecutive days
  // Track via streak.count crossings of multiples of 14
@@ -14281,6 +14296,16 @@ function pomoBank(reason){
   const rec = { type: 'pomodoro', durationSec: sec };
   if (pomo.topic) { rec.courseId = pomo.topic.courseId; rec.chId = pomo.topic.chId; rec.secId = pomo.topic.secId; }
   logSession(rec);
+  // Deep focus is worth XP, and progressively: 1 XP per focused minute, so a
+  // full 25-minute block outranks any single answered question. Awarded when
+  // the time BANKS (phase end / stop / recovery), never per tick.
+  try {
+   const min = Math.round(sec / 60);
+   if (min >= 1 && typeof awardXp === 'function') {
+    awardXp(min);
+    setTimeout(function(){ try { toast('⚡ +' + min + ' XP — ' + min + ' min of deep focus banked'); } catch (e) {} }, 500);
+   }
+  } catch (e) {}
   return sec;
  }
  return 0;
@@ -14305,6 +14330,7 @@ function pomoTick() {
 }
 function pomoStart() {
  if (pomo.running && !pomo.paused) return;
+ pomo.burst = 0;   // a fresh session is a normal one unless Quick Burst says otherwise
  if (!pomo.running || pomo.remaining <= 0) {
  pomoSetMode('work');
  pomo.cycleNum = 1;
@@ -14365,6 +14391,15 @@ function pomoNextPhase() {
  const cfg = store.pomodoro;
  pomoBeep();
  if (pomo.mode === 'work') {
+ // A 10-minute burst is one bite, not a cycle: bank it, stop, celebrate.
+ if (pomo.burst) {
+ pomo.burst = 0;
+ pomoBank('burst');
+ pomoStop(true);
+ toast('⏱ Burst done — one focused bite in the bank 🎉');
+ try { if (typeof confettiBurst === 'function') confettiBurst(); } catch (e) {}
+ return;
+ }
  // Bank what was really focused, not a nominal workMin figure.
  pomoBank('cycle');
  toast(`Work cycle complete! Take a break 🎉`);
@@ -14492,6 +14527,11 @@ function renderPomoSheet() {
  <label>Long <input type="number" min="1" max="60" value="${cfg.longBreakMin}" data-set="longBreakMin"></label>
  <label>Cycles <input type="number" min="1" max="10" value="${cfg.cycles}" data-set="cycles"></label>
  <label style="cursor:pointer;"><input type="checkbox" ${cfg.sound ? 'checked' : ''} data-set="sound"> sound</label>
+ <label style="cursor:pointer;" title="Keeps the screen awake and asks before you wander off-task while a focus block runs"><input type="checkbox" ${cfg.shield !== false ? 'checked' : ''} data-set="shield"> shield</label>
+ </div>
+ <div style="font-size:10.5px; color:var(--text-4); margin-top:8px; line-height:1.5;">
+ Shield keeps the screen awake and guards against in-app wandering during a work block.
+ A web app can't silence other apps' notifications — pair with your iPad's Focus mode for full quiet.
  </div>
  </div>
  `;
@@ -19461,13 +19501,15 @@ function mountScratchPad(hostEl, strokeStore, key) {
  });
 }
 
-// Deferred-feedback preference. When ON (the default), practice quizzes do NOT
-// reveal whether each answer was right until the whole quiz is finished — you
-// then review every question, your answer, the correct answer, and the reason
-// on the results screen. This keeps the focus on thinking, not on the running
-// score. Toggle lives in Settings & Data. Default ON unless explicitly disabled.
+// Deferred-feedback preference. She revoked the answers-at-the-end default:
+// "I think its best knowing right away why I got it wrong but I need it to
+// show up in a way that catches my attention." So immediate feedback is now
+// the default (the toggle in Settings & Data still allows end-of-quiz review),
+// and the migration below flips any stored value once so the revocation
+// actually takes effect on her device.
+try { if (!store.feedbackM2) { store.feedbackM2 = 1; store.deferAnswers = false; saveStore(); } } catch (e) {}
 function deferAnswersOn() {
- try { return store.deferAnswers !== false; } catch (e) { return true; }
+ try { return store.deferAnswers === true; } catch (e) { return false; }
 }
 
 function renderQuiz(v) {
@@ -19925,7 +19967,18 @@ function renderQuiz(v) {
       // Auto-add missed questions to flashcards — automatic, no manual step needed
       if (!correct && q.kind !== 'code') { setTimeout(function(){ try { addQuestionToFlashcards(q, qCid, qChId, qSecId); } catch (e) {} }, 0); }
         if (store.quizHistory.length > 5000) store.quizHistory = store.quizHistory.slice(-5000);
-            if (deferAnswersOn()) { advanceOrFinish(); } else { render(); }
+            if (deferAnswersOn()) { advanceOrFinish(); }
+            else {
+              render();
+              // Bring the verdict to her eyes - a wrong answer buried below the
+              // fold is exactly what "I never looked at it" was about.
+              requestAnimationFrame(function(){
+                try {
+                  var ex = document.querySelector('.explanation');
+                  if (ex) ex.scrollIntoView({ behavior: 'smooth', block: correct ? 'nearest' : 'center' });
+                } catch (e) {}
+              });
+            }
             setTimeout(function(){
               try { onAnswerGraded(correct, q); } catch (e) {}
               if (!correct && typeof autoAddWeakSpotCard === 'function') { try { autoAddWeakSpotCard(q, qCid, qChId, qSecId); } catch (e) {} }
@@ -20081,7 +20134,14 @@ function gradeCodeAnswer(q, code) {
 
 function renderExplanation(q, ans) {
  const correct = ans.correct;
- /* WHY_RIGHT_ONLY_V1 */ let distractorsHtml = '';
+ /* WHY_RIGHT_AND_YOURS_V2: on a miss, lead with why HER pick is wrong (the
+    per-distractor rationales were authored in the data but went unused for a
+    while), then the correct answer, then the why. */
+ let distractorsHtml = '';
+ let pickedHtml = '';
+ if (!correct && !q.multi && ans && typeof ans.choice === 'number' && q.distractors && q.distractors[ans.choice] != null) {
+  pickedHtml = `<div class="picked-why"><strong>You picked ${String.fromCharCode(65 + ans.choice)}:</strong> ${esc(String(q.distractors[ans.choice]))}</div>`;
+ }
  if (!correct && q.multi && Array.isArray(q.options)) {
   const cset = (Array.isArray(q.correctSet) ? q.correctSet : (Array.isArray(q.correct) ? q.correct : [])).slice().sort((a, b) => a - b);
   if (cset.length) {
@@ -20113,9 +20173,10 @@ function renderExplanation(q, ans) {
  `;
  return `
  <div class="explanation ${correct ? '' : 'wrong'}">
- <span class="label">${correct ? '✓ CORRECT' : '✕ INCORRECT'}</span>
- <p class="why">${esc(q.explain)}</p>
+ <span class="label">${correct ? '✓ CORRECT' : '✕ NOT QUITE — HERE’S WHY'}</span>
+ ${pickedHtml}
  ${distractorsHtml ? `<div class="distractors">${distractorsHtml}</div>` : ''}
+ <p class="why">${esc(q.explain)}</p>
  ${retagHtml}
  </div>
  `;
@@ -20617,6 +20678,59 @@ function truncate(s, len) {
  return s.length > len ? s.slice(0, len - 1) + '…' : s;
 }
 
+// AI-FIRST QUESTION GENERATION. The regex templates below produce weak
+// questions (lexical blanks, negated sentences that stay true) - kept only as
+// the offline fallback. The real generator asks the study helper for
+// exam-style questions grounded in the uploaded text, with per-distractor
+// rationales that feed the immediate wrong-answer feedback. Every field is
+// validated and clamped before it is trusted.
+async function aiQuestionsForSection(bodyText, sectionTitle, count) {
+ const res = await fetch('/.netlify/functions/helper', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+   mode: 'questions', count: count || 12,
+   context: { lesson: String(bodyText || '').slice(0, 14000), title: String(sectionTitle || '').slice(0, 180) },
+  }),
+ });
+ if (!res.ok) throw new Error('helper ' + res.status);
+ let text = (await res.text()).trim();
+ text = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+ const a = text.indexOf('{'), b = text.lastIndexOf('}');
+ if (a === -1 || b === -1) throw new Error('no json in response');
+ const data = JSON.parse(text.slice(a, b + 1));
+ const raw = (data && Array.isArray(data.questions)) ? data.questions : [];
+ const out = [];
+ for (const q of raw) {
+  try {
+   if (!q || typeof q.text !== 'string' || !Array.isArray(q.options) || q.options.length !== 4) continue;
+   const correct = q.correct | 0;
+   if (correct < 0 || correct > 3) continue;
+   const opts = q.options.map(o => String(o).slice(0, 220));
+   if (opts.some(o => !o.trim())) continue;
+   const d = {};
+   if (q.distractors && typeof q.distractors === 'object') {
+    for (const k of Object.keys(q.distractors)) {
+     const ki = parseInt(k, 10);
+     if (ki >= 0 && ki <= 3 && ki !== correct) d[ki] = String(q.distractors[k]).slice(0, 300);
+    }
+   }
+   out.push({
+    id: 'q' + (out.length + 1),
+    topic: String(q.topic || sectionTitle || 'general').slice(0, 60),
+    text: String(q.text).slice(0, 500),
+    options: opts,
+    correct: correct,
+    explain: String(q.explain || '').slice(0, 600),
+    distractors: d,
+    difficulty: (q.difficulty === 'easy' || q.difficulty === 'hard') ? q.difficulty : 'medium',
+   });
+  } catch (e) {}
+ }
+ if (out.length < 3) throw new Error('too few valid questions');
+ return out;
+}
+
 // Build OA (Objective Assessment) and PA (Performance Assessment) prep sections.
 // Pulls questions from across all sections (sampling) for OA-style cumulative practice.
 function buildAssessmentSections(courseStructure, courseId) {
@@ -20631,33 +20745,12 @@ function buildAssessmentSections(courseStructure, courseId) {
  // OA section: 25 sampled questions
  const oaCount = Math.min(25, allQuestions.length);
  const oaQs = [...allQuestions].sort(() => Math.random() - 0.5).slice(0, oaCount).map((q, i) => ({ ...q, id: 'oa' + (i + 1), topic: 'OA: ' + (q.topic || 'Review') }));
- // PA section: applied/scenario reflection prompts (text-based reflection questions; rendered like MC but truly open-ended would need editor work — keep MC format here)
- const paQs = [];
- // Pick a sentence from each section and make a "best approach" style question
- for (const ch of courseStructure) {
-  if (paQs.length >= 15) break;
-  for (const sec of ch.sections) {
-   if (paQs.length >= 15) break;
-   const body = (sec.body || []).join(' ');
-   const sentences = body.split(/(?<=[.!?])\s+/).filter(s => s.length > 40 && s.length < 200);
-   if (sentences.length === 0) continue;
-   const keySentence = sentences[0];
-   paQs.push({
-    id: 'pa' + (paQs.length + 1),
-    topic: 'PA: ' + truncate(sec.title, 40),
-    text: `In a performance task related to "${sec.title}", which approach best matches the source material?`,
-    options: [
-     truncate(keySentence, 110),
-     'Skip this concept and rely on intuition during the assessment',
-     'Memorize the term but not the application',
-     'Use an unrelated technique from a different chapter',
-    ],
-    correct: 0,
-    explain: 'Source: ' + keySentence,
-    distractors: {},
-   });
-  }
- }
+ // PA section: a second cumulative draw of REAL questions. The old version
+ // built a fixed template whose three distractors were the same joke strings
+ // on every question with correct always at index 0 - answer A forever, which
+ // teaches nothing. Real sampled questions, shuffled, do.
+ const paQs = [...allQuestions].sort(() => Math.random() - 0.5).slice(0, 15)
+  .map((q, i) => ({ ...q, id: 'pa' + (i + 1), topic: 'PA: ' + (q.topic || 'Applied') }));
  return {
   oa: { title: 'Objective Assessment Practice', body: ['<h3>25-question mixed practice from the entire PDF.</h3><p>This simulates an OA: questions drawn from across all chapters. Take your time — this builds your overall mastery.</p>'], questions: oaQs },
   pa: { title: 'Performance Assessment Prep', body: ['<h3>Applied scenarios based on the source material.</h3><p>These questions ask you to choose the best approach for hypothetical tasks. The right answer comes directly from your PDF\'s explanations.</p>'], questions: paQs },
@@ -20718,18 +20811,35 @@ async function processUploadedPDF(file, courseName) {
    throw new Error('Could not detect chapter/section structure. The text was readable but headings weren\'t recognizable. Try a file with clearer Chapter 1 / Section 1.1 style headings.');
   }
   const totalSections = structure.reduce((s, ch) => s + ch.sections.length, 0);
-  setStatus(`Found ${structure.length} chapters, ${totalSections} sections. Generating quiz questions…`);
+  setStatus(`Found ${structure.length} chapters, ${totalSections} sections. Writing quiz questions…`);
   await new Promise(r => setTimeout(r, 50));
-  // Generate questions per section
-  let questionsGenerated = 0;
-  for (const ch of structure) {
-   for (const sec of ch.sections) {
-    const bodyText = sec.body.join(' ');
-    sec.questions = generateQuestionsForSection(bodyText, sec.title, 12);
-    questionsGenerated += sec.questions.length;
+  // AI writes the questions (3 sections at a time); the regex templates are
+  // only the fallback - after two AI failures (offline, helper not
+  // configured) the rest of the sections fall back without more attempts.
+  const secList = [];
+  structure.forEach(ch => ch.sections.forEach(sec => secList.push(sec)));
+  const AI_CAP = 30;                    // a 200-section textbook stays affordable
+  let doneCount = 0, aiFails = 0, aiCount = 0;
+  const genFor = async (sec, idx) => {
+   const bodyText = sec.body.join(' ');
+   if (idx < AI_CAP && aiFails < 2 && bodyText.length >= 200) {
+    try { sec.questions = await aiQuestionsForSection(bodyText, sec.title, 12); aiCount++; }
+    catch (e) { aiFails++; console.log('[PDF] AI generation failed for a section:', e && e.message); }
    }
+   if (!sec.questions || !sec.questions.length) sec.questions = generateQuestionsForSection(bodyText, sec.title, 12);
+   doneCount++;
+   setStatus(`Writing questions… ${doneCount} of ${secList.length} sections${aiCount ? ` (${aiCount} AI-written)` : ''}`);
+  };
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(3, secList.length) }, async () => {
+   while (cursor < secList.length) { const i = cursor++; await genFor(secList[i], i); }
+  }));
+  const questionsGenerated = secList.reduce((s, x) => s + ((x.questions || []).length), 0);
+  if (aiFails >= 2 && aiCount === 0) {
+   setStatus(`AI helper unreachable — used the built-in generator (simpler questions). ${questionsGenerated} questions.`);
+   await new Promise(r => setTimeout(r, 900));
   }
-  setStatus(`Generated ${questionsGenerated} questions. Building assessment sections…`);
+  setStatus(`Generated ${questionsGenerated} questions${aiCount ? ` (${aiCount} sections AI-written)` : ''}. Building assessment sections…`);
   const assessments = buildAssessmentSections(structure, null);
   // Build course definition
   const finalName = (courseName || pdfData.fileName.replace(/\.pdf$/i, '')).slice(0, 60);
@@ -20762,7 +20872,15 @@ async function processUploadedPDF(file, courseName) {
   structure.forEach((ch, chI) => {
    ch.sections.forEach((s, sI) => {
     const key = `${cid}/ch${chI + 1}/s${sI + 1}`;
-    store.customLessons[key] = { body: formatLessonBody(s.body, s.title) };
+    // Storage guard: localStorage holds ~5MB total and a textbook chapter can
+    // be enormous. Cap each stored lesson at ~16KB, cut at a paragraph edge.
+    let bodyHtml = formatLessonBody(s.body, s.title);
+    if (bodyHtml.length > 16000) {
+     const cutAt = bodyHtml.lastIndexOf('</p>', 16000);
+     bodyHtml = bodyHtml.slice(0, cutAt > 0 ? cutAt + 4 : 16000)
+      + '<p><em>… trimmed to fit on-device storage — the full detail is in your original PDF.</em></p>';
+    }
+    store.customLessons[key] = { body: bodyHtml };
     if (s.questions && s.questions.length > 0) {
      store.customQuestions[key] = s.questions;
      totalQs += s.questions.length;
@@ -20810,6 +20928,9 @@ async function processUploadedPDF(file, courseName) {
   if (!Array.isArray(store.activeOrder)) store.activeOrder = [];
   store.courseState[cid] = 'active';
   if (!store.activeOrder.includes(cid)) store.activeOrder.push(cid);
+  // A new course belongs on the study plan: invalidate the cached plan so
+  // ensurePlanData rebuilds it (finished classes keep their done marks).
+  try { store.classPlanV = null; } catch (e) {}
   saveStore();
   setStatus(`Done! Created ${chapters.length} chapters, ${chapters.reduce((sum, ch) => sum + ch.sections.length, 0)} sections, ${totalQs} questions.`);
   return { cid, totalQs, chapters: chapters.length, sections: chapters.reduce((sum, ch) => sum + ch.sections.length, 0) };
@@ -30568,7 +30689,11 @@ function ensurePlanData() {
   if (!store.classPlan || !Array.isArray(store.classPlan) || store.classPlanV !== PLAN_VERSION) {
     const firstOrder = ['D684', 'C959', 'D286', 'D197'];
     const isWGU = (code) => /^[CD]\d{3}$/.test(code || '');
-    const all = (typeof COURSES !== 'undefined') ? Object.values(COURSES).filter(c => c.active && isWGU(c.code)) : [];
+    // WGU classes lead the plan, but uploaded/custom courses join it too - a
+    // syllabus she uploads should land on the schedule, not vanish from it.
+    const all = (typeof COURSES !== 'undefined')
+      ? Object.values(COURSES).filter(c => c.active && (isWGU(c.code) || String(c.id || '').startsWith('PDF-') || String(c.id || '').startsWith('CUSTOM-')))
+      : [];
     const byCode = {}; all.forEach(c => { byCode[c.code] = c; });
     const ordered = [];
     firstOrder.forEach(code => { if (byCode[code]) { ordered.push(byCode[code]); delete byCode[code]; } });
@@ -35598,7 +35723,10 @@ function getQuestions(courseId, chId, secId) {
   }
   function onAnswerLogged(h){
     try{
-      if (h && h.correct){ try{ awardXp(5); }catch(e){} popXP('+5 XP'); }
+      /* XP for a correct answer is awarded ONCE, by onAnswerGraded (+10).
+         This hook used to add +5 on top - a silent 15/correct double award.
+         The pop and ring updates stay; the duplicate award does not. */
+      if (h && h.correct){ popXP('+10 XP'); }
       var n=todayCount();
       if (n === goalTarget()){ burstConfetti(); popXP('\uD83C\uDFAF Daily goal!', '#2fae6a'); }
       refreshMot();
@@ -57061,6 +57189,205 @@ else setTimeout(restore, 0);
 })();
 
 
+/* FOCUS SHIELD - the distraction blocker she asked for, honestly scoped to
+ * what a web app can actually do:
+ *   1. Screen Wake Lock while a focus session runs, so the iPad never dims
+ *      and sleeps mid-study (re-acquired whenever the app returns to the
+ *      foreground - the OS silently drops the lock on backgrounding).
+ *   2. An off-task guard: while a WORK block is running (and the shield
+ *      setting is on), tapping through to the arcade/games asks first, with
+ *      the time left in the block. Study destinations are never questioned.
+ *   3. The app's own daily-reminder notification stays quiet during a block.
+ * What it cannot do - and says so in the timer sheet - is silence OTHER
+ * apps' notifications; that is the OS's job (iPad Focus mode). */
+(function focusShield(){
+try {
+  if (window.__focusShield) return; window.__focusShield = true;
+  var lock = null;
+  function shieldOn(){
+    try { return pomo && pomo.running && !pomo.paused && (store.pomodoro || {}).shield !== false; } catch (e) { return false; }
+  }
+  function inWork(){
+    try { return shieldOn() && pomo.mode === 'work'; } catch (e) { return false; }
+  }
+  function acquire(){
+    try {
+      if (!shieldOn() || lock || !navigator.wakeLock || !navigator.wakeLock.request) return;
+      navigator.wakeLock.request('screen').then(function(l){
+        lock = l;
+        l.addEventListener('release', function(){ lock = null; });
+      }).catch(function(){});
+    } catch (e) {}
+  }
+  function release(){
+    try { if (lock) { lock.release().catch(function(){}); lock = null; } } catch (e) {}
+  }
+  // poll is the simplest correct wiring: pomo start/stop/pause happen in many
+  // places, and the lock request is a no-op when already held
+  setInterval(function(){ if (shieldOn()) acquire(); else release(); }, 4000);
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden && shieldOn()) acquire();
+  });
+  // the off-task guard: games ask first while a work block runs
+  var OFF_TASK = { arcade: 1 };
+  if (typeof go === 'function' && !go.__shield) {
+    var _go = go;
+    var wrapped = function(v){
+      try {
+        if (v && OFF_TASK[v.name] && inWork()) {
+          var left = Math.max(0, Math.round((pomo.remaining || 0) / 60));
+          if (!confirm('⚡ Focus block running — about ' + left + ' min left.\nGames can wait. Leave your studying anyway?')) return;
+        }
+      } catch (e) {}
+      return _go.apply(this, arguments);
+    };
+    wrapped.__shield = 1;
+    go = wrapped;
+  }
+  // the daily nudge stays quiet during a block
+  if (typeof Notification !== 'undefined' && Notification && !window.__shieldNotifWrapped) {
+    window.__shieldNotifWrapped = true;
+    try {
+      var _N = Notification;
+      var NW = function(title, opts){
+        if (inWork()) { return { close: function(){}, addEventListener: function(){} }; }
+        return new _N(title, opts);
+      };
+      NW.requestPermission = _N.requestPermission ? _N.requestPermission.bind(_N) : undefined;
+      Object.defineProperty(NW, 'permission', { get: function(){ return _N.permission; } });
+      window.Notification = NW;
+    } catch (e) {}
+  }
+  window.__shieldState = function(){ return { on: shieldOn(), work: inWork(), lock: !!lock }; };
+} catch (e) { if (window.console) console.error('[focusShield]', e); }
+})();
+
+
+/* QUICK BURST - bite-sized pacing. "Structure content into short, focused
+ * modules (e.g., 10-minute bursts) to prevent cognitive fatigue." One tap
+ * picks the single best next bite - her weakest quizzed section, else the
+ * next untouched one, priority courses first - starts a true 10-minute focus
+ * block (banked and XP'd like any other focus time), and lands her in that
+ * section. When the 10 minutes are up the block ends by itself: one bite,
+ * not an endless session. */
+(function quickBurst(){
+try {
+  if (window.__quickBurst) return; window.__quickBurst = true;
+  var PRIORITY = ['C959', 'D286', 'D684', 'D197'];
+  function isLearn(ch){
+    try { return (typeof isLearningChapter === 'function') ? isLearningChapter(ch) : true; } catch (e) { return true; }
+  }
+  function secTitleOf(cid, chId, secId){
+    try {
+      var c = COURSES[cid]; if (!c) return '';
+      var ch = (c.chapters || []).filter(function(x){ return x.id === chId; })[0];
+      var s = ch && (ch.sections || []).filter(function(x){ return x.id === secId; })[0];
+      return (s && s.title) || (ch && ch.title) || '';
+    } catch (e) { return ''; }
+  }
+  function pickBite(){
+    var order = PRIORITY.filter(function(cid){ return COURSES[cid] && COURSES[cid].active !== false; });
+    try {
+      Object.keys(COURSES).forEach(function(cid){
+        if (order.indexOf(cid) === -1 && COURSES[cid] && COURSES[cid].active) order.push(cid);
+      });
+    } catch (e) {}
+    for (var i = 0; i < order.length; i++) {
+      var cid = order[i];
+      try {
+        var weak = (typeof weakSections === 'function') ? weakSections(cid) : [];
+        // weakest first, but only real learning sections
+        for (var w = 0; w < weak.length; w++) {
+          var ch0 = (COURSES[cid].chapters || []).filter(function(x){ return x.id === weak[w].chId; })[0];
+          if (ch0 && isLearn(ch0)) {
+            return { courseId: cid, chId: weak[w].chId, secId: weak[w].secId,
+                     why: 'your weakest spot (' + weak[w].pct + '%)' };
+          }
+        }
+        var un = (typeof untouchedSections === 'function') ? untouchedSections(cid) : [];
+        for (var u = 0; u < un.length; u++) {
+          var ch1 = (COURSES[cid].chapters || []).filter(function(x){ return x.id === un[u].chId; })[0];
+          if (ch1 && isLearn(ch1)) {
+            return { courseId: cid, chId: un[u].chId, secId: un[u].secId, why: 'next up, never studied' };
+          }
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+  function startBurst(){
+    var bite = pickBite();
+    if (!bite) { try { toast('Nothing to burst on — every section is mastered 🎉'); } catch (e) {} return; }
+    try {
+      if (pomo && pomo.running) {
+        toast('A focus session is already running — finishing that one first');
+      } else {
+        pomoStart();
+        pomo.remaining = 600;
+        pomo.endsAt = Date.now() + 600000;
+        pomo.burst = 1;
+        pomoSaveLive(true);
+        pomoUpdateUI();
+      }
+    } catch (e) {}
+    var t = secTitleOf(bite.courseId, bite.chId, bite.secId);
+    try { toast('⏱ 10-minute burst: ' + (t || 'your next section') + ' — ' + bite.why); } catch (e) {}
+    go({ name: 'section', courseId: bite.courseId, chId: bite.chId, secId: bite.secId });
+  }
+  window.__startBurst = startBurst;
+  function buildCard(){
+    var bite = pickBite();
+    var el = document.createElement('div');
+    el.id = 'burst-card';
+    el.style.cssText = 'margin:0 0 12px; padding:14px 16px; border-radius:14px; cursor:pointer;'
+      + 'background:linear-gradient(120deg, rgba(56,138,221,0.14), rgba(127,119,221,0.14));'
+      + 'border:1px solid var(--border-strong, var(--border)); display:flex; align-items:center; gap:12px;'
+      /* the nowrap subtitle must never widen the home grid's column - the card
+         yields and ellipsizes instead (min-width:0 kills its min-content size) */
+      + 'min-width:0; max-width:100%; box-sizing:border-box; overflow:hidden;';
+    var t = bite ? secTitleOf(bite.courseId, bite.chId, bite.secId) : '';
+    el.innerHTML =
+      '<div style="font-size:26px; line-height:1;">⏱</div>'
+      + '<div style="flex:1; min-width:0;">'
+      + '<div style="font-weight:800; font-size:14px; color:var(--text);">10-minute burst</div>'
+      + '<div style="font-size:12px; color:var(--text-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">'
+      + (bite ? ('One bite: ' + esc(t || bite.chId) + ' — ' + esc(bite.why)) : 'One short, focused bite of study')
+      + '</div></div>'
+      + '<div style="flex:0 0 auto; padding:8px 14px; border-radius:999px; background:var(--accent); color:var(--accent-text,#042f2e); font-size:12px; font-weight:800;">Start</div>';
+    el.addEventListener('click', startBurst);
+    return el;
+  }
+  function inject(el){
+    try {
+      if (el && el.querySelector && !el.querySelector('#burst-card')) {
+        var card = buildCard();
+        // The v3 home is a horizontal shell (sidebar | main | rail) - the card
+        // belongs at the TOP OF MAIN, never as a fourth column of the shell.
+        var main = el.querySelector('.v2-main');
+        var mot = el.querySelector('#mot-card');
+        if (main) main.insertBefore(card, main.firstChild);
+        else if (mot && mot.parentNode) mot.parentNode.insertBefore(card, mot.nextSibling);
+        else if (el.insertBefore) el.insertBefore(card, el.firstChild);
+      }
+    } catch (e) {}
+    return el;
+  }
+  // The live home screen is renderHomeV3 (the classic renderHome is kept only
+  // for rollback) - wrap both so the card survives either path.
+  if (typeof renderHomeV3 === 'function' && !renderHomeV3.__burst) {
+    var _rh3 = renderHomeV3;
+    renderHomeV3 = function(){ return inject(_rh3.apply(this, arguments)); };
+    renderHomeV3.__burst = 1;
+  }
+  if (typeof renderHome === 'function' && !renderHome.__burst) {
+    var _rh = renderHome;
+    renderHome = function(){ return inject(_rh.apply(this, arguments)); };
+    renderHome.__burst = 1;
+  }
+} catch (e) { if (window.console) console.error('[quickBurst]', e); }
+})();
+
+
 (function storageGuard(){
 /* WHY HER NOTES VANISHED. Between two diagnostic reports the app's entire
  * localStorage shrank from 73KB to 2KB - not just annotations: quiz history,
@@ -58501,6 +58828,7 @@ function mirrorWrite(){
       var rec = { data: r2, at: Date.now(), build: (document.querySelector('meta[name=app-build]')||{}).content || '' };
       return idb('readwrite', function(os){ os.put(rec, KEY); });
     }
+    try { inkMirrorWrite(); } catch (e) {}   // the handwriting rides every mirror
     if (raw) return put(raw);
     var serialized = JSON.stringify(store);
     var syncPack = function(){ return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized; };
@@ -58519,8 +58847,46 @@ function mirrorRead(){
     return out;
   });
 }
+/* Handwriting lives OUTSIDE the store - per-page slots under gsk:/gsl: keys in
+   localStorage - so the store mirror above never covered it and an iOS
+   storage wipe would take her lesson ink and notebook pages with it. Mirror
+   those slots too, under their own record in the same database. The
+   collection is skipped when nothing changed (count+bytes signature), so the
+   2s mirror cadence stays cheap while she writes. */
+var KEY_INK = 'ink', _inkSig = '';
+function collectInk(){
+  var rec = {}, n = 0, len = 0;
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k) continue;
+      if (k.indexOf('gsk:') === 0 || k.indexOf('gsl:') === 0) {
+        var v = localStorage.getItem(k) || '';
+        rec[k] = v; n++; len += v.length;
+      }
+    }
+  } catch (e) {}
+  return { rec: rec, sig: n + ':' + len };
+}
+function inkMirrorWrite(){
+  try {
+    var c = collectInk();
+    if (c.sig === _inkSig) return Promise.resolve();
+    return idb('readwrite', function(os){ os.put({ data: c.rec, at: Date.now() }, KEY_INK); })
+      .then(function(){ _inkSig = c.sig; window.__fortress.inkMirroredAt = Date.now(); })
+      .catch(function(){});
+  } catch (e) { return Promise.resolve(); }
+}
+function inkMirrorRead(){
+  var out = { __v: null };
+  return idb('readonly', function(os){
+    var g = os.get(KEY_INK);
+    g.onsuccess = function(){ out.__v = g.result || null; };
+    return out;
+  });
+}
 function mirrorClear(){
-  return idb('readwrite', function(os){ os.delete(KEY); }).catch(function(){});
+  return idb('readwrite', function(os){ os.delete(KEY); os.delete(KEY_INK); }).catch(function(){});
 }
 function unpackRaw(raw){
   if (!raw) return null;
@@ -58646,6 +59012,24 @@ function runRecover(){
         return;
       }
     } catch (e) {}
+    // Handwriting: put back any gsk:/gsl: slot the mirror holds that
+    // localStorage lost. Only MISSING keys are restored - a slot she still
+    // has locally is newer than the mirror and always wins - and the erase
+    // gate above has already run, so deleted ink stays deleted.
+    inkMirrorRead().then(function(inkRec){
+      try {
+        if (!inkRec || !inkRec.data) return;
+        var back = 0;
+        for (var ik in inkRec.data) {
+          if (!Object.prototype.hasOwnProperty.call(inkRec.data, ik)) continue;
+          if (localStorage.getItem(ik) === null) { localStorage.setItem(ik, inkRec.data[ik]); back++; }
+        }
+        if (back > 0) {
+          window.__fortress.inkRecovered = back;
+          try { if (typeof toast === 'function') toast('Recovered ' + back + ' page' + (back === 1 ? '' : 's') + ' of handwriting from the backup mirror ✓', 6000); } catch (e) {}
+        }
+      } catch (e) {}
+    }).catch(function(){});
     var snap = unpackRaw(rec.data);
     var wSnap = weight(snap), wLocal = weight(store);
     if (wSnap > 0 && wLocal * 5 < wSnap) {
