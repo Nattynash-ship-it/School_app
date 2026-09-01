@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.542">
+<meta name="app-build" content="18.543">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -14284,6 +14284,7 @@ function pomoSaveLive(force){
    endsAt: pomo.endsAt, remaining: pomo.remaining,
    sessionStartTs: pomo.sessionStartTs,
    workAccruedSec: pomo.workAccruedSec,
+   burst: pomo.burst ? 1 : 0,
    topic: pomo.topic, savedAt: now
   }));
  } catch (e) {}
@@ -20708,6 +20709,7 @@ async function aiQuestionsForSection(bodyText, sectionTitle, count) {
    if (correct < 0 || correct > 3) continue;
    const opts = q.options.map(o => String(o).slice(0, 220));
    if (opts.some(o => !o.trim())) continue;
+   if (new Set(opts.map(o => o.trim().toLowerCase())).size !== 4) continue;  // duplicate options = ambiguous
    const d = {};
    if (q.distractors && typeof q.distractors === 'object') {
     for (const k of Object.keys(q.distractors)) {
@@ -20718,7 +20720,9 @@ async function aiQuestionsForSection(bodyText, sectionTitle, count) {
    out.push({
     id: 'q' + (out.length + 1),
     topic: String(q.topic || sectionTitle || 'general').slice(0, 60),
-    text: String(q.text).slice(0, 500),
+    // q.text is rendered as raw HTML by the quiz (hand-authored banks use
+    // that for formatting) - model output is NOT trusted with markup.
+    text: String(q.text).slice(0, 500).replace(/</g, '&lt;').replace(/>/g, '&gt;'),
     options: opts,
     correct: correct,
     explain: String(q.explain || '').slice(0, 600),
@@ -20843,7 +20847,18 @@ async function processUploadedPDF(file, courseName) {
   const assessments = buildAssessmentSections(structure, null);
   // Build course definition
   const finalName = (courseName || pdfData.fileName.replace(/\.pdf$/i, '')).slice(0, 60);
-  const code = finalName.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase() || ('PDF' + Date.now().toString(36).slice(-3).toUpperCase());
+  let code = finalName.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase() || ('PDF' + Date.now().toString(36).slice(-3).toUpperCase());
+  // Codes must be unique - "Biology 1.pdf" and "Biology 2.pdf" both derive
+  // BIOLOG, and downstream displays assume a code names one course.
+  try {
+   const taken = new Set(Object.values(COURSES).map(c => c && c.code).filter(Boolean));
+   if (taken.has(code)) {
+    for (let sfx = 2; sfx < 100; sfx++) {
+     const cand = code.slice(0, 6 - String(sfx).length) + sfx;
+     if (!taken.has(cand)) { code = cand; break; }
+    }
+   }
+  } catch (e) {}
   const cid = 'PDF-' + Date.now().toString(36).toUpperCase();
   const chapters = structure.map((ch, chI) => ({
    id: 'ch' + (chI + 1),
@@ -30694,17 +30709,24 @@ function ensurePlanData() {
     const all = (typeof COURSES !== 'undefined')
       ? Object.values(COURSES).filter(c => c.active && (isWGU(c.code) || String(c.id || '').startsWith('PDF-') || String(c.id || '').startsWith('CUSTOM-')))
       : [];
-    const byCode = {}; all.forEach(c => { byCode[c.code] = c; });
+    // Keyed by course ID, not code: two uploads named alike derive the same
+    // code, and a code-keyed map silently dropped one of them from the plan.
     const ordered = [];
-    firstOrder.forEach(code => { if (byCode[code]) { ordered.push(byCode[code]); delete byCode[code]; } });
-    Object.keys(byCode).forEach(code => ordered.push(byCode[code]));
-    const prevDone = {}; (store.classPlan || []).forEach(c => { if (c.done) prevDone[c.code] = true; });
+    const seen = {};
+    firstOrder.forEach(code => {
+      const c = all.find(x => x.code === code && !seen[x.id]);
+      if (c) { seen[c.id] = 1; ordered.push(c); }
+    });
+    all.forEach(c => { if (!seen[c.id]) { seen[c.id] = 1; ordered.push(c); } });
+    const prevDone = {};
+    (store.classPlan || []).forEach(c => { if (c.done) prevDone[c.id || c.code] = true; });
     const start = new Date(); const grad = new Date(store.goals.gradDate + 'T12:00:00');
     const n = Math.max(1, ordered.length);
     const totalDays = Math.max(n, Math.round((grad - start) / 86400000));
     store.classPlan = ordered.map((c, idx) => {
       const d = new Date(start); d.setDate(d.getDate() + Math.round(totalDays * (idx + 1) / n));
-      return { code: c.code, name: c.name, target: d.toISOString().slice(0, 10), done: !!prevDone[c.code] };
+      return { id: c.id, code: c.code, name: c.name, target: d.toISOString().slice(0, 10),
+               done: !!(prevDone[c.id] || prevDone[c.code]) };
     });
     store.classPlanV = PLAN_VERSION;
   }
@@ -41304,7 +41326,13 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (mode==='blitz') timerId = setInterval(tick, 1000);
     draw();
   }
-  try { window.__openArcade = menu; } catch(e){}
+  // Focus shield: opening the arcade from OUTSIDE a game asks first while a
+  // work block is running ("Change mode" inside a running game stays direct).
+  function openGuarded(){
+    try { if (typeof window.__shieldAsk === 'function' && !window.__shieldAsk('Games')) return; } catch(e){}
+    menu();
+  }
+  try { window.__openArcade = openGuarded; } catch(e){}
 
   // ---- entry point: a CTA at the top of the dashboard / today ----
   function inject(){
@@ -41321,7 +41349,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         '<span style="flex:1;text-align:left;"><span style="display:block;font-size:14px;font-weight:800;">Study Arcade</span>'+
         '<span style="display:block;font-size:11.5px;color:var(--text-3,#9c8db8);">Blitz · Survival · Daily Mix — quick games that still earn XP</span></span>'+
         (a.dailyStamp===stamp()?'':'<span style="font-size:10px;font-weight:800;letter-spacing:.06em;background:linear-gradient(135deg,#ffd54a,#ff9f40,#a855f7);color:#1a1024;border-radius:999px;padding:3px 8px;">DAILY READY</span>');
-      btn.addEventListener('click', menu);
+      btn.addEventListener('click', openGuarded);
       main.insertBefore(btn, main.firstChild);
     } catch(e){}
   }
@@ -57128,6 +57156,7 @@ function restore(){
   pomo.cycleNum = st.cycleNum || 1;
   pomo.sessionStartTs = st.sessionStartTs || now;
   pomo.workAccruedSec = st.workAccruedSec || 0;
+  pomo.burst = st.burst ? 1 : 0;   // a recovered burst stays one bite, not a full session
   pomo.topic = st.topic || null;
 
   // Saved while paused: the clock was already stopped, so nothing accrued.
@@ -57203,7 +57232,7 @@ else setTimeout(restore, 0);
 (function focusShield(){
 try {
   if (window.__focusShield) return; window.__focusShield = true;
-  var lock = null;
+  var lock = null, locking = false;
   function shieldOn(){
     try { return pomo && pomo.running && !pomo.paused && (store.pomodoro || {}).shield !== false; } catch (e) { return false; }
   }
@@ -57212,12 +57241,15 @@ try {
   }
   function acquire(){
     try {
-      if (!shieldOn() || lock || !navigator.wakeLock || !navigator.wakeLock.request) return;
+      if (!shieldOn() || lock || locking || !navigator.wakeLock || !navigator.wakeLock.request) return;
+      locking = true;   // one request in flight, ever - a poll + visibility race must not leak a second lock
       navigator.wakeLock.request('screen').then(function(l){
+        locking = false;
+        if (!shieldOn()) { try { l.release(); } catch (e) {} return; }
         lock = l;
         l.addEventListener('release', function(){ lock = null; });
-      }).catch(function(){});
-    } catch (e) {}
+      }).catch(function(){ locking = false; });
+    } catch (e) { locking = false; }
   }
   function release(){
     try { if (lock) { lock.release().catch(function(){}); lock = null; } } catch (e) {}
@@ -57228,22 +57260,17 @@ try {
   document.addEventListener('visibilitychange', function(){
     if (!document.hidden && shieldOn()) acquire();
   });
-  // the off-task guard: games ask first while a work block runs
-  var OFF_TASK = { arcade: 1 };
-  if (typeof go === 'function' && !go.__shield) {
-    var _go = go;
-    var wrapped = function(v){
-      try {
-        if (v && OFF_TASK[v.name] && inWork()) {
-          var left = Math.max(0, Math.round((pomo.remaining || 0) / 60));
-          if (!confirm('⚡ Focus block running — about ' + left + ' min left.\nGames can wait. Leave your studying anyway?')) return;
-        }
-      } catch (e) {}
-      return _go.apply(this, arguments);
-    };
-    wrapped.__shield = 1;
-    go = wrapped;
-  }
+  /* The off-task guard. The arcade never travels through go() - it is an
+     overlay opened by its own button - so the guard is a question the arcade
+     asks THIS module at its real entry points (a route-based wrapper here was
+     dead code, caught in review before it shipped a broken promise). */
+  window.__shieldAsk = function(label){
+    try {
+      if (!inWork()) return true;
+      var left = Math.max(0, Math.round((pomo.remaining || 0) / 60));
+      return confirm('⚡ Focus block running — about ' + left + ' min left.\n' + (label || 'This') + ' can wait. Leave your studying anyway?');
+    } catch (e) { return true; }
+  };
   // the daily nudge stays quiet during a block
   if (typeof Notification !== 'undefined' && Notification && !window.__shieldNotifWrapped) {
     window.__shieldNotifWrapped = true;
@@ -57274,8 +57301,15 @@ try {
 try {
   if (window.__quickBurst) return; window.__quickBurst = true;
   var PRIORITY = ['C959', 'D286', 'D684', 'D197'];
+  /* isLearningChapter still admits reference and drill chapters (worked
+     examples, solving drills, weak_drill/sim - which has no lesson at all).
+     A burst should land on a real unit lesson, so exclude those here too. */
+  var SKIP = /^(worked|challenge|solving\w*|weak_drill|review_missed|hard_drill|fresh_sim|pa_fresh|userdocs)$/;
   function isLearn(ch){
-    try { return (typeof isLearningChapter === 'function') ? isLearningChapter(ch) : true; } catch (e) { return true; }
+    try {
+      if (!ch || SKIP.test(String(ch.id))) return false;
+      return (typeof isLearningChapter === 'function') ? isLearningChapter(ch) : true;
+    } catch (e) { return false; }
   }
   function secTitleOf(cid, chId, secId){
     try {
@@ -57326,6 +57360,9 @@ try {
         pomo.remaining = 600;
         pomo.endsAt = Date.now() + 600000;
         pomo.burst = 1;
+        // pomoStart snapshots the topic from the CURRENT view (still home) -
+        // the burst's minutes belong to the section it is about to open
+        pomo.topic = { courseId: bite.courseId, chId: bite.chId, secId: bite.secId };
         pomoSaveLive(true);
         pomoUpdateUI();
       }
@@ -58855,7 +58892,7 @@ function mirrorRead(){
    2s mirror cadence stays cheap while she writes. */
 var KEY_INK = 'ink', _inkSig = '';
 function collectInk(){
-  var rec = {}, n = 0, len = 0;
+  var rec = {}, n = 0, len = 0, h = 0;
   try {
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
@@ -58863,10 +58900,15 @@ function collectInk(){
       if (k.indexOf('gsk:') === 0 || k.indexOf('gsl:') === 0) {
         var v = localStorage.getItem(k) || '';
         rec[k] = v; n++; len += v.length;
+        // per-key hash folded in, so "page A erased while page B grew by the
+        // same byte count" cannot masquerade as no change
+        var kh = 0;
+        for (var c = 0; c < k.length; c++) kh = (kh * 31 + k.charCodeAt(c)) | 0;
+        h = (h ^ (kh + v.length * 2654435761)) | 0;
       }
     }
   } catch (e) {}
-  return { rec: rec, sig: n + ':' + len };
+  return { rec: rec, sig: n + ':' + len + ':' + h };
 }
 function inkMirrorWrite(){
   try {
@@ -59014,18 +59056,41 @@ function runRecover(){
     } catch (e) {}
     // Handwriting: put back any gsk:/gsl: slot the mirror holds that
     // localStorage lost. Only MISSING keys are restored - a slot she still
-    // has locally is newer than the mirror and always wins - and the erase
-    // gate above has already run, so deleted ink stays deleted.
+    // has locally is newer than the mirror and always wins. Erases are
+    // honoured against the INK record's own timestamp (the store gate above
+    // uses the store record's, which refreshes on every save): a whole-ink or
+    // reset-all erase newer than the ink record skips the restore entirely,
+    // and a single page she erased is skipped by its own pageAt stamp - so
+    // deleted ink stays deleted, which is the failure she already lived once.
     inkMirrorRead().then(function(inkRec){
       try {
         if (!inkRec || !inkRec.data) return;
+        var E2 = window.__erase;
+        try {
+          var wipeAt = E2 ? Math.max(E2.at('all') || 0, E2.at('ink') || 0) : 0;
+          if (wipeAt && (inkRec.at || 0) < wipeAt) return;
+        } catch (e) {}
         var back = 0;
         for (var ik in inkRec.data) {
           if (!Object.prototype.hasOwnProperty.call(inkRec.data, ik)) continue;
-          if (localStorage.getItem(ik) === null) { localStorage.setItem(ik, inkRec.data[ik]); back++; }
+          try {
+            if (localStorage.getItem(ik) !== null) continue;
+            var rk = ik.slice(4);                       // both 'gsk:' and 'gsl:' are 4 chars
+            var pAt = 0;
+            try { pAt = (E2 && E2.pageAt) ? (E2.pageAt(rk) || 0) : 0; } catch (e) {}
+            if (pAt && (inkRec.at || 0) < pAt) continue; // she erased this page after the mirror
+            localStorage.setItem(ik, inkRec.data[ik]);
+            // repair the ink index too, so restored pages appear in
+            // export/backup and timestamp-based erase, not just on screen
+            if (ik.indexOf('gsk:') === 0) {
+              try { if (!store.gannoInkIndex) store.gannoInkIndex = {}; store.gannoInkIndex[rk] = 1; } catch (e) {}
+            }
+            back++;
+          } catch (e) {}                                 // per-key: one quota error must not kill the rest
         }
         if (back > 0) {
           window.__fortress.inkRecovered = back;
+          try { saveStore(); } catch (e) {}
           try { if (typeof toast === 'function') toast('Recovered ' + back + ' page' + (back === 1 ? '' : 's') + ' of handwriting from the backup mirror ✓', 6000); } catch (e) {}
         }
       } catch (e) {}
