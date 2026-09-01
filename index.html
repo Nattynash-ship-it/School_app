@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.544">
+<meta name="app-build" content="18.545">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62889,6 +62889,7 @@ var maxed=false;                // big writing mode: the dock overlays the lesso
 var lastPenTs=0;                // when the pen last touched the paper
 var autoGrowMute=0;             // addPage scrolls to the foot; that pull is not hers
 var toldMinimizeOnce=false;     // the reassurance toast fires once, not every tap
+var strokeEls=null;             // stroke object -> its <path> node, for erasing one at a time
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -63711,8 +63712,14 @@ function redraw(){
   if (!svg) return;
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   drawRules();
+  strokeEls = new Map();          // rebuilt fresh - eraseAt() maintains it after this
   for (var i = 0; i < strokes.length; i++) {
-    if (strokes[i] && strokes[i].points && strokes[i].points.length) svg.appendChild(el(strokes[i]));
+    var s = strokes[i];
+    if (s && s.points && s.points.length) {
+      var node = el(s);
+      svg.appendChild(node);
+      strokeEls.set(s, node);
+    }
   }
   // LAST, so it actually covers the notes. Painted after the ink, never before.
   if (covered) drawCover();
@@ -63742,24 +63749,51 @@ function clearPage(){
   if (!confirm('Clear the handwriting on this page? Your typed notes are kept.')) return;
   strokes = []; pageH = PAGE_H; sizeSvg(); redraw(); persist(); paintBadge();
 }
+/* Erasing drags the pen across the page and hit-tests on every point along
+   the way - many times a second on a page that can hold hundreds of strokes.
+   redraw() used to run on every one of those hits: tear down the WHOLE svg
+   (every rule line and every stroke) and rebuild it from scratch. On a page
+   with real work on it that is real, repeated DOM churn - visible as the
+   page flickering/jumping under the pen while erasing ("the notes screen
+   keeps moving as I erase"). Only the strokes that actually leave now come
+   out of the DOM, by direct reference via strokeEls - nothing else is
+   touched, so the page holds still. */
 function eraseAt(p){
   var before = strokes.length;
+  var removed = [];
   try {
-    if (typeof gannoEraseAtPoint === 'function') strokes = gannoEraseAtPoint(strokes, p, 18) || strokes;
-    else {
+    if (typeof gannoEraseAtPoint === 'function') {
+      var kept = gannoEraseAtPoint(strokes, p, 18) || strokes;
+      if (kept !== strokes) {
+        var keptSet = new Set(kept);
+        for (var i = 0; i < strokes.length; i++) if (!keptSet.has(strokes[i])) removed.push(strokes[i]);
+        strokes = kept;
+      }
+    } else {
       var r2 = 18 * 18, out = [];
-      for (var i = 0; i < strokes.length; i++) {
-        var hit = false, pts = strokes[i].points || [];
+      for (var k = 0; k < strokes.length; k++) {
+        var hit = false, pts = strokes[k].points || [];
         for (var j = 0; j < pts.length; j++) {
           var dx = pts[j].x - p.x, dy = pts[j].y - p.y;
           if (dx*dx + dy*dy <= r2) { hit = true; break; }
         }
-        if (!hit) out.push(strokes[i]);
+        if (hit) removed.push(strokes[k]); else out.push(strokes[k]);
       }
       strokes = out;
     }
   } catch (e) {}
-  if (strokes.length !== before) { redraw(); persist(); paintBadge(); }
+  if (strokes.length !== before) {
+    if (strokeEls) {
+      for (var m = 0; m < removed.length; m++) {
+        var node = strokeEls.get(removed[m]);
+        if (node && node.parentNode) node.parentNode.removeChild(node);
+        strokeEls.delete(removed[m]);
+      }
+    } else {
+      redraw();  // no map yet (first paint hasn't happened) - fall back once
+    }
+    persist(); paintBadge();
+  }
 }
 function wireInk(){
   svg.addEventListener('pointerdown', function(e){
@@ -63809,6 +63843,10 @@ function wireInk(){
     if (live && live.points.length >= 2) {
       strokes.push(live);
       if (grewIfNeeded()) redraw();
+      // redraw() (above) already remaps strokeEls fresh; otherwise register
+      // this stroke's already-on-screen node so an eraser hit can find it
+      // directly instead of falling back to a full rebuild.
+      else if (strokeEls) strokeEls.set(live, liveEl);
       persist(); paintBadge();
     } else if (liveEl && liveEl.parentNode) {
       liveEl.parentNode.removeChild(liveEl);       // a rest of the hand, not a mark
