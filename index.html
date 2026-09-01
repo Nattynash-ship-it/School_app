@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.540">
+<meta name="app-build" content="18.541">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62420,6 +62420,7 @@ var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
 var maxed=false;                // big writing mode: the dock overlays the lesson
 var lastPenTs=0;                // when the pen last touched the paper
+var autoGrowMute=0;             // addPage scrolls to the foot; that pull is not hers
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -63124,9 +63125,12 @@ function sizeSvg(){
   var base = (pagesEl && pagesEl.clientWidth) || svg.clientWidth || 0;
   if (!(base > 0)) return;
   var w = Math.round(base * paperScale());
-  svg.setAttribute('viewBox', '0 0 ' + UNITS + ' ' + pageH);
-  svg.style.width = w + 'px';
-  svg.style.height = (pageH / UNITS * w) + 'px';
+  var vb = '0 0 ' + UNITS + ' ' + pageH;
+  var wPx = w + 'px', hPx = (pageH / UNITS * w) + 'px';
+  /* write only what changed - a no-op sizeSvg must never nudge the scroll */
+  if (svg.getAttribute('viewBox') !== vb) svg.setAttribute('viewBox', vb);
+  if (svg.style.width !== wPx) svg.style.width = wPx;
+  if (svg.style.height !== hPx) svg.style.height = hPx;
 }
 function pt(e){
   var r = svg.getBoundingClientRect();
@@ -63253,6 +63257,7 @@ function redraw(){
 var GROW_AT = 58;               // units from the foot of the last page
 function addPage(){
   pageH = (pageCount() + 1) * PAGE_H;
+  autoGrowMute = Date.now();     // the scroll below lands on the foot - one page, not two
   sizeSvg(); redraw(); persist();
   try { if (pagesEl) pagesEl.scrollTop = pagesEl.scrollHeight; } catch (e) {}
 }
@@ -63398,6 +63403,58 @@ function wireInk(){
     pagesEl.addEventListener('touchstart', guardTouch, true);
     pagesEl.addEventListener('touchmove', guardTouch, true);
   }
+  wireScroll();
+}
+
+/* SCROLL STABILITY + MORE PAPER ("the notes are not stable, when I scroll
+   the notes move, I need more notes when I scroll as well").
+
+   Stability: at writing scale the paper is wider than the panel, and an iPad
+   overflow div does NOT axis-lock a touch pan - so a vertical scroll also
+   drifted sideways and the page slid diagonally under her finger. Each touch
+   scroll now locks to the axis the finger commits to first; the cross-axis
+   position is pinned for the rest of the gesture (momentum keeps the locked
+   direction because the cross velocity was pinned to zero).
+
+   More paper: reaching the foot of the last page adds the next page by
+   itself - no hunting for the ＋ button, which stays for adding a page
+   deliberately. Growth is ephemeral until she writes on it: persist() only
+   stores a page height alongside ink, so scrolled-but-empty pages are not
+   remembered across sessions. */
+function wireScroll(){
+  var axis = null, sx = 0, sy = 0, keepL = 0, keepT = 0, held = false;
+  pagesEl.addEventListener('touchstart', function(e){
+    held = true; axis = null;
+    if (e.touches && e.touches[0]) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
+    keepL = pagesEl.scrollLeft; keepT = pagesEl.scrollTop;
+  }, { passive: true });
+  pagesEl.addEventListener('touchmove', function(e){
+    if (!held || axis || !(e.touches && e.touches[0])) return;
+    var dx = Math.abs(e.touches[0].clientX - sx);
+    var dy = Math.abs(e.touches[0].clientY - sy);
+    if (dx < 6 && dy < 6) return;               // not committed yet
+    axis = (dy >= dx) ? 'y' : 'x';
+  }, { passive: true });
+  var end = function(){ held = false; axis = null; };
+  pagesEl.addEventListener('touchend', end, { passive: true });
+  pagesEl.addEventListener('touchcancel', end, { passive: true });
+  var growLock = 0;
+  pagesEl.addEventListener('scroll', function(){
+    if (held && axis) {
+      if (axis === 'y') { if (pagesEl.scrollLeft !== keepL) pagesEl.scrollLeft = keepL; }
+      else { if (pagesEl.scrollTop !== keepT) pagesEl.scrollTop = keepT; }
+    }
+    try {
+      if (tab !== 'write' || covered) return;
+      if (pagesEl.scrollTop + pagesEl.clientHeight < pagesEl.scrollHeight - 24) return;
+      var now = Date.now();
+      if (now - growLock < 700) return;          // one page per pull, not a burst
+      if (now - autoGrowMute < 900) return;      // the ＋ button's own jump to the foot
+      growLock = now;
+      pageH = (pageCount() + 1) * PAGE_H;
+      sizeSvg(); redraw();
+    } catch (e) {}
+  }, { passive: true });
 }
 
 /* ---------- resize grip ---------- */
