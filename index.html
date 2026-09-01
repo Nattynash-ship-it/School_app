@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.543">
+<meta name="app-build" content="18.544">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -62888,6 +62888,7 @@ var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides le
 var maxed=false;                // big writing mode: the dock overlays the lesson
 var lastPenTs=0;                // when the pen last touched the paper
 var autoGrowMute=0;             // addPage scrolls to the foot; that pull is not hers
+var toldMinimizeOnce=false;     // the reassurance toast fires once, not every tap
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -63339,7 +63340,7 @@ function build(){
       '</div>' +
       '<div id="mn-tools"></div>' +
       '<span id="mn-where"></span>' +
-      '<button id="mn-x" aria-label="Close the notebook">&times;</button>' +
+      '<button id="mn-x" aria-label="Minimize — hide the notebook while you read; tap the pencil button to bring it right back, nothing is lost" title="Minimize">&times;</button>' +
     '</div>' +
     '<div id="mn-pages"><svg id="mn-ink" xmlns="http://www.w3.org/2000/svg" ' +
       'preserveAspectRatio="xMidYMin meet"></svg></div>' +
@@ -63367,7 +63368,7 @@ function build(){
     var b = ev.target.closest('[data-tab]'); if (!b) return;
     setTab(b.getAttribute('data-tab'));
   });
-  dock.querySelector('#mn-x').addEventListener('click', function(){ setOpen(false); });
+  dock.querySelector('#mn-x').addEventListener('click', doMinimize);
   dock.querySelector('#mn-save').addEventListener('click', commit);
   taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); });
   taEl.addEventListener('keydown', function(e){
@@ -64111,6 +64112,20 @@ function reanchor(){
   run();
   setTimeout(run, 60);
 }
+/* "an option to minimize it out of sight when reading" - the notebook already
+   hides completely and reopens exactly where she left it (curKey, strokes,
+   scroll and the active tab all live outside isOpen), so hiding it was never
+   the gap. The gap was that × read as CLOSE - final, maybe-destructive - with
+   nothing telling her it comes right back. This wraps the same hide with the
+   reassurance, once, the first time she uses it. */
+function doMinimize(){
+  setOpen(false);
+  if (!toldMinimizeOnce) {
+    toldMinimizeOnce = true;
+    try { if (typeof toast === 'function')
+      toast('Notebook minimized — tap 📝 to bring it right back, nothing is lost'); } catch (e) {}
+  }
+}
 function setOpen(next){
   build();
   next = !!next;
@@ -64229,7 +64244,7 @@ badgeEl = fab.querySelector('.mn-badge');
     try { var s = String((window.getSelection && window.getSelection().toString()) || '').trim(); if (s) pendingSel = s; } catch (e) {}
   }, true);
 });
-fab.addEventListener('click', function(){ setOpen(!isOpen); });
+fab.addEventListener('click', function(){ if (isOpen) doMinimize(); else setOpen(true); });
 
 function place(){
   try {
