@@ -20699,7 +20699,22 @@ async function aiQuestionsForSection(bodyText, sectionTitle, count) {
  text = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
  const a = text.indexOf('{'), b = text.lastIndexOf('}');
  if (a === -1 || b === -1) throw new Error('no json in response');
- const data = JSON.parse(text.slice(a, b + 1));
+ let data;
+ try { data = JSON.parse(text.slice(a, b + 1)); }
+ catch (e) {
+  // Trailing error text can contain a '}' that corrupts the first-to-last
+  // slice of an otherwise COMPLETE response - re-scan with brace balancing.
+  let depth = 0, end = -1, inStr = false, escp = false;
+  for (let i = a; i < text.length; i++) {
+   const ch = text[i];
+   if (inStr) { if (escp) escp = false; else if (ch === '\\') escp = true; else if (ch === '"') inStr = false; continue; }
+   if (ch === '"') inStr = true;
+   else if (ch === '{') depth++;
+   else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) throw e;
+  data = JSON.parse(text.slice(a, end + 1));
+ }
  const raw = (data && Array.isArray(data.questions)) ? data.questions : [];
  const out = [];
  for (const q of raw) {
@@ -20823,11 +20838,14 @@ async function processUploadedPDF(file, courseName) {
   const secList = [];
   structure.forEach(ch => ch.sections.forEach(sec => secList.push(sec)));
   const AI_CAP = 30;                    // a 200-section textbook stays affordable
+  // CONSECUTIVE failures give up (helper down / offline); a success resets
+  // the count, so one transient hiccup never flips a whole upload to the
+  // weak regex generator.
   let doneCount = 0, aiFails = 0, aiCount = 0;
   const genFor = async (sec, idx) => {
    const bodyText = sec.body.join(' ');
-   if (idx < AI_CAP && aiFails < 2 && bodyText.length >= 200) {
-    try { sec.questions = await aiQuestionsForSection(bodyText, sec.title, 12); aiCount++; }
+   if (idx < AI_CAP && aiFails < 3 && bodyText.length >= 200) {
+    try { sec.questions = await aiQuestionsForSection(bodyText, sec.title, 10); aiCount++; aiFails = 0; }
     catch (e) { aiFails++; console.log('[PDF] AI generation failed for a section:', e && e.message); }
    }
    if (!sec.questions || !sec.questions.length) sec.questions = generateQuestionsForSection(bodyText, sec.title, 12);
@@ -20839,7 +20857,7 @@ async function processUploadedPDF(file, courseName) {
    while (cursor < secList.length) { const i = cursor++; await genFor(secList[i], i); }
   }));
   const questionsGenerated = secList.reduce((s, x) => s + ((x.questions || []).length), 0);
-  if (aiFails >= 2 && aiCount === 0) {
+  if (aiFails >= 3 && aiCount === 0) {
    setStatus(`AI helper unreachable — used the built-in generator (simpler questions). ${questionsGenerated} questions.`);
    await new Promise(r => setTimeout(r, 900));
   }
