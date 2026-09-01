@@ -62,6 +62,27 @@ const MINDMAP_SYSTEM = [
   "lesson does not support. Plain Unicode for any math (n squared as n²).",
 ].join(" ");
 
+// Questions mode: real exam-style multiple-choice questions generated from a
+// section of the user's own uploaded material. STRICT JSON, parsed directly
+// by the client's PDF-course builder.
+const QUESTIONS_SYSTEM = [
+  "You write exam-style multiple-choice questions from study material the",
+  "student uploaded. Output STRICT JSON and nothing else - no prose, no",
+  "markdown fences. Schema:",
+  '{"questions":[{"topic":"2-4 word concept","text":"the question",',
+  '"options":["A","B","C","D"],"correct":0,"explain":"why the right answer',
+  'is right, in 1-3 sentences grounded in the source","distractors":{"1":"why',
+  'this specific option is wrong","2":"...","3":"..."},"difficulty":"easy|medium|hard"}]}',
+  "Rules: every question tests UNDERSTANDING (application, comparison,",
+  "why/when, working a small example) - never trivia about the wording of the",
+  "source. Exactly 4 options per question; exactly one correct; distractors",
+  "must be plausible misconceptions a real student would hold, never jokes or",
+  "obvious throwaways; spread the correct index evenly across positions; give",
+  "a distractors entry for every wrong option, keyed by its option index as a",
+  "string. Ground everything in the provided source - if the source doesn't",
+  "support a fact, don't test it. Plain Unicode for math (× ² ≤ →), no LaTeX.",
+].join(" ");
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -90,7 +111,8 @@ export default async (req) => {
 
   const podcast = body.mode === "podcast";
   const mindmap = body.mode === "mindmap";
-  const generated = podcast || mindmap;
+  const questions = body.mode === "questions";
+  const generated = podcast || mindmap || questions;
 
   // Bound everything the client can send: last 12 turns, 8KB per turn,
   // 16KB of lesson context. Keeps a single question to a few cents.
@@ -112,15 +134,18 @@ export default async (req) => {
   if (generated && !lesson) return json(400, { error: "no_lesson" });
 
   const system = [
-    { type: "text", text: podcast ? PODCAST_SYSTEM : (mindmap ? MINDMAP_SYSTEM : TUTOR_SYSTEM), cache_control: { type: "ephemeral" } },
+    { type: "text", text: podcast ? PODCAST_SYSTEM : (mindmap ? MINDMAP_SYSTEM : (questions ? QUESTIONS_SYSTEM : TUTOR_SYSTEM)), cache_control: { type: "ephemeral" } },
   ];
   if (lesson) {
     system.push({
       type: "text",
-      text: (generated ? "The lesson" : "The student is currently reading this lesson") +
+      text: (questions ? "The source material" : (generated ? "The lesson" : "The student is currently reading this lesson")) +
         (title ? ` ("${title}")` : "") + ":\n\n" + lesson,
     });
   }
+
+  // How many questions to write - bounded so one section stays a few cents.
+  const qCount = Math.max(4, Math.min(15, parseInt(body.count, 10) || 12));
 
   const client = new Anthropic({ apiKey: key });
 
@@ -130,14 +155,18 @@ export default async (req) => {
   // max_tokens 2048 caps the cost of any single answer.
   const stream = client.beta.messages.stream({
     model: "claude-opus-5",
-    max_tokens: podcast ? 3500 : (mindmap ? 2000 : 2048),
+    max_tokens: podcast ? 3500 : (mindmap ? 2000 : (questions ? 4000 : 2048)),
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "medium" },
     system,
     messages: podcast
       ? [{ role: "user", content: "Write today's episode about the lesson." }]
-      : (mindmap ? [{ role: "user", content: "Produce the mind map JSON for the lesson." }] : messages),
+      : (mindmap
+        ? [{ role: "user", content: "Produce the mind map JSON for the lesson." }]
+        : (questions
+          ? [{ role: "user", content: "Write exactly " + qCount + " questions from the source material as JSON." }]
+          : messages)),
   });
 
   const enc = new TextEncoder();
