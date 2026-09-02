@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.545">
+<meta name="app-build" content="18.546">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -5218,6 +5218,8 @@ body[data-route="home"] #wb-fab, body[data-route="today"] #wb-fab { display: non
 .dash-badge-active { background: var(--accent); color: #fff; }
 .dash-badge-locked { background: var(--surface-3); color: var(--text-3); }
 .dash-badge-paused { background: rgba(245,158,11,0.9); color: #fff; }
+.dash-badge-passed { background: #22c55e; color: #fff; }
+.dash-card-passed { background: linear-gradient(135deg, rgba(34,197,94,0.10), transparent); border-radius: 14px; }
 /* Card layout: the title & meta get the full-width left column so the name reads on
    its own; the readiness ring stays a compact item at the top of the right edge; and
    the ACTIVE/LOCKED/PAUSED status badge moves to the BOTTOM-RIGHT corner. Nothing
@@ -14207,8 +14209,9 @@ function adjacentSections(courseId, chId, secId) {
 
 function smartNextSection() {
  // Heuristic: prefer last viewed if not mastered; else find lowest-progress active course's first unattempted section
+ const passedCheck = c => typeof isCoursePassed === 'function' && isCoursePassed(c);
  const lv = store.lastViewed;
- if (lv && COURSES[lv.courseId] && COURSES[lv.courseId].active) {
+ if (lv && COURSES[lv.courseId] && COURSES[lv.courseId].active && !passedCheck(lv.courseId)) {
  const status = sectionStatus(lv.courseId, lv.chId, lv.secId);
  if (status !== 'mastered') {
  const ch = COURSES[lv.courseId].chapters.find(c => c.id === lv.chId);
@@ -14218,7 +14221,7 @@ function smartNextSection() {
  }
  // Find first unattempted section in most-progressed active course (so they keep momentum)
  const candidates = Object.values(COURSES)
- .filter(c => c.active && c.chapters.length)
+ .filter(c => c.active && c.chapters.length && !passedCheck(c.id))
  .map(c => ({ c, prog: classProgress(c.id) }))
  .filter(x => x.prog.pct < 100)
  .sort((a, b) => b.prog.pct - a.prog.pct);
@@ -18432,6 +18435,9 @@ function renderClass(courseId) {
   } catch(_ge) {}
   const c = COURSES[courseId];
  const prog = classProgress(courseId);
+ const passedInfo = (typeof isCoursePassed === 'function' && isCoursePassed(courseId))
+   ? ((store.coursesPassed && store.coursesPassed[courseId]) || {})
+   : null;
  const wrap = document.createElement(`div`);
  wrap.className = `app`;
  const folder = getCourseFolder(courseId);
@@ -18455,6 +18461,19 @@ function renderClass(courseId) {
  <p class="label label-accent">CLASS</p>
  <h1 style="margin-top: 4px;">${esc(c.name)}</h1>
  <p class="desc">${esc(c.desc)}</p>
+
+ ${passedInfo ? `
+ <div class="class-passed-banner" style="display:flex; align-items:center; gap:12px; padding:14px 16px; margin-bottom:14px; border-radius:14px; background:linear-gradient(120deg, rgba(34,197,94,0.16), rgba(94,234,212,0.10)); border:1px solid rgba(34,197,94,0.4);">
+ <div style="font-size:28px; line-height:1;">✅</div>
+ <div style="flex:1; min-width:0;">
+ <div style="font-weight:800; font-size:15px; color:var(--text);">Exam passed</div>
+ <div style="font-size:12px; color:var(--text-3);">${passedInfo.at ? 'Marked passed ' + esc(fmtDate(passedInfo.at)) : 'Congratulations!'} — moved out of your active courses.</div>
+ </div>
+ <button class="dash-act" data-unpass-course style="flex:0 0 auto;">Undo</button>
+ </div>
+ ` : `
+ <button class="dash-act" data-mark-passed style="width:100%; margin-bottom:14px; padding:11px; border-radius:10px; background:var(--surface); border:1.5px dashed var(--border-strong,var(--border)); color:var(--text-2); font-weight:700; font-size:13.5px; cursor:pointer;">✅ I passed this exam</button>
+ `}
 
  <div class="readiness">
  <div class="readiness-row">
@@ -18617,6 +18636,25 @@ function renderClass(courseId) {
  store.folderOpen[folderId] = true;
  try { saveStore(); } catch (_) {}
  go({ name: 'home', scrollToFolder: folderId });
+ });
+ wrap.querySelector('[data-mark-passed]')?.addEventListener('click', () => {
+ markCoursePassed(courseId, true);
+ try { if (typeof confettiBurst === 'function') confettiBurst(); } catch (e) {}
+ try { toast(`🎉 ${c.code || courseId} marked passed — moved to Mastered`); } catch (e) {}
+ // render(), not go(): marking passed can drop the course to a state the
+ // navigation guard treats as locked, and go() to a locked course opens the
+ // "activate first" modal instead of the page - render() just redraws the
+ // view already on screen, so the fresh banner shows without that ambush.
+ render();
+ });
+ wrap.querySelector('[data-unpass-course]')?.addEventListener('click', () => {
+ if (!confirm(`Move ${c.code || courseId} back to your active courses? This undoes marking it passed.`)) return;
+ markCoursePassed(courseId, false);
+ // If she's at her active-course limit, the reactivation inside
+ // markCoursePassed already declined and toasted why - saying "moved back"
+ // on top of that would be a false success message while it sits locked.
+ if (getCourseState(courseId) === 'active') toast('Moved back to your courses');
+ render();
  });
 
  return wrap;
@@ -30126,6 +30164,46 @@ function isProjectCourse(courseId) {
 }
 
 // ==================== COURSE STATE HELPERS ====================
+// A course she actually PASSED (the real exam, not the in-app quiz average)
+// is tracked separately from courseState/quiz-progress: it is a deliberate,
+// permanent fact she records once, distinct from "mastered" (>=80% quiz
+// average) which can rise and fall on its own.
+function isCoursePassed(courseId) {
+ return !!(store.coursesPassed && store.coursesPassed[courseId]);
+}
+function markCoursePassed(courseId, passed) {
+ if (!store.coursesPassed) store.coursesPassed = {};
+ if (passed) {
+ store.coursesPassed[courseId] = { at: Date.now() };
+ // Take it out of the active rotation - "remove it from list" - and free
+ // the slot for the next course. A dedicated state (not 'archived', which
+ // reads as "come back to this later") so nothing implies she isn't done.
+ if (!store.courseState) store.courseState = {};
+ store.courseState[courseId] = 'passed';
+ store.activeOrder = (store.activeOrder || []).filter(c => c !== courseId);
+ if (!store.courseActivated) store.courseActivated = {};
+ store.courseActivated[courseId] = false;
+ // Keep the study plan / reward ladder in agreement: this class is done.
+ try {
+ if (Array.isArray(store.classPlan)) {
+ const row = store.classPlan.find(r => r.id === courseId || (!r.id && r.code === ((COURSES[courseId] || {}).code)));
+ if (row) row.done = true;
+ }
+ } catch (e) {}
+ } else {
+ delete store.coursesPassed[courseId];
+ // Undo puts her back where she was: actively studying it. If a later
+ // course has since filled the slot passing this one freed, setCourseState
+ // enforces the limit itself (toast + stay locked) rather than silently
+ // bumping something else off her active list.
+ if (getCourseState(courseId) === 'passed') {
+ delete store.courseState[courseId];
+ store.activeOrder = (store.activeOrder || []).filter(c => c !== courseId);
+ setCourseState(courseId, 'active');
+ }
+ }
+ saveStore();
+}
 function getCourseState(courseId) {
  // Projects are never locked
  if (isProjectCourse(courseId)) {
@@ -30134,7 +30212,7 @@ function getCourseState(courseId) {
  return 'active'; // projects default to active (unlocked)
  }
  const s = store.courseState[courseId];
- if (s === 'active' || s === 'paused' || s === 'archived') return s;
+ if (s === 'active' || s === 'paused' || s === 'archived' || s === 'passed') return s;
  return 'locked';
 }
 function activeCourseCount() {
@@ -30152,6 +30230,11 @@ function setCourseState(courseId, newState) {
  }
  store.courseState[courseId] = 'active';
  if (!store.activeOrder.includes(courseId)) store.activeOrder.push(courseId);
+ // Activating a course - through ANY entry point, not just markCoursePassed's
+ // own Undo - means she is studying it again, which cannot coexist with a
+ // real pass still being on record. Keeps coursesPassed and courseState
+ // from drifting out of sync no matter which button set this in motion.
+ if (store.coursesPassed && store.coursesPassed[courseId]) delete store.coursesPassed[courseId];
  } else if (newState === 'locked') {
  delete store.courseState[courseId];
  store.activeOrder = store.activeOrder.filter(c => c !== courseId);
@@ -34239,6 +34322,9 @@ function dashEffectiveActive(cid, base) {
  return !!base;
 }
 function dashStatus(cr) {
+ // A real pass always reads as Mastered - never Locked or Paused underneath,
+ // and never falls back to In progress if the quiz average later drifts.
+ if (typeof isCoursePassed === 'function' && isCoursePassed(cr.id)) return 'mastered';
  if (!dashEffectiveActive(cr.id, cr.active)) return 'locked';
  if (store.coursePaused && store.coursePaused[cr.id]) return 'paused';
  const prog = classProgress(cr.id);
@@ -34263,18 +34349,23 @@ function dashCategory(cr) {
 }
 function dashCard(cr) {
  const st = dashStatus(cr);
+ const passed = typeof isCoursePassed === 'function' && isCoursePassed(cr.id);
  const eff = st !== 'locked';
  const shown = Object.assign({}, cr, { active: eff });
  // Any non-locked, non-paused course is active — show the ACTIVE badge on all
  // of them (not just pinned ones) so an activated course is clearly marked.
- const badge = st === 'locked' ? '<span class="dash-badge dash-badge-locked">🔒 LOCKED</span>'
+ // A real pass gets its own badge, ahead of everything else - it is a fact,
+ // not a quiz-average snapshot that could otherwise say ACTIVE right after.
+ const badge = passed ? '<span class="dash-badge dash-badge-passed">✅ PASSED</span>'
+  : st === 'locked' ? '<span class="dash-badge dash-badge-locked">🔒 LOCKED</span>'
   : st === 'paused' ? '<span class="dash-badge dash-badge-paused">⏸ PAUSED</span>'
   : '<span class="dash-badge dash-badge-active">ACTIVE</span>';
  let actions = '';
- if (st === 'locked') actions = `<button class="dash-act primary" data-dash-activate="${cr.id}">Activate</button>`;
+ if (passed) actions = `<button class="dash-act" data-dash-unpass="${cr.id}">Undo</button>`;
+ else if (st === 'locked') actions = `<button class="dash-act primary" data-dash-activate="${cr.id}">Activate</button>`;
  else if (st === 'paused') actions = `<button class="dash-act primary" data-dash-resume="${cr.id}">Resume</button>`;
  else actions = `<button class="dash-act" data-dash-pause="${cr.id}">Pause</button>`;
- return `<div class="dash-card" data-cid="${cr.id}" data-status="${st}" data-cname="${esc((cr.name||'').toLowerCase())}">${badge}${renderClassCard(shown)}<div class="dash-card-actions">${actions}</div></div>`;
+ return `<div class="dash-card${passed ? ' dash-card-passed' : ''}" data-cid="${cr.id}" data-status="${st}" data-cname="${esc((cr.name||'').toLowerCase())}">${badge}${renderClassCard(shown)}<div class="dash-card-actions">${actions}</div></div>`;
 }
 function showClassPicker() {
  let sheet = document.querySelector('.pomo-sheet.dash-picker');
@@ -34435,6 +34526,17 @@ function renderHomeV3() {
  }));
  content.querySelectorAll('[data-dash-pause]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); if (!store.coursePaused) store.coursePaused = {}; store.coursePaused[b.getAttribute('data-dash-pause')] = true; saveStore(); toast('Paused — resume anytime'); render(); }));
  content.querySelectorAll('[data-dash-resume]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); if (store.coursePaused) delete store.coursePaused[b.getAttribute('data-dash-resume')]; saveStore(); toast('Resumed'); render(); }));
+ content.querySelectorAll('[data-dash-unpass]').forEach(b => b.addEventListener('click', e => {
+  e.stopPropagation();
+  const cid = b.getAttribute('data-dash-unpass');
+  const c = COURSES[cid];
+  if (!confirm(`Move ${(c && c.code) || cid} back to your active courses? This undoes marking it passed.`)) return;
+  markCoursePassed(cid, false);
+  // Same as the class page: don't claim success over the limit-block toast
+  // markCoursePassed already showed.
+  if (getCourseState(cid) === 'active') toast('Moved back to your courses');
+  render();
+ }));
  content.querySelectorAll('[data-pin-toggle]').forEach(el => el.addEventListener('click', e => {
   e.stopPropagation(); e.preventDefault();
   const cid = el.getAttribute('data-pin-toggle');
@@ -57337,11 +57439,14 @@ try {
       return (s && s.title) || (ch && ch.title) || '';
     } catch (e) { return ''; }
   }
+  function isPassed(cid){
+    try { return typeof isCoursePassed === 'function' && isCoursePassed(cid); } catch (e) { return false; }
+  }
   function pickBite(){
-    var order = PRIORITY.filter(function(cid){ return COURSES[cid] && COURSES[cid].active !== false; });
+    var order = PRIORITY.filter(function(cid){ return COURSES[cid] && COURSES[cid].active !== false && !isPassed(cid); });
     try {
       Object.keys(COURSES).forEach(function(cid){
-        if (order.indexOf(cid) === -1 && COURSES[cid] && COURSES[cid].active) order.push(cid);
+        if (order.indexOf(cid) === -1 && COURSES[cid] && COURSES[cid].active && !isPassed(cid)) order.push(cid);
       });
     } catch (e) {}
     for (var i = 0; i < order.length; i++) {
