@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.547">
+<meta name="app-build" content="18.548">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -5505,16 +5505,6 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
 .ganno-bar { background: var(--surface) !important; border: 1px solid var(--border) !important;
   border-radius: 14px !important; box-shadow: 0 6px 22px rgba(0,0,0,0.14), 0 1px 3px rgba(0,0,0,0.08) !important;
   margin: 6px auto !important; max-width: 720px; padding: 3px 8px !important; }
-.gn-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; flex: 0 0 auto; align-self: center; }
-.gn-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
-  flex: 0 0 auto; align-self: center; padding: 0; transition: transform 0.12s; }
-.gn-dot.on { border-color: var(--accent); transform: scale(1.15); box-shadow: 0 0 0 2px var(--surface); }
-.gn-w { width: 24px; height: 24px; border-radius: 50%; background: transparent; border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; flex: 0 0 auto; align-self: center; padding: 0; }
-.gn-w i { border-radius: 50%; background: var(--text-2); display: block; }
-.gn-w.on i { background: var(--accent); }
-.gn-w.on { background: var(--surface-2); }
-
 /* ═══ MOTIVATION CARD + JUICE ═══ */
 .mot-card { display: flex; align-items: center; gap: 16px; padding: 14px 16px; margin: 0 0 14px;
   border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-card); }
@@ -27833,6 +27823,91 @@ function gannoSaveStrokes(routeKey, strokes) {
  if (_gannoSaveTimer) clearTimeout(_gannoSaveTimer);
  _gannoSaveTimer = setTimeout(gannoFlushSave, 1200);
 }
+/* UNDO THAT UNDOES WHAT SHE DID. Undo used to be "delete the last stroke in
+   the list" - after an erase that deleted a DIFFERENT stroke than the one she
+   was trying to get back, and nothing brought erased ink back at all. Each
+   page now keeps a journal of actions - a stroke drawn, or one eraser gesture
+   with everything it removed - and Undo steps back through THAT, with Redo
+   stepping forward again. Per page, this session only; the journal is not
+   stored. Restored ink gets a fresh _ts so a device sync treats it as drawn
+   after the erase rather than as ink the erase should have taken. */
+function gannoHist(key) {
+ if (!ganno._hist) ganno._hist = {};
+ var k = key || ganno.routeKey || '';
+ if (!ganno._hist[k]) ganno._hist[k] = { past: [], future: [] };
+ return ganno._hist[k];
+}
+function gannoLogOp(op, key) {
+ try {
+ var h = gannoHist(key);
+ h.past.push(op);
+ if (h.past.length > 200) h.past.shift();
+ h.future = [];
+ } catch (e) {}
+}
+function gannoHistReset(key) { try { var h = gannoHist(key); h.past = []; h.future = []; } catch (e) {} }
+function gannoRemovedFrom(before, after) {
+ var keep = new Set(after), out = [];
+ for (var i = 0; i < before.length; i++) if (!keep.has(before[i])) out.push({ s: before[i], i: i });
+ return out;
+}
+function gannoApplyOp(op, direction) {   // direction: 'undo' | 'redo'
+ var strokes = gannoGetStrokes(ganno.routeKey);
+ var addBack = function(list) {
+ list.slice().sort(function(a, b){ return a.i - b.i; }).forEach(function(r){
+ if (strokes.indexOf(r.s) !== -1) return;
+ try { r.s._ts = Date.now(); } catch (e) {}
+ strokes.splice(Math.min(r.i, strokes.length), 0, r.s);
+ });
+ };
+ var takeOut = function(list) {
+ list.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
+ };
+ if (op.op === 'draw') {
+ if (direction === 'undo') takeOut([{ s: op.s, i: 0 }]);
+ else addBack([{ s: op.s, i: (op.i != null ? op.i : strokes.length) }]);
+ } else if (op.op === 'erase') {
+ if (direction === 'undo') addBack(op.removed); else takeOut(op.removed);
+ }
+ gannoSaveStrokes(ganno.routeKey, strokes);
+ gannoRender(strokes, null);
+}
+function gannoUndo() {
+ var h = gannoHist(ganno.routeKey);
+ var strokes = gannoGetStrokes(ganno.routeKey);
+ var curOrient = gannoOrient();
+ if (!h.past.length) {
+ // Nothing journaled this session (ink from an earlier visit): fall back to
+ // the last stroke visible in THIS orientation - never ink hidden in the
+ // other one - and journal it so Redo can bring it back.
+ for (var i = strokes.length - 1; i >= 0; i--) {
+ var o = strokes[i] && strokes[i].orient;
+ if (!o || o === curOrient) {
+ var s = strokes[i];
+ strokes.splice(i, 1);
+ h.future.push({ op: 'draw', s: s, i: i });
+ gannoSaveStrokes(ganno.routeKey, strokes);
+ gannoRender(strokes, null);
+ return true;
+ }
+ }
+ return false;
+ }
+ var op = h.past[h.past.length - 1];
+ if (op.op === 'draw' && op.s && op.s.orient && op.s.orient !== curOrient) return false;
+ h.past.pop();
+ gannoApplyOp(op, 'undo');
+ h.future.push(op);
+ return true;
+}
+function gannoRedo() {
+ var h = gannoHist(ganno.routeKey);
+ if (!h.future.length) return false;
+ var op = h.future.pop();
+ gannoApplyOp(op, 'redo');
+ h.past.push(op);
+ return true;
+}
 // Guarantee the deferred annotation save is flushed if the app is closed/backgrounded.
 window.addEventListener('pagehide', function(){ if (_gannoSaveTimer) gannoPersistNow(); });
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && _gannoSaveTimer) gannoPersistNow(); });
@@ -28383,7 +28458,9 @@ function gannoPointerDown(e) {
  if (ganno.tool === 'sticker') {
  // Stamp the chosen sticker where the pen/finger lands; commit immediately.
  var _stl = gannoGetStrokes(ganno.routeKey);
- _stl.push({ type: 'sticker', emoji: ganno.stickerEmoji || '\u2b50', size: 34, color: '#000', width: 1, points: [pt], anchor: gannoGetAnchor(), orient: gannoOrient() });
+ var _stk = { type: 'sticker', emoji: ganno.stickerEmoji || '\u2b50', size: 34, color: '#000', width: 1, points: [pt], anchor: gannoGetAnchor(), orient: gannoOrient() };
+ _stl.push(_stk);
+ gannoLogOp({ op: 'draw', s: _stk, i: _stl.length - 1 });
  gannoSaveStrokes(ganno.routeKey, _stl);
  gannoRender(_stl, null);
  ganno.current = null;
@@ -28394,7 +28471,9 @@ function gannoPointerDown(e) {
  if (ganno.tool === 'eraser') {
  const strokes = gannoGetStrokes(ganno.routeKey);
  const remaining = gannoEraseAtPointAnchored(strokes, pt, 16);
+ ganno._eraseBatch = [];   // one eraser gesture = one Undo step
  if (remaining.length !== strokes.length) {
+ ganno._eraseBatch = gannoRemovedFrom(strokes, remaining);
  gannoSaveStrokes(ganno.routeKey, remaining);
  // INCREMENTAL ERASE: remove only the erased strokes' elements (no full rebuild).
  const _keep = new Set(remaining.map(function(s){ return s._id; }));
@@ -28448,6 +28527,8 @@ function gannoPointerMove(e) {
  const strokes = gannoGetStrokes(ganno.routeKey);
  const remaining = gannoEraseAtPointAnchored(strokes, pt, 16);
  if (remaining.length !== strokes.length) {
+ if (!ganno._eraseBatch) ganno._eraseBatch = [];
+ Array.prototype.push.apply(ganno._eraseBatch, gannoRemovedFrom(strokes, remaining));
  gannoSaveStrokes(ganno.routeKey, remaining);
  // INCREMENTAL ERASE: remove only the erased strokes' elements (no full rebuild).
  const _keep = new Set(remaining.map(function(s){ return s._id; }));
@@ -28512,6 +28593,10 @@ function gannoPointerUp(e) {
  }
  ganno.drawing = false;
  ganno.pointerId = null;
+ // The eraser gesture is over: everything it took goes into the journal as
+ // ONE step, so a single Undo brings the whole rub-out back.
+ if (ganno._eraseBatch && ganno._eraseBatch.length) gannoLogOp({ op: 'erase', removed: ganno._eraseBatch });
+ ganno._eraseBatch = null;
  if (ganno.current) {
  const c = ganno.current;
  let valid = false;
@@ -28584,6 +28669,7 @@ function gannoPointerUp(e) {
  // device can spare ink drawn on the other one after it.
  c._ts = Date.now();
  strokes.push(c);
+ gannoLogOp({ op: 'draw', s: c, i: strokes.length - 1 });
  gannoSaveStrokes(ganno.routeKey, strokes);
  // INCREMENTAL COMMIT: finalize the existing live path in place (O(1)) instead
  // of rebuilding every stroke. Falls back to a full render for shapes/tables.
@@ -28888,6 +28974,7 @@ function gannoRenderToolbar() {
  <line x1="24.7" y1="14" x2="24.7" y2="42" stroke="#34d399" stroke-width="2"/>
  </svg>`,
  undo: '<svg viewBox="0 0 24 24"><path d="M3 10h12a5 5 0 0 1 0 10h-3"/><path d="M3 10l5-5M3 10l5 5"/></svg>',
+ redo: '<svg viewBox="0 0 24 24"><path d="M21 10H9a5 5 0 0 0 0 10h3"/><path d="M21 10l-5-5M21 10l-5 5"/></svg>',
  clear: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4h6v3"/></svg>',
  clearAll: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4h6v3"/><line x1="3" y1="3" x2="21" y2="21"/></svg>',
  hide: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
@@ -28972,6 +29059,7 @@ function gannoRenderToolbar() {
  ${widthSwatchHTML}
  <div class="ganno-divider"></div>
  <button class="ganno-action" data-act="undo" title="Undo">${icons.undo}</button>
+ <button class="ganno-action" data-act="redo" title="Redo">${icons.redo}</button>
  <button class="ganno-action" data-act="clear" title="Clear this page">${icons.clear}</button>
  <button class="ganno-action" data-act="clearall" title="Clear ALL annotations everywhere">${icons.clearAll}</button>
  <button class="ganno-action" data-act="settings" title="Settings">${icons.settings}</button>
@@ -28995,28 +29083,15 @@ function gannoRenderToolbar() {
  gannoRenderToolbar();
  }));
  // Action clicks
- primary.querySelector('[data-act="undo"]').addEventListener('click', () => {
- const strokes = gannoGetStrokes(ganno.routeKey);
- if (strokes.length === 0) return;
- // Per-orientation ink: undo the last stroke visible in THIS orientation —
- // never silently delete ink that's hidden in the other orientation.
- const curOrient = gannoOrient();
- let undoIdx = -1;
- for (let i = strokes.length - 1; i >= 0; i--) {
- const o = strokes[i] && strokes[i].orient;
- if (!o || o === curOrient) { undoIdx = i; break; }
- }
- if (undoIdx === -1) return;
- strokes.splice(undoIdx, 1);
- gannoSaveStrokes(ganno.routeKey, strokes);
- gannoRender(strokes, null);
- });
+ primary.querySelector('[data-act="undo"]').addEventListener('click', () => { gannoUndo(); });
+ primary.querySelector('[data-act="redo"]').addEventListener('click', () => { gannoRedo(); });
  primary.querySelector('[data-act="clear"]').addEventListener('click', () => {
  const strokes = gannoGetStrokes(ganno.routeKey);
  let hls = 0;
  try { hls = (window.__textHL && window.__textHL.countPage()) || 0; } catch (e) {}
  if (strokes.length === 0 && !hls) return;
  if (!confirm('Clear all annotations on this page?')) return;
+ gannoHistReset(ganno.routeKey);
  gannoSaveStrokes(ganno.routeKey, []);
  // Text highlights are annotations on this page too - the trash can used to
  // leave them behind, which read as "delete does nothing" whenever the marks
@@ -35918,50 +35993,10 @@ function getQuestions(courseId, chId, secId) {
   }
   hookHistory(); setInterval(hookHistory, 4000); /* re-hook if store is replaced by import/sync */
 
-  /* ---------- GoodNotes-style quick options on the annotation bar ---------- */
-  var QUICK = {
-    pen:         { colors:['#1c1c1e','#2f6fed','#d8513a'], widths:[2,4,6] },
-    highlighter: { colors:['#ffe066','#7ae582','#74c0fc'], widths:[8,14,20] }
-  };
-  function toolKey(){ try{ return (ganno && ganno.tool) || 'pen'; }catch(e){ return 'pen'; } }
-  function quickFor(){ return QUICK[toolKey()] || QUICK.pen; }
-  function syncQuick(){
-    try{
-      var wrap=document.getElementById('gn-quick'); if(!wrap) return;
-      var q=quickFor(), col='#000', wid=3;
-      try{ col=gannoColor(); wid=gannoWidth(); }catch(e){}
-      var dots=wrap.querySelectorAll('.gn-dot');
-      for(var i=0;i<dots.length;i++){ dots[i].style.background=q.colors[i]||'#888';
-        dots[i].classList.toggle('on', (q.colors[i]||'').toLowerCase()===String(col).toLowerCase()); }
-      var ws=wrap.querySelectorAll('.gn-w');
-      for(var j=0;j<ws.length;j++){ var sz=q.widths[j]||3; var ii=ws[j].firstChild;
-        ii.style.width=Math.min(14,3+sz)+'px'; ii.style.height=Math.min(14,3+sz)+'px';
-        ws[j].classList.toggle('on', Number(wid)===sz); ws[j].dataset.w=sz; }
-    }catch(e){}
-  }
-  function injectQuick(){
-    try{
-      var row=document.querySelector('.ganno-row'); if(!row || document.getElementById('gn-quick')) { syncQuick(); return; }
-      var frag=document.createElement('span'); frag.id='gn-quick'; frag.style.cssText='display:flex;align-items:center;gap:6px;flex:0 0 auto;';
-      var html='<span class="gn-sep"></span>';
-      for(var i=0;i<3;i++) html+='<button class="gn-dot" data-i="'+i+'" aria-label="Color"></button>';
-      html+='<span class="gn-sep"></span>';
-      for(var j=0;j<3;j++) html+='<button class="gn-w" data-j="'+j+'" aria-label="Thickness"><i></i></button>';
-      frag.innerHTML=html;
-      row.appendChild(frag);
-      frag.addEventListener('click', function(ev){
-        var d=ev.target.closest('.gn-dot'), w=ev.target.closest('.gn-w');
-        if(d){ var q=quickFor(); try{ gannoSetColor(q.colors[Number(d.dataset.i)]); }catch(e){} }
-        if(w){ try{ gannoSetWidth(Number(w.dataset.w)); }catch(e){} }
-        try{ if(typeof saveHandwritingSettings==='function') saveHandwritingSettings(); }catch(e){}
-        syncQuick();
-      });
-      syncQuick();
-    }catch(e){}
-  }
-  new MutationObserver(function(){ if(document.body.classList.contains('ganno-bar-visible')) injectQuick(); })
-    .observe(document.body, {attributes:true, attributeFilter:['class']});
-  document.addEventListener('click', function(e){ if(e.target.closest && e.target.closest('.ganno-tool')) setTimeout(syncQuick, 30); });
+  /* The "quick options" strip (three colour dots + three widths appended to
+     the pen bar) is gone: the bar already has a Color swatch and a Width
+     swatch that open the full pickers, so this was a second, smaller picker
+     for the same two settings sitting a few buttons away from the first. */
 } catch(e){ if(window.console&&console.warn) console.warn('motivation layer failed:', e); } })();
 
 
@@ -63020,6 +63055,8 @@ var lastPenTs=0;                // when the pen last touched the paper
 var autoGrowMute=0;             // addPage scrolls to the foot; that pull is not hers
 var toldMinimizeOnce=false;     // the reassurance toast fires once, not every tap
 var strokeEls=null;             // stroke object -> its <path> node, for erasing one at a time
+var past=[], future=[];         // the action journal: what Undo and Redo step through
+var eraseBatch=null;            // strokes removed by the eraser gesture in progress
 
 /* ---------- keys ---------- */
 function secKey(){
@@ -63368,6 +63405,11 @@ css.textContent = [
   '  background:transparent; color:var(--text-2); border:1px solid transparent; font-family:inherit;',
   '  display:flex; align-items:center; justify-content:center; line-height:1;}',
   '.mn-tool.on{background:var(--surface-2); border-color:var(--border-strong,var(--border)); color:var(--text);}',
+  /* the pen-options button is a dot the size of the pen - ringed, so a fine
+     point still reads as a button and not a speck */
+  '.mn-tool.mn-penopt{border-color:var(--border-strong,var(--border)); border-radius:50%; width:30px; height:30px;}',
+  /* side panel: ten tools at 30px fit its ~350px in one row */
+  '#mn-dock.mn-side .mn-tool{width:30px; height:30px; font-size:14px;}',
   '.mn-sw{width:22px; height:22px; flex:0 0 auto; border-radius:50%; cursor:pointer; padding:0;',
   '  border:2px solid transparent;}',
   '.mn-sw.on{border-color:var(--text);}',
@@ -63428,11 +63470,18 @@ css.textContent = [
   '  border-radius:8px; border:none; background:var(--accent); color:var(--accent-text,#042f2e);}',
 
   '.mn-dot{border-radius:50%; display:block; flex:0 0 auto;}',
+  '.mn-dot-er{background:var(--text-3,#94a3b8); opacity:.7;}',
   /* a fixed-width well so the rows line up while each dot keeps its real size */
   '.mn-size-w{flex:0 0 22px; width:22px; display:flex; align-items:center; justify-content:center;}',
-  '#mn-sizes{position:absolute; z-index:4; background:var(--surface); border-radius:12px;',
-  '  border:1px solid var(--border-strong,var(--border)); padding:5px; min-width:162px;',
+  '.mn-pop{position:absolute; z-index:4; background:var(--surface); border-radius:12px;',
+  '  border:1px solid var(--border-strong,var(--border)); padding:6px; min-width:172px;',
   '  box-shadow:0 10px 30px rgba(0,0,0,0.26);}',
+  '.mn-pop-colors{display:grid; grid-template-columns:repeat(5, 28px); gap:6px; padding:4px 4px 8px;',
+  '  justify-content:center;}',
+  '.mn-pop-colors .mn-sw{width:28px; height:28px;}',
+  '.mn-pop-label{font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;',
+  '  color:var(--text-4); padding:4px 10px 2px; border-top:1px solid var(--border);}',
+  '.mn-tool.dim{opacity:.35;}',
   '.mn-size{display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;',
   '  padding:7px 10px; border-radius:8px; border:none; background:transparent;',
   '  font-family:inherit; font-size:12.5px; color:var(--text-2); text-align:left;}',
@@ -63446,7 +63495,21 @@ css.textContent = [
 ].join('\n');
 document.head.appendChild(css);
 
-var SWATCHES = ['#2563eb', '#111827', '#dc2626', '#059669'];
+/* Ink colours. These used to be four loose buttons on the toolbar; they now
+   live in the pen picker (one button, opened from the toolbar), which is what
+   made room for more of them. Order: the four originals first, so a tap in the
+   same place still gives the same colour. */
+var SWATCHES = ['#2563eb', '#111827', '#dc2626', '#059669',
+                '#7c3aed', '#ea580c', '#db2777', '#0891b2', '#6b7280', '#92400e'];
+/* Eraser reach, in pad units (radius). Medium is the size the eraser always
+   was; small takes out a single letter, large clears a line in one pass. */
+var ERASERS = [
+  { r: 9,  name: 'Small' },
+  { r: 18, name: 'Medium' },
+  { r: 36, name: 'Large' }
+];
+var DEFAULT_ER = 18;
+function eraserR(){ var r = +prefs().er; return (r > 0) ? r : DEFAULT_ER; }
 /* Pen points, in pad units - 1 unit is 1/1000 of the page width, so these hold
    their thickness whatever size the dock is. The old set started at 2, which is
    a broad nib for small handwriting; it now goes down to a 0.5 needlepoint. */
@@ -63555,9 +63618,10 @@ function mk(tag, cls, txt, label){
 }
 function buildTools(){
   toolsEl.textContent = '';
-  var penB = mk('button','mn-tool on','✏️','Pen'); penB.dataset.t='pen';
-  var erB  = mk('button','mn-tool','🩹','Eraser'); erB.dataset.t='erase';
+  var penB = mk('button','mn-tool on','✏️','Pen — tap again for colour and point size'); penB.dataset.t='pen';
+  var erB  = mk('button','mn-tool','🩹','Eraser — tap again for eraser size'); erB.dataset.t='erase';
   var unB  = mk('button','mn-tool','↩︎','Undo'); unB.dataset.t='undo';
+  var rdB  = mk('button','mn-tool','↪︎','Redo'); rdB.dataset.t='redo';
   var clB  = mk('button','mn-tool','🗑','Clear this page'); clB.dataset.t='clear';
   var cvB  = mk('button','mn-tool','👁','Cover the notes and quiz yourself'); cvB.dataset.t='cover';
   var pgB  = mk('button','mn-tool','＋','Add another page'); pgB.dataset.t='page';
@@ -63565,30 +63629,19 @@ function buildTools(){
                 'Put the notebook at the side or along the bottom'); plB.dataset.t='place';
   var mxB  = mk('button','mn-tool' + (maxed ? ' on' : ''), maxed ? '⇲' : '⛶',
                 'Make the page big for writing'); mxB.dataset.t='max';
-  [penB, erB, unB, clB, cvB, pgB, plB, mxB].forEach(function(b){ toolsEl.appendChild(b); });
-  SWATCHES.forEach(function(c){
-    var s = mk('button','mn-sw',null,'Ink colour ' + c);
-    s.style.background = c; s.dataset.c = c;
-    if (c === (prefs().color || SWATCHES[0])) s.classList.add('on');
-    toolsEl.appendChild(s);
-  });
-  var wB = mk('button','mn-tool',null,'Pen point size'); wB.dataset.t='width';
+  /* One button shows the pen as it is - its colour, at its size - and opens
+     the picker for both. It sits right beside the pen. The four colour buttons
+     and the separate size button it replaces did not fit the side panel. */
+  var wB = mk('button','mn-tool mn-penopt',null,'Pen colour and point size'); wB.dataset.t='width';
   wB.appendChild(sizeDot(penWidth()));
-  toolsEl.appendChild(wB);
+  [penB, wB, erB, unB, rdB, clB, cvB, pgB, plB, mxB].forEach(function(b){ toolsEl.appendChild(b); });
+  paintUndo();
 
   toolsEl.addEventListener('click', function(ev){
-    var sw = ev.target.closest('.mn-sw');
-    if (sw) {
-      prefs().color = sw.dataset.c; save();
-      var all = toolsEl.querySelectorAll('.mn-sw');
-      for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === sw);
-      refreshSizeBtn();
-      if (tool !== 'pen') setTool('pen');
-      return;
-    }
     var b = ev.target.closest('.mn-tool'); if (!b) return;
     var t = b.dataset.t;
     if (t === 'undo') { undo(); return; }
+    if (t === 'redo') { redo(); return; }
     if (t === 'clear') { clearPage(); return; }
     if (t === 'page') { addPage(); return; }
     if (t === 'place') {
@@ -63616,7 +63669,12 @@ function buildTools(){
       try { if (typeof toast === 'function') toast(covered ? 'Notes hidden — answer from the cues' : 'Notes showing'); } catch (e) {}
       return;
     }
-    if (t === 'width') { openSizes(b); return; }
+    if (t === 'width') { openPenPop(b); return; }
+    /* A second tap on the tool that is already selected opens its options -
+       the pen's colour and size, the eraser's reach. */
+    if (t === 'pen' && tool === 'pen') { openPenPop(b); return; }
+    if (t === 'erase' && tool === 'erase') { openEraserPop(b); return; }
+    closePop();
     setTool(t);
   });
 }
@@ -63636,54 +63694,108 @@ function refreshSizeBtn(){
   b.textContent = '';
   b.appendChild(sizeDot(penWidth()));
 }
-function closeSizes(){
-  var old = dock && dock.querySelector('#mn-sizes');
+var popCloser = null;              // the one live "tap outside closes it" listener
+function closePop(){
+  var old = dock && dock.querySelector('.mn-pop');
   if (old && old.parentNode) old.parentNode.removeChild(old);
+  if (popCloser) { document.removeEventListener('pointerdown', popCloser, true); popCloser = null; }
 }
-function openSizes(anchor){
-  if (dock.querySelector('#mn-sizes')) { closeSizes(); return; }
+/* A popover under a toolbar button. `kind` tells a second tap on the same
+   button to close it rather than open a twin; `fill(pop)` builds the rows. */
+function openPop(anchor, kind, label, fill){
+  var open = dock.querySelector('.mn-pop');
+  if (open) { var same = open.getAttribute('data-kind') === kind; closePop(); if (same) return; }
   var pop = document.createElement('div');
-  pop.id = 'mn-sizes';
-  pop.setAttribute('role', 'listbox');
-  pop.setAttribute('aria-label', 'Pen point size');
-  var cur = penWidth();
-  for (var i = 0; i < WIDTHS.length; i++) {
-    (function(opt){
-      var row = document.createElement('button');
-      row.className = 'mn-size' + (Math.abs(opt.w - cur) < 0.01 ? ' on' : '');
-      row.setAttribute('role', 'option');
-      var well = document.createElement('span');
-      well.className = 'mn-size-w';
-      well.appendChild(sizeDot(opt.w));
-      row.appendChild(well);
-      var t = document.createElement('span');
-      t.className = 'mn-size-t';
-      t.textContent = opt.name;
-      row.appendChild(t);
-      row.addEventListener('click', function(ev){
-        ev.stopPropagation();
-        prefs().w = opt.w; save();
-        refreshSizeBtn();
-        closeSizes();
-        if (tool !== 'pen') setTool('pen');
-      });
-      pop.appendChild(row);
-    })(WIDTHS[i]);
-  }
+  pop.className = 'mn-pop';
+  pop.setAttribute('data-kind', kind);
+  pop.setAttribute('role', 'group');
+  pop.setAttribute('aria-label', label);
+  fill(pop);
   dock.appendChild(pop);
   try {
     var ar = anchor.getBoundingClientRect(), dr = dock.getBoundingClientRect();
-    var left = Math.max(6, Math.min(ar.left - dr.left - 20, dr.width - 168));
+    var pw = pop.offsetWidth || 180;
+    var left = Math.max(6, Math.min(ar.left - dr.left - 20, dr.width - pw - 6));
     pop.style.left = left + 'px';
     pop.style.top = (ar.bottom - dr.top + 6) + 'px';
   } catch (e) {}
+  /* Registered through closePop's single slot: a picker that re-opens itself
+     (the pen picker repaints after a colour tap) must not leave the previous
+     picker's closer behind to shut the new one on its first tap. */
   setTimeout(function(){
-    document.addEventListener('pointerdown', function once(ev){
+    if (!pop.isConnected) return;
+    popCloser = function(ev){
       if (pop.contains(ev.target)) return;
-      document.removeEventListener('pointerdown', once, true);
-      closeSizes();
-    }, true);
+      closePop();
+    };
+    document.addEventListener('pointerdown', popCloser, true);
   }, 0);
+}
+function sizeRow(dot, name, on, onPick){
+  var row = document.createElement('button');
+  row.className = 'mn-size' + (on ? ' on' : '');
+  row.setAttribute('role', 'option');
+  var well = document.createElement('span');
+  well.className = 'mn-size-w';
+  well.appendChild(dot);
+  row.appendChild(well);
+  var t = document.createElement('span');
+  t.className = 'mn-size-t';
+  t.textContent = name;
+  row.appendChild(t);
+  row.addEventListener('click', function(ev){ ev.stopPropagation(); onPick(); });
+  return row;
+}
+/* The pen picker: every ink colour as a grid, the point sizes as rows, both
+   drawn in the colour that is chosen - so the size rows preview the real pen. */
+function openPenPop(anchor){
+  openPop(anchor, 'pen', 'Pen colour and point size', function(pop){
+    var grid = document.createElement('div');
+    grid.className = 'mn-pop-colors';
+    var curC = prefs().color || SWATCHES[0];
+    SWATCHES.forEach(function(c){
+      var s = mk('button','mn-sw' + (c === curC ? ' on' : ''),null,'Ink colour ' + c);
+      s.style.background = c; s.dataset.c = c;
+      s.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        prefs().color = c; save();
+        refreshSizeBtn();
+        if (tool !== 'pen') setTool('pen');
+        closePop(); openPenPop(anchor);   // repaint the rows in the new colour
+      });
+      grid.appendChild(s);
+    });
+    pop.appendChild(grid);
+    var lab = document.createElement('div');
+    lab.className = 'mn-pop-label';
+    lab.textContent = 'Point';
+    pop.appendChild(lab);
+    var cur = penWidth();
+    WIDTHS.forEach(function(opt){
+      pop.appendChild(sizeRow(sizeDot(opt.w), opt.name, Math.abs(opt.w - cur) < 0.01, function(){
+        prefs().w = opt.w; save();
+        refreshSizeBtn();
+        closePop();
+        if (tool !== 'pen') setTool('pen');
+      }));
+    });
+  });
+}
+function openEraserPop(anchor){
+  openPop(anchor, 'eraser', 'Eraser size', function(pop){
+    var cur = eraserR();
+    ERASERS.forEach(function(opt){
+      var d = document.createElement('span');
+      d.className = 'mn-dot mn-dot-er';
+      var px = Math.max(6, Math.min(20, Math.round(opt.r / 2)));
+      d.style.width = px + 'px'; d.style.height = px + 'px';
+      pop.appendChild(sizeRow(d, opt.name, opt.r === cur, function(){
+        prefs().er = opt.r; save();
+        closePop();
+        if (tool !== 'erase') setTool('erase');
+      }));
+    });
+  });
 }
 function setTool(t){
   tool = t;
@@ -63875,13 +63987,76 @@ function grewIfNeeded(){
   if (lowestInk() > pageH - GROW_AT) { pageH = (pageCount() + 1) * PAGE_H; sizeSvg(); return true; }
   return false;
 }
+/* UNDO THAT UNDOES WHAT SHE DID. Undo used to pop the last stroke off the
+   list. After an erase that deleted a stroke she had NOT touched, and nothing
+   at all brought erased ink back. The journal records actions instead - a
+   stroke drawn, one eraser gesture with everything it removed, a page cleared
+   - and Undo steps back through those, Redo forward again. Per section, this
+   session only. Restored ink gets a fresh timestamp so a device sync counts
+   it as drawn after the erase rather than as ink the erase should have taken. */
+function logOp(op){
+  past.push(op);
+  if (past.length > 200) past.shift();
+  future = [];
+  paintUndo();
+}
+function paintUndo(){
+  try {
+    var u = toolsEl && toolsEl.querySelector('.mn-tool[data-t="undo"]');
+    var r = toolsEl && toolsEl.querySelector('.mn-tool[data-t="redo"]');
+    if (u) u.classList.toggle('dim', !past.length && !strokes.length);
+    if (r) r.classList.toggle('dim', !future.length);
+  } catch (e) {}
+}
+function restamp(list){ for (var i = 0; i < list.length; i++) { try { list[i].s._ts = Date.now(); } catch (e) {} } }
+function applyOp(op, dir){                 // dir: 'undo' | 'redo'
+  if (op.op === 'draw') {
+    var at = strokes.indexOf(op.s);
+    if (dir === 'undo') { if (at !== -1) strokes.splice(at, 1); }
+    else if (at === -1) { op.s._ts = Date.now(); strokes.splice(Math.min(op.i, strokes.length), 0, op.s); }
+  } else if (op.op === 'erase') {
+    if (dir === 'undo') {
+      restamp(op.removed);
+      op.removed.slice().sort(function(a, b){ return a.i - b.i; }).forEach(function(r){
+        if (strokes.indexOf(r.s) === -1) strokes.splice(Math.min(r.i, strokes.length), 0, r.s);
+      });
+    } else {
+      op.removed.forEach(function(r){ var k = strokes.indexOf(r.s); if (k !== -1) strokes.splice(k, 1); });
+    }
+  } else if (op.op === 'clear') {
+    if (dir === 'undo') { strokes = op.prev.slice(); restamp(op.prev.map(function(s){ return { s: s }; })); pageH = op.prevH; }
+    else { strokes = []; pageH = PAGE_H; }
+    sizeSvg();
+  }
+  grewIfNeeded();                          // restored ink may sit below the current foot
+  redraw(); persist(); paintBadge(); paintUndo();
+}
 function undo(){
-  if (!strokes.length) return;
-  strokes.pop(); redraw(); persist(); paintBadge();
+  if (!past.length) {
+    // Nothing journaled this session (ink from an earlier visit): take the
+    // last stroke, and journal that so Redo can bring it back.
+    if (!strokes.length) return;
+    var s = strokes[strokes.length - 1];
+    future.push({ op: 'draw', s: s, i: strokes.length - 1 });
+    strokes.pop(); redraw(); persist(); paintBadge(); paintUndo();
+    return;
+  }
+  var op = past.pop();
+  applyOp(op, 'undo');
+  future.push(op);
+  paintUndo();
+}
+function redo(){
+  if (!future.length) return;
+  var op = future.pop();
+  applyOp(op, 'redo');
+  past.push(op);
+  paintUndo();
 }
 function clearPage(){
   if (!strokes.length) return;
-  if (!confirm('Clear the handwriting on this page? Your typed notes are kept.')) return;
+  if (!confirm('Clear the handwriting on this page? Your typed notes are kept. (Undo brings it back.)')) return;
+  logOp({ op: 'clear', prev: strokes.slice(), prevH: pageH });
   strokes = []; pageH = PAGE_H; sizeSvg(); redraw(); persist(); paintBadge();
 }
 /* Erasing drags the pen across the page and hit-tests on every point along
@@ -63896,23 +64071,30 @@ function clearPage(){
 function eraseAt(p){
   var before = strokes.length;
   var removed = [];
+  var R = eraserR();
   try {
     if (typeof gannoEraseAtPoint === 'function') {
-      var kept = gannoEraseAtPoint(strokes, p, 18) || strokes;
+      var kept = gannoEraseAtPoint(strokes, p, R) || strokes;
       if (kept !== strokes) {
         var keptSet = new Set(kept);
-        for (var i = 0; i < strokes.length; i++) if (!keptSet.has(strokes[i])) removed.push(strokes[i]);
+        for (var i = 0; i < strokes.length; i++) {
+          if (!keptSet.has(strokes[i])) {
+            removed.push(strokes[i]);
+            if (eraseBatch) eraseBatch.push({ s: strokes[i], i: i });
+          }
+        }
         strokes = kept;
       }
     } else {
-      var r2 = 18 * 18, out = [];
+      var r2 = R * R, out = [];
       for (var k = 0; k < strokes.length; k++) {
         var hit = false, pts = strokes[k].points || [];
         for (var j = 0; j < pts.length; j++) {
           var dx = pts[j].x - p.x, dy = pts[j].y - p.y;
           if (dx*dx + dy*dy <= r2) { hit = true; break; }
         }
-        if (hit) removed.push(strokes[k]); else out.push(strokes[k]);
+        if (hit) { removed.push(strokes[k]); if (eraseBatch) eraseBatch.push({ s: strokes[k], i: k }); }
+        else out.push(strokes[k]);
       }
       strokes = out;
     }
@@ -63939,7 +64121,7 @@ function wireInk(){
     penId = e.pointerId;
     lastPenTs = Date.now();
     var p = pt(e);
-    if (tool === 'erase') { drawing = true; eraseAt(p); return; }
+    if (tool === 'erase') { drawing = true; eraseBatch = []; eraseAt(p); return; }
     drawing = true;
     live = { type:'pen', color: penColor(), width: penWidth(), points: [p],
              ts: Date.now(), _ts: Date.now() };
@@ -63974,9 +64156,15 @@ function wireInk(){
     drawing = false; penId = null;
     lastPenTs = Date.now();
     try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
-    if (tool === 'erase') { live = null; liveEl = null; return; }
+    if (tool === 'erase') {
+      // the gesture is over: everything it took is ONE Undo step
+      if (eraseBatch && eraseBatch.length) logOp({ op: 'erase', removed: eraseBatch });
+      eraseBatch = null;
+      live = null; liveEl = null; return;
+    }
     if (live && live.points.length >= 2) {
       strokes.push(live);
+      logOp({ op: 'draw', s: live, i: strokes.length - 1 });
       if (grewIfNeeded()) redraw();
       // redraw() (above) already remaps strokeEls fresh; otherwise register
       // this stroke's already-on-screen node so an eraser hit can find it
@@ -64200,9 +64388,11 @@ function paintBadge(){
 
 /* ---------- open / close ---------- */
 function loadSection(k){
+  if (k !== curKey) { past = []; future = []; eraseBatch = null; }   // the journal is per section
   curKey = k;
   strokes = loadStrokes(k);
   pageH = pageHFor();
+  paintUndo();
   if (taEl) taEl.value = draftGet(k);
   var w = dock && dock.querySelector('#mn-where');
   if (w) w.textContent = k ? secTitle(k) : '';
