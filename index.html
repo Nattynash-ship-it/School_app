@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.548">
+<meta name="app-build" content="18.549">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -20813,6 +20813,146 @@ async function aiQuestionsForSection(bodyText, sectionTitle, count) {
  return out;
 }
 
+// ---- STRUCTURED IMPORT: lessons and an outline written the way the built-in
+// courses are ("it should show a structure, lessons and questions, same as
+// what you do"). The heuristics above still run as the offline fallback; the
+// study helper does the real work, one call per section, and every reply is
+// parsed, validated and sanitized before anything is stored.
+function parseLooseJson(text) {
+ text = String(text || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+ const a = text.indexOf('{');
+ if (a === -1) throw new Error('no json in response');
+ try { return JSON.parse(text.slice(a, text.lastIndexOf('}') + 1)); }
+ catch (e) {
+  let depth = 0, end = -1, inStr = false, escp = false;
+  for (let i = a; i < text.length; i++) {
+   const ch = text[i];
+   if (inStr) { if (escp) escp = false; else if (ch === '\\') escp = true; else if (ch === '"') inStr = false; continue; }
+   if (ch === '"') inStr = true;
+   else if (ch === '{') depth++;
+   else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) throw e;
+  return JSON.parse(text.slice(a, end + 1));
+ }
+}
+async function helperJson(mode, source, title, extra) {
+ const res = await fetch('/.netlify/functions/helper', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(Object.assign({
+   mode: mode,
+   context: { lesson: String(source || '').slice(0, 15500), title: String(title || '').slice(0, 180) },
+  }, extra || {})),
+ });
+ if (!res.ok) throw new Error('helper ' + res.status);
+ return parseLooseJson(await res.text());
+}
+// Model HTML is never trusted with markup beyond the lesson tag set. Anything
+// else is unwrapped to its text; scripts, styles and frames are dropped whole;
+// the only attribute that survives is a callout class from the known list.
+function sanitizeLessonHtml(html) {
+ const ALLOW = { H3: 1, H4: 1, P: 1, UL: 1, OL: 1, LI: 1, STRONG: 1, EM: 1, B: 1, I: 1, CODE: 1, BR: 1,
+                 TABLE: 1, THEAD: 1, TBODY: 1, TR: 1, TH: 1, TD: 1, DIV: 1 };
+ const DROP = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, LINK: 1, META: 1, SVG: 1, IMG: 1, VIDEO: 1, AUDIO: 1 };
+ const KIND = /^callout-(why|tip|warn|warning|example|worked|recall|analogy|key)$/;
+ const doc = new DOMParser().parseFromString('<div id="r">' + String(html || '') + '</div>', 'text/html');
+ const root = doc.getElementById('r');
+ const walk = (node) => {
+  const kids = Array.from(node.childNodes);
+  for (const k of kids) {
+   if (k.nodeType === 3) continue;
+   if (k.nodeType !== 1 || DROP[k.tagName]) { k.remove(); continue; }
+   const tag = k.tagName;
+   let cls = '';
+   if (tag === 'DIV') {
+    const c = (k.getAttribute('class') || '').split(/\s+/);
+    if (c.indexOf('callout') !== -1) { const kind = c.filter(x => KIND.test(x))[0]; cls = 'callout ' + (kind ? kind.replace('callout-warning', 'callout-warn') : 'callout-tip'); }
+    else if (c.indexOf('callout-label') !== -1) cls = 'callout-label';
+   }
+   if (!ALLOW[tag] || (tag === 'DIV' && !cls)) {
+    walk(k);
+    while (k.firstChild) node.insertBefore(k.firstChild, k);
+    k.remove();
+    continue;
+   }
+   for (const a of Array.from(k.attributes)) k.removeAttribute(a.name);
+   if (cls) k.setAttribute('class', cls);
+   walk(k);
+  }
+ };
+ walk(root);
+ return root.innerHTML;
+}
+// The outline: which lines start which section, decided from the document's
+// own candidate headings. Returns the same shape structurePDFContent does,
+// with each section's body filled from the line ranges between starts.
+async function aiOutlineStructure(pdfData) {
+ const allLines = [];
+ for (const page of pdfData.pages) for (const line of page.lines) {
+  const t = String(line.text || '').trim();
+  if (t) allLines.push({ text: t, page: page.pageNum });
+ }
+ if (allLines.length < 8) throw new Error('too short for an outline');
+ const cand = [];
+ for (let i = 0; i < allLines.length && cand.length < 450; i++) {
+  const t = allLines[i].text;
+  if (isLikelyHeading(allLines[i]) || (t.length <= 90 && !/[.!?,;:]$/.test(t) && t.split(/\s+/).length <= 12)) cand.push(i);
+ }
+ if (!cand.length) throw new Error('no heading candidates');
+ const listing = cand.map(i => '[' + i + '] ' + allLines[i].text.slice(0, 110)).join('\n').slice(0, 13500);
+ const sample = allLines.slice(0, 40).map(l => l.text).join(' ').slice(0, 1400);
+ const data = await helperJson('outline', 'CANDIDATE LINES:\n' + listing + '\n\nOPENING SAMPLE:\n' + sample, pdfData.fileName);
+ const out = [];
+ let last = -1;
+ for (const ch of (Array.isArray(data.chapters) ? data.chapters : [])) {
+  const secs = [];
+  for (const s of (Array.isArray(ch && ch.sections) ? ch.sections : [])) {
+   const st = parseInt(s && s.start, 10);
+   if (!(st >= 0 && st < allLines.length) || st <= last) continue;
+   last = st;
+   secs.push({ title: truncate(String((s && s.title) || allLines[st].text), 80), start: st, body: [] });
+  }
+  if (secs.length) out.push({ title: truncate(String((ch && ch.title) || ('Chapter ' + (out.length + 1))), 60), sections: secs });
+ }
+ const flat = [];
+ out.forEach(ch => ch.sections.forEach(s => flat.push(s)));
+ for (let k = 0; k < flat.length; k++) {
+  const from = flat[k].start + 1;
+  const to = (k + 1 < flat.length) ? flat[k + 1].start : allLines.length;
+  flat[k].body = allLines.slice(from, to).map(l => l.text).filter(t => t.length > 1);
+ }
+ // whatever comes before the first heading is that section's preamble
+ if (flat.length && flat[0].start > 0) flat[0].body = allLines.slice(0, flat[0].start).map(l => l.text).concat(flat[0].body);
+ out.forEach(ch => { ch.sections = ch.sections.filter(s => s.body.join(' ').length > 80); });
+ const filtered = out.filter(ch => ch.sections.length);
+ if (!filtered.length) throw new Error('empty outline');
+ return { chapters: filtered, title: truncate(String(data.title || ''), 60) };
+}
+// One section, rewritten as a lesson in the app's house style: objectives
+// for the "what you'll prove you can do" box, and a body of explanation,
+// worked example, common mistake, key terms and takeaways.
+async function aiLessonForSection(bodyText, sectionTitle, courseName) {
+ const data = await helperJson('lesson', bodyText, sectionTitle + (courseName ? ' — ' + courseName : ''));
+ const html = sanitizeLessonHtml(String((data && data.html) || ''));
+ if (html.replace(/<[^>]+>/g, '').trim().length < 450) throw new Error('lesson too short');
+ const objectives = (Array.isArray(data.objectives) ? data.objectives : [])
+  .map(o => String(o || '').trim().slice(0, 140)).filter(Boolean).slice(0, 6);
+ return { html: html, objectives: objectives };
+}
+// The stored lesson: the written lesson first, the source text kept whole in
+// a collapsed panel under it so nothing from the document is ever lost -
+// trimmed only to the on-device storage cap.
+function composeAiLessonBody(lesson, sourceText, fileName) {
+ let src = String(sourceText || '').replace(/[ \t]+\n/g, '\n').trim();
+ const room = Math.max(0, 15000 - lesson.html.length - 700);
+ if (src.length > room) src = src.slice(0, room) + '\n… (the rest is in your original document)';
+ return lesson.html +
+  '<details style="margin-top:22px; border:1px solid var(--border); border-radius:12px; padding:10px 14px; background:var(--surface-2);">' +
+  '<summary style="cursor:pointer; font-weight:700; font-size:13px;">📄 Source text from ' + escHTMLSafe(fileName) + '</summary>' +
+  '<div style="white-space:pre-wrap; word-wrap:break-word; font-size:13.5px; line-height:1.65; margin-top:8px; color:var(--text-2);">' + escHTMLSafe(src) + '</div></details>';
+}
+
 // Build OA (Objective Assessment) and PA (Performance Assessment) prep sections.
 // Pulls questions from across all sections (sampling) for OA-style cumulative practice.
 function buildAssessmentSections(courseStructure, courseId) {
@@ -20886,48 +21026,63 @@ async function processUploadedPDF(file, courseName) {
   if (totalChars < 100) {
    throw new Error(`Only ${totalChars} characters of text extracted. ${isTextFile ? 'The file is too short to build a course from.' : 'This PDF is likely image-only (scanned). Run it through an OCR tool first, then re-upload.'}`);
   }
-  setStatus(`Extracted ${totalChars.toLocaleString()} characters from ${pdfData.pages.length} ${isTextFile ? 'file' : 'pages'}. Structuring content…`);
+  setStatus(`Extracted ${totalChars.toLocaleString()} characters from ${pdfData.pages.length} ${isTextFile ? 'file' : 'pages'}. Reading the document's structure…`);
   await new Promise(r => setTimeout(r, 50)); // yield to UI
-  const structure = structurePDFContent(pdfData);
+  // The outline comes from the study helper reading the document's own
+  // headings; the heading heuristics are the offline fallback. A helper
+  // failure here also means the lessons below will not be written by it.
+  let structure = null, outlineTitle = '', aiFails = 0, aiCount = 0;
+  try {
+   const o = await aiOutlineStructure(pdfData);
+   structure = o.chapters; outlineTitle = o.title || '';
+  } catch (e) { aiFails++; console.log('[PDF] AI outline failed, using heading heuristics:', e && e.message); }
+  if (!structure) structure = structurePDFContent(pdfData);
   if (structure.length === 0) {
    throw new Error('Could not detect chapter/section structure. The text was readable but headings weren\'t recognizable. Try a file with clearer Chapter 1 / Section 1.1 style headings.');
   }
   const totalSections = structure.reduce((s, ch) => s + ch.sections.length, 0);
-  setStatus(`Found ${structure.length} chapters, ${totalSections} sections. Writing quiz questions…`);
+  setStatus(`Found ${structure.length} chapters, ${totalSections} sections. Writing lessons and questions…`);
   await new Promise(r => setTimeout(r, 50));
-  // AI writes the questions (3 sections at a time); the regex templates are
-  // only the fallback - after two AI failures (offline, helper not
-  // configured) the rest of the sections fall back without more attempts.
+  // The helper writes each section's lesson and its questions (3 sections at
+  // a time). The regex templates and the raw-text lesson are only the
+  // fallback - after three CONSECUTIVE failures (offline, helper not
+  // configured) the rest of the sections fall back without more attempts; a
+  // success resets the count, so one transient hiccup never flips a whole
+  // upload to the weak generator.
   const secList = [];
   structure.forEach(ch => ch.sections.forEach(sec => secList.push(sec)));
   const AI_CAP = 30;                    // a 200-section textbook stays affordable
-  // CONSECUTIVE failures give up (helper down / offline); a success resets
-  // the count, so one transient hiccup never flips a whole upload to the
-  // weak regex generator.
-  let doneCount = 0, aiFails = 0, aiCount = 0;
+  const courseLabel = (courseName || outlineTitle || pdfData.fileName.replace(/\.(pdf|txt|md)$/i, '')).slice(0, 60);
+  let doneCount = 0, lessonCount = 0;
   const genFor = async (sec, idx) => {
-   const bodyText = sec.body.join(' ');
-   if (idx < AI_CAP && aiFails < 3 && bodyText.length >= 200) {
-    try { sec.questions = await aiQuestionsForSection(bodyText, sec.title, 10); aiCount++; aiFails = 0; }
+   const bodyText = sec.body.join('\n');
+   const flat = sec.body.join(' ');
+   if (idx < AI_CAP && aiFails < 3 && flat.length >= 200) {
+    try { sec.lesson = await aiLessonForSection(bodyText, sec.title, courseLabel); lessonCount++; aiFails = 0; }
+    catch (e) { aiFails++; console.log('[PDF] AI lesson failed for a section:', e && e.message); }
+    setStatus(`Writing lessons and questions… ${doneCount} of ${secList.length} sections done${lessonCount ? ` (${lessonCount} lessons written)` : ''}`);
+   }
+   if (idx < AI_CAP && aiFails < 3 && flat.length >= 200) {
+    try { sec.questions = await aiQuestionsForSection(flat, sec.title, 10); aiCount++; aiFails = 0; }
     catch (e) { aiFails++; console.log('[PDF] AI generation failed for a section:', e && e.message); }
    }
-   if (!sec.questions || !sec.questions.length) sec.questions = generateQuestionsForSection(bodyText, sec.title, 12);
+   if (!sec.questions || !sec.questions.length) sec.questions = generateQuestionsForSection(flat, sec.title, 12);
    doneCount++;
-   setStatus(`Writing questions… ${doneCount} of ${secList.length} sections${aiCount ? ` (${aiCount} AI-written)` : ''}`);
+   setStatus(`Writing lessons and questions… ${doneCount} of ${secList.length} sections done${lessonCount ? ` (${lessonCount} lessons, ${aiCount} question sets written)` : ''}`);
   };
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(3, secList.length) }, async () => {
    while (cursor < secList.length) { const i = cursor++; await genFor(secList[i], i); }
   }));
   const questionsGenerated = secList.reduce((s, x) => s + ((x.questions || []).length), 0);
-  if (aiFails >= 3 && aiCount === 0) {
-   setStatus(`AI helper unreachable — used the built-in generator (simpler questions). ${questionsGenerated} questions.`);
+  if (aiFails >= 3 && aiCount === 0 && lessonCount === 0) {
+   setStatus(`AI helper unreachable — lessons show your text as-is and questions use the built-in generator. ${questionsGenerated} questions.`);
    await new Promise(r => setTimeout(r, 900));
   }
-  setStatus(`Generated ${questionsGenerated} questions${aiCount ? ` (${aiCount} sections AI-written)` : ''}. Building assessment sections…`);
+  setStatus(`${lessonCount} lessons and ${questionsGenerated} questions written. Building assessment sections…`);
   const assessments = buildAssessmentSections(structure, null);
   // Build course definition
-  const finalName = (courseName || pdfData.fileName.replace(/\.pdf$/i, '')).slice(0, 60);
+  const finalName = courseLabel;
   let code = finalName.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase() || ('PDF' + Date.now().toString(36).slice(-3).toUpperCase());
   // Codes must be unique - "Biology 1.pdf" and "Biology 2.pdf" both derive
   // BIOLOG, and downstream displays assume a code names one course.
@@ -20948,7 +21103,7 @@ async function processUploadedPDF(file, courseName) {
    sections: ch.sections.map((s, sI) => ({
     id: 's' + (sI + 1),
     title: truncate(s.title, 80),
-    objectives: [],
+    objectives: (s.lesson && s.lesson.objectives) ? s.lesson.objectives.slice() : [],
    })),
   }));
   // Add a final "Assessments" chapter for OA + PA
@@ -20970,8 +21125,11 @@ async function processUploadedPDF(file, courseName) {
     const key = `${cid}/ch${chI + 1}/s${sI + 1}`;
     // Storage guard: localStorage holds ~5MB total and a textbook chapter can
     // be enormous. Cap each stored lesson at ~16KB, cut at a paragraph edge.
-    let bodyHtml = formatLessonBody(s.body, s.title);
-    if (bodyHtml.length > 16000) {
+    // (An AI-written lesson already fits: composeAiLessonBody trims the
+    // source panel, never the lesson.)
+    let bodyHtml = s.lesson ? composeAiLessonBody(s.lesson, s.body.join('\n'), pdfData.fileName)
+                            : formatLessonBody(s.body, s.title);
+    if (!s.lesson && bodyHtml.length > 16000) {
      const cutAt = bodyHtml.lastIndexOf('</p>', 16000);
      bodyHtml = bodyHtml.slice(0, cutAt > 0 ? cutAt + 4 : 16000)
       + '<p><em>… trimmed to fit on-device storage — the full detail is in your original PDF.</em></p>';
@@ -20994,7 +21152,7 @@ async function processUploadedPDF(file, courseName) {
   store.customCourses[cid] = {
    name: finalName,
    code: code,
-   desc: `Generated from ${pdfData.fileName} (${pdfData.numPages} pages)`,
+   desc: `Built from ${pdfData.fileName} (${pdfData.numPages} page${pdfData.numPages === 1 ? '' : 's'})${lessonCount ? ` — ${lessonCount} lessons written in Study Hub style` : ''}`,
    color: 'teal',
    chapters: chapters,
    fromPDF: true,
@@ -21028,7 +21186,8 @@ async function processUploadedPDF(file, courseName) {
   // ensurePlanData rebuilds it (finished classes keep their done marks).
   try { store.classPlanV = null; } catch (e) {}
   saveStore();
-  setStatus(`Done! Created ${chapters.length} chapters, ${chapters.reduce((sum, ch) => sum + ch.sections.length, 0)} sections, ${totalQs} questions.`);
+  setStatus(`Done! Created ${chapters.length} chapters, ${chapters.reduce((sum, ch) => sum + ch.sections.length, 0)} sections, ${lessonCount ? lessonCount + ' written lessons, ' : ''}${totalQs} questions.`
+   + ((aiFails >= 3 && aiCount === 0 && lessonCount === 0) ? ' The AI helper was unreachable, so lessons show your text as-is and the questions are simpler — re-import later for the full build.' : ''));
   return { cid, totalQs, chapters: chapters.length, sections: chapters.reduce((sum, ch) => sum + ch.sections.length, 0) };
  } catch (err) {
   setStatus('Error: ' + err.message);
@@ -21046,7 +21205,7 @@ function showPDFUploadSheet() {
   <div class="pomo-card" style="text-align:left; max-width:520px; padding:18px 20px 24px;">
    <button class="pomo-close" data-close>×</button>
    <div style="font-size:11px; color:var(--accent); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Upload PDF → Build Course</div>
-   <p style="font-size:12px; color:var(--text-3); margin:0 0 14px; line-height:1.5;">Upload a textbook, study guide, or course PDF. Study Hub will auto-build chapters, sections, lessons, multiple-choice questions, plus OA and PA practice sections.</p>
+   <p style="font-size:12px; color:var(--text-3); margin:0 0 14px; line-height:1.5;">Upload a textbook, study guide, or course PDF. Study Hub reads its structure and builds it the way the built-in classes are built: chapters and sections, a written lesson for each (objectives, explanation, worked example, common mistakes, key takeaways), exam-style questions with explanations, plus OA and PA practice sections. Your original text stays under each lesson.</p>
    <div style="background:rgba(94,234,212,0.08); border:1px solid rgba(94,234,212,0.25); border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:11px; color:var(--text-2); line-height:1.5;">
     <div style="font-weight:700; margin-bottom:4px;">Best results with:</div>
     <ul style="margin:0; padding-left:18px;">
@@ -56947,13 +57106,26 @@ function notice(courseId){
   + 'Ask Claude to switch back and it takes about two minutes.</p></div>' };
 }
 
+/* A course she BUILT - imported from a PDF, or made by hand - is not one of
+   the emptied literals: its lessons and questions live in her store, whole.
+   The guard used to treat those like any other course outside the list and
+   replaced every imported lesson with this notice - an import "worked" and
+   then showed nothing but "isn't in this build" on every page. */
+function ownContent(courseId){
+  try {
+    if (store && store.customCourses && store.customCourses[courseId]) return true;
+    if (typeof COURSES !== 'undefined' && COURSES[courseId] && (COURSES[courseId].isCustom || COURSES[courseId].fromPDF)) return true;
+  } catch (e) {}
+  return false;
+}
+
 // Lessons: an honest notice instead of a half-empty page.
 try {
   if (typeof getLesson === 'function' && !window.__fgLesson) {
     window.__fgLesson = true;
     var _gl = getLesson;
     getLesson = function(courseId, chId, secId){
-      if (!FOCUS[courseId]) return notice(courseId);
+      if (!FOCUS[courseId] && !ownContent(courseId)) return notice(courseId);
       return _gl.apply(this, arguments);
     };
   }
@@ -56966,7 +57138,7 @@ try {
     window.__fgQ = true;
     var _gq = getQuestions;
     getQuestions = function(courseId, chId, secId){
-      if (!FOCUS[courseId]) return [];
+      if (!FOCUS[courseId] && !ownContent(courseId)) return [];
       return _gq.apply(this, arguments);
     };
   }
@@ -63482,6 +63654,11 @@ css.textContent = [
   '.mn-pop-label{font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;',
   '  color:var(--text-4); padding:4px 10px 2px; border-top:1px solid var(--border);}',
   '.mn-tool.dim{opacity:.35;}',
+  '.mn-tool.mn-pgbtn{width:auto; min-width:34px; padding:0 7px; font-size:11px; font-weight:800;',
+  '  letter-spacing:.02em; font-variant-numeric:tabular-nums; color:var(--text-3);',
+  '  border-color:var(--border-strong,var(--border));}',
+  '.mn-dot-pg{background:var(--border-strong,var(--border));}',
+  '.mn-dot-pg.inked{background:var(--accent);}',
   '.mn-size{display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;',
   '  padding:7px 10px; border-radius:8px; border:none; background:transparent;',
   '  font-family:inherit; font-size:12.5px; color:var(--text-2); text-align:left;}',
@@ -63634,8 +63811,13 @@ function buildTools(){
      and the separate size button it replaces did not fit the side panel. */
   var wB = mk('button','mn-tool mn-penopt',null,'Pen colour and point size'); wB.dataset.t='width';
   wB.appendChild(sizeDot(penWidth()));
-  [penB, wB, erB, unB, rdB, clB, cvB, pgB, plB, mxB].forEach(function(b){ toolsEl.appendChild(b); });
+  /* "Page 2 of 5" and a way to jump: a notebook with several pages of writing
+     is otherwise a long scroll to find one thing. Tap opens the page list. */
+  var pgN = mk('button','mn-tool mn-pgbtn','1/1','Page — tap to jump to a page'); pgN.dataset.t='pages';
+  var exB = mk('button','mn-tool','📷','Save this page as an image'); exB.dataset.t='export';
+  [penB, wB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
   paintUndo();
+  paintPage();
 
   toolsEl.addEventListener('click', function(ev){
     var b = ev.target.closest('.mn-tool'); if (!b) return;
@@ -63670,6 +63852,8 @@ function buildTools(){
       return;
     }
     if (t === 'width') { openPenPop(b); return; }
+    if (t === 'pages') { openPagePop(b); return; }
+    if (t === 'export') { closePop(); exportPage(); return; }
     /* A second tap on the tool that is already selected opens its options -
        the pen's colour and size, the eraser's reach. */
     if (t === 'pen' && tool === 'pen') { openPenPop(b); return; }
@@ -63797,6 +63981,149 @@ function openEraserPop(anchor){
     });
   });
 }
+/* ---------- pages: where she is, and jumping ---------- */
+function svgWidthPx(){ return (svg && (parseFloat(svg.style.width) || svg.clientWidth)) || 0; }
+function pagePx(){ var w = svgWidthPx(); return w ? (PAGE_H / UNITS * w) : 0; }
+function curPage(){
+  if (!pagesEl) return 1;
+  var ph = pagePx(); if (!(ph > 0)) return 1;
+  // the page under the middle of what is on screen (or of one page, if the
+  // panel shows more than one)
+  var mid = pagesEl.scrollTop + Math.min(pagesEl.clientHeight, ph) * 0.5;
+  return Math.max(1, Math.min(pageCount(), Math.floor(mid / ph) + 1));
+}
+var pageRaf = 0;
+function paintPage(){
+  try {
+    var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="pages"]');
+    if (!b) return;
+    var t = curPage() + '/' + pageCount();
+    if (b.textContent !== t) b.textContent = t;
+    b.setAttribute('aria-label', 'Page ' + curPage() + ' of ' + pageCount() + ' — tap to jump to a page');
+  } catch (e) {}
+}
+function paintPageSoon(){
+  if (pageRaf) return;
+  pageRaf = requestAnimationFrame(function(){ pageRaf = 0; paintPage(); });
+}
+function gotoPage(n){
+  n = Math.max(1, Math.min(pageCount(), n | 0));
+  try { pagesEl.scrollTop = (n - 1) * pagePx(); } catch (e) {}
+  paintPage();
+}
+function openPagePop(anchor){
+  openPop(anchor, 'pages', 'Jump to a page', function(pop){
+    var cur = curPage(), n = pageCount();
+    var lab = document.createElement('div');
+    lab.className = 'mn-pop-label';
+    lab.textContent = n === 1 ? '1 page' : n + ' pages';
+    pop.appendChild(lab);
+    var list = document.createElement('div');
+    list.className = 'mn-pop-pages';
+    var inkOn = {};
+    for (var i = 0; i < strokes.length; i++) {
+      var s = strokes[i]; if (!s || !s.points || !s.points.length) continue;
+      inkOn[Math.floor(s.points[0].y / PAGE_H)] = (inkOn[Math.floor(s.points[0].y / PAGE_H)] || 0) + 1;
+    }
+    for (var p = 1; p <= n; p++) {
+      (function(pn){
+        var d = document.createElement('span');
+        d.className = 'mn-dot mn-dot-pg' + (inkOn[pn - 1] ? ' inked' : '');
+        d.style.width = '10px'; d.style.height = '10px';
+        pop.appendChild(sizeRow(d, 'Page ' + pn + (inkOn[pn - 1] ? '' : ' — blank'), pn === cur, function(){
+          closePop(); gotoPage(pn);
+        }));
+      })(p);
+    }
+    var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add a page', false, function(){ closePop(); addPage(); });
+    pop.appendChild(addRow);
+  });
+}
+
+/* ---------- export: this page as an image ---------- */
+/* Ink colours are theme-adapted (a near-black pen is drawn light on a dark
+   screen). On white paper that would vanish, so anything pale goes to ink. */
+function inkForPaper(c){
+  try {
+    var m = /^#([0-9a-f]{6})$/i.exec(String(c || '').trim());
+    if (!m) return c || '#111827';
+    var v = parseInt(m[1], 16), r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+    var lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return lum > 0.78 ? '#111827' : c;
+  } catch (e) { return c || '#111827'; }
+}
+/* Everything is drawn synchronously onto a canvas - no <img> round trip - so
+   the share sheet can still be opened inside the tap that asked for it. */
+function renderPagePng(pageNo){
+  var n = Math.max(1, Math.min(pageCount(), pageNo | 0)) - 1;
+  var top = n * PAGE_H;
+  var W = 1700, H = Math.round(PAGE_H / UNITS * W);
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d');
+  var k = W / UNITS;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.scale(k, k); ctx.translate(0, -top);
+  var headY = top + HEAD_H, sumY = top + PAGE_H - SUM_H;
+  var L = function(x1, y1, x2, y2, st, w){ ctx.strokeStyle = st; ctx.lineWidth = w / k; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  for (var y = headY + RULE; y < sumY - 4; y += RULE) L(24, y, UNITS - 20, y, '#d5dbe4', 1);
+  for (var y2 = sumY + RULE; y2 < top + PAGE_H - 6; y2 += RULE) L(24, y2, UNITS - 20, y2, '#d5dbe4', 1);
+  L(20, headY, UNITS - 20, headY, '#f472b6', 1.5); L(CUE_X, headY, CUE_X, sumY, '#f472b6', 1.5); L(20, sumY, UNITS - 20, sumY, '#f472b6', 1.5);
+  ctx.fillStyle = '#94a3b8'; ctx.font = '700 13px Helvetica, Arial, sans-serif';
+  var T = function(x, y, txt, right){ ctx.textAlign = right ? 'right' : 'left'; ctx.fillText(txt.split('').join(String.fromCharCode(8202)), x, y); };
+  T(26, headY - 34, 'TOPIC'); T(UNITS - 20, headY - 34, 'DATE', true);
+  T(26, headY + 24, 'CUE COLUMN'); T(CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN'); T(26, sumY + 24, 'SUMMARY');
+  var drawn = 0;
+  for (var i = 0; i < strokes.length; i++) {
+    var s = strokes[i]; if (!s || !s.points || !s.points.length) continue;
+    var y0 = s.points[0].y; if (y0 < top || y0 >= top + PAGE_H) continue;
+    var pth = pathFor(s); if (!pth.d) continue;
+    var P = new Path2D(pth.d);
+    if (pth.fill) { ctx.fillStyle = inkForPaper(s.color); ctx.fill(P); }
+    else { ctx.strokeStyle = inkForPaper(s.color); ctx.lineWidth = s.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(P); }
+    drawn++;
+  }
+  ctx.restore();
+  var dataUrl = cv.toDataURL('image/png');
+  var bin = atob(dataUrl.split(',')[1]), bytes = new Uint8Array(bin.length);
+  for (var j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+  var title = (curKey ? secTitle(curKey) : 'Notes').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'Notes';
+  var name = title + '-page-' + (n + 1) + '.png';
+  return { blob: new Blob([bytes], { type: 'image/png' }), name: name, w: W, h: H, strokes: drawn };
+}
+function exportPage(){
+  var out;
+  try { out = renderPagePng(curPage()); } catch (e) {
+    try { if (typeof toast === 'function') toast('Could not make the image'); } catch (e2) {}
+    return;
+  }
+  var done = function(how){ try { if (typeof toast === 'function') toast(how === 'share' ? 'Page ready to save or share' : ('Saved ' + out.name)); } catch (e) {} };
+  try {
+    if (navigator.share && navigator.canShare && typeof File === 'function') {
+      var f = new File([out.blob], out.name, { type: 'image/png' });
+      if (navigator.canShare({ files: [f] })) {
+        navigator.share({ files: [f], title: out.name }).then(function(){ done('share'); }, function(err){
+          if (!err || err.name !== 'AbortError') downloadBlob(out.blob, out.name, done);
+        });
+        return;
+      }
+    }
+  } catch (e) {}
+  downloadBlob(out.blob, out.name, done);
+}
+function downloadBlob(blob, name, done){
+  try {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 4000);
+    if (done) done('download');
+  } catch (e) {
+    try { if (typeof toast === 'function') toast('Could not save the image'); } catch (e2) {}
+  }
+}
+
 function setTool(t){
   tool = t;
   var all = toolsEl.querySelectorAll('.mn-tool');
@@ -63971,6 +64298,7 @@ function redraw(){
   // LAST, so it actually covers the notes. Painted after the ink, never before.
   if (covered) drawCover();
   liveEl = null;
+  paintPageSoon();
 }
 /* A new page is added only when she reaches the very foot of the last one.
    The earlier rule fired anywhere in the last fifth of the page - which is the
@@ -64015,13 +64343,17 @@ function applyOp(op, dir){                 // dir: 'undo' | 'redo'
     if (dir === 'undo') { if (at !== -1) strokes.splice(at, 1); }
     else if (at === -1) { op.s._ts = Date.now(); strokes.splice(Math.min(op.i, strokes.length), 0, op.s); }
   } else if (op.op === 'erase') {
+    var added = op.added || [];
     if (dir === 'undo') {
+      // the fragments the cut made go away, the original strokes come back
+      added.forEach(function(f){ var k = strokes.indexOf(f); if (k !== -1) strokes.splice(k, 1); });
       restamp(op.removed);
       op.removed.slice().sort(function(a, b){ return a.i - b.i; }).forEach(function(r){
         if (strokes.indexOf(r.s) === -1) strokes.splice(Math.min(r.i, strokes.length), 0, r.s);
       });
     } else {
       op.removed.forEach(function(r){ var k = strokes.indexOf(r.s); if (k !== -1) strokes.splice(k, 1); });
+      added.forEach(function(f){ if (strokes.indexOf(f) === -1) { f._ts = Date.now(); strokes.push(f); } });
     }
   } else if (op.op === 'clear') {
     if (dir === 'undo') { strokes = op.prev.slice(); restamp(op.prev.map(function(s){ return { s: s }; })); pageH = op.prevH; }
@@ -64068,49 +64400,73 @@ function clearPage(){
    keeps moving as I erase"). Only the strokes that actually leave now come
    out of the DOM, by direct reference via strokeEls - nothing else is
    touched, so the page holds still. */
-function eraseAt(p){
-  var before = strokes.length;
-  var removed = [];
-  var R = eraserR();
-  try {
-    if (typeof gannoEraseAtPoint === 'function') {
-      var kept = gannoEraseAtPoint(strokes, p, R) || strokes;
-      if (kept !== strokes) {
-        var keptSet = new Set(kept);
-        for (var i = 0; i < strokes.length; i++) {
-          if (!keptSet.has(strokes[i])) {
-            removed.push(strokes[i]);
-            if (eraseBatch) eraseBatch.push({ s: strokes[i], i: i });
-          }
-        }
-        strokes = kept;
-      }
-    } else {
-      var r2 = R * R, out = [];
-      for (var k = 0; k < strokes.length; k++) {
-        var hit = false, pts = strokes[k].points || [];
-        for (var j = 0; j < pts.length; j++) {
-          var dx = pts[j].x - p.x, dy = pts[j].y - p.y;
-          if (dx*dx + dy*dy <= r2) { hit = true; break; }
-        }
-        if (hit) { removed.push(strokes[k]); if (eraseBatch) eraseBatch.push({ s: strokes[k], i: k }); }
-        else out.push(strokes[k]);
-      }
-      strokes = out;
-    }
-  } catch (e) {}
-  if (strokes.length !== before) {
-    if (strokeEls) {
-      for (var m = 0; m < removed.length; m++) {
-        var node = strokeEls.get(removed[m]);
-        if (node && node.parentNode) node.parentNode.removeChild(node);
-        strokeEls.delete(removed[m]);
-      }
-    } else {
-      redraw();  // no map yet (first paint hasn't happened) - fall back once
-    }
-    persist(); paintBadge();
+/* PARTIAL ERASE. The eraser used to take a whole stroke the moment it touched
+   any part of it - crossing one word in a line written in a single stroke
+   removed the line. It now rubs out only what it passes over: the points
+   inside its reach are cut out, and each run of points left on either side
+   becomes a stroke of its own (same colour, same point, fresh timestamp so a
+   device sync counts it as new ink). A run too short to be a mark is dropped.
+   The journal records what left and what was made, so Undo puts the original
+   stroke back exactly and Redo repeats the cut. */
+function splitStroke(s, p, R){
+  var pts = s.points || [];
+  var r2 = R * R, anyHit = false, runs = [], run = [];
+  for (var j = 0; j < pts.length; j++) {
+    var dx = pts[j].x - p.x, dy = pts[j].y - p.y;
+    if (dx*dx + dy*dy <= r2) { anyHit = true; if (run.length) { runs.push(run); run = []; } }
+    else run.push(pts[j]);
   }
+  if (run.length) runs.push(run);
+  if (!anyHit) return null;
+  var out = [];
+  for (var k = 0; k < runs.length; k++) {
+    if (runs[k].length < 2) continue;
+    out.push({ type: s.type || 'pen', color: s.color, width: s.width, points: runs[k],
+               ts: s.ts || Date.now(), _ts: Date.now() });
+  }
+  return out;
+}
+function eraseAt(p){
+  var R = eraserR();
+  var removed = [], added = [];
+  var next = [];
+  try {
+    for (var i = 0; i < strokes.length; i++) {
+      var s = strokes[i];
+      var parts = (s && s.points) ? splitStroke(s, p, R) : null;
+      if (!parts) { next.push(s); continue; }
+      removed.push({ s: s, i: i });
+      for (var q = 0; q < parts.length; q++) { next.push(parts[q]); added.push(parts[q]); }
+    }
+  } catch (e) { return; }
+  if (!removed.length) return;
+  strokes = next;
+  if (eraseBatch) {
+    for (var a = 0; a < removed.length; a++) {
+      /* a fragment made earlier in this same gesture and cut again is not
+         something Undo needs to restore - it never existed before the gesture */
+      var at = eraseBatch.added.indexOf(removed[a].s);
+      if (at !== -1) eraseBatch.added.splice(at, 1); else eraseBatch.removed.push(removed[a]);
+    }
+    for (var b = 0; b < added.length; b++) eraseBatch.added.push(added[b]);
+  }
+  if (strokeEls) {
+    for (var m = 0; m < removed.length; m++) {
+      var node = strokeEls.get(removed[m].s);
+      var anchor = node && node.parentNode ? node.nextSibling : null;
+      for (var n = 0; n < added.length; n++) {
+        if (strokeEls.has(added[n])) continue;
+        var frag = el(added[n]);
+        if (node && node.parentNode) node.parentNode.insertBefore(frag, anchor); else svg.appendChild(frag);
+        strokeEls.set(added[n], frag);
+      }
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+      strokeEls.delete(removed[m].s);
+    }
+  } else {
+    redraw();  // no map yet (first paint hasn't happened) - fall back once
+  }
+  persist(); paintBadge();
 }
 function wireInk(){
   svg.addEventListener('pointerdown', function(e){
@@ -64121,7 +64477,7 @@ function wireInk(){
     penId = e.pointerId;
     lastPenTs = Date.now();
     var p = pt(e);
-    if (tool === 'erase') { drawing = true; eraseBatch = []; eraseAt(p); return; }
+    if (tool === 'erase') { drawing = true; eraseBatch = { removed: [], added: [] }; eraseAt(p); return; }
     drawing = true;
     live = { type:'pen', color: penColor(), width: penWidth(), points: [p],
              ts: Date.now(), _ts: Date.now() };
@@ -64158,7 +64514,7 @@ function wireInk(){
     try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
     if (tool === 'erase') {
       // the gesture is over: everything it took is ONE Undo step
-      if (eraseBatch && eraseBatch.length) logOp({ op: 'erase', removed: eraseBatch });
+      if (eraseBatch && eraseBatch.removed.length) logOp({ op: 'erase', removed: eraseBatch.removed, added: eraseBatch.added });
       eraseBatch = null;
       live = null; liveEl = null; return;
     }
@@ -64273,6 +64629,7 @@ function wireScroll(){
       if (axis === 'y') { if (pagesEl.scrollLeft !== keepL) pagesEl.scrollLeft = keepL; }
       else { if (pagesEl.scrollTop !== keepT) pagesEl.scrollTop = keepT; }
     }
+    paintPageSoon();
     try {
       if (tab !== 'write' || covered) return;
       if (pagesEl.scrollTop + pagesEl.clientHeight < pagesEl.scrollHeight - 24) return;
@@ -64575,6 +64932,9 @@ window.__notesPanel = {
   close: function(){ setOpen(false); },
   toggle: function(){ setOpen(!isOpen); },
   tab: function(t){ if (dock) setTab(t); },
+  page: function(){ return { cur: curPage(), count: pageCount() }; },
+  gotoPage: function(n){ gotoPage(n); },
+  renderPage: function(n){ var o = renderPagePng(n || curPage()); return { name: o.name, w: o.w, h: o.h, bytes: o.blob.size, strokes: o.strokes, blob: o.blob }; },
   state: function(){
     var r = dock ? dock.getBoundingClientRect() : null;
     return { open: isOpen, key: curKey, tab: tab, built: !!dock,

@@ -83,6 +83,59 @@ const QUESTIONS_SYSTEM = [
   "support a fact, don't test it. Plain Unicode for math (× ² ≤ →), no LaTeX.",
 ].join(" ");
 
+// Outline mode: the chapter/section structure of an uploaded document, from
+// its candidate heading lines. STRICT JSON; the client assembles the sections
+// from the line indices it returns.
+const OUTLINE_SYSTEM = [
+  "You are given numbered lines from a document a student uploaded to a study",
+  "app - every line that might be a heading, in reading order, as '[index]",
+  "text', plus a short sample of the opening body text. Return the document's",
+  "outline as STRICT JSON and nothing else - no prose, no markdown fences:",
+  '{"title":"short course title","chapters":[{"title":"chapter title",',
+  '"sections":[{"title":"section title","start":INDEX}]}]}',
+  "Rules: use the document's OWN headings, cleaned up (drop numbering like",
+  "'1.2', page numbers, running headers/footers, ALL-CAPS shouting -> Title",
+  "Case); a chapter is a major part/unit/chapter, a section is a lesson-sized",
+  "topic inside it; 1 to 12 chapters, 1 to 12 sections each, in reading order;",
+  "every 'start' is one of the given indices and starts strictly increase",
+  "through the whole outline; skip lines that are clearly not headings (table",
+  "rows, captions, sentence fragments, a repeated title on every page); if the",
+  "document has no real headings, split it into 3 to 8 sensible sections at",
+  "the given indices where topics change and name them from their content.",
+].join(" ");
+
+// Lesson mode: rewrite one section of uploaded material into a real study
+// lesson in the app's house style - the same shape as its built-in courses.
+// STRICT JSON with an HTML body limited to a small tag set; the client
+// sanitizes it before it is stored.
+const LESSON_SYSTEM = [
+  "You turn one section of study material a student uploaded into a lesson",
+  "for a WGU-style exam-prep app, matching the app's own built-in lessons.",
+  "Output STRICT JSON and nothing else - no prose, no markdown fences:",
+  '{"objectives":["3-5 short outcomes, each starting with a verb"],',
+  '"html":"the lesson body"}',
+  "The lesson TEACHES the material rather than quoting it: explain each idea",
+  "in plain language, why it matters, how it connects to the last one, where",
+  "students get it wrong, and how it is tested. Ground EVERY fact in the",
+  "source - never add facts the source does not support; if the source is a",
+  "list of questions or an outline, teach the concepts behind them. Length",
+  "350 to 900 words depending on how much the source covers.",
+  "HTML - use ONLY these tags: <h3> for 3-6 sub-topic headings, <p>, <ul>,",
+  "<ol>, <li>, <strong>, <em>, <code>, <br>, and <table><thead><tbody><tr>",
+  "<th><td> when comparing things. Callouts, each as",
+  '<div class="callout callout-KIND"><div class="callout-label">LABEL</div>',
+  "<p>...</p></div> with KIND/LABEL pairs: why/WHY THIS MATTERS (open with",
+  "one), example/EXAMPLE, worked/WORKED EXAMPLE (include one whenever the",
+  "material involves steps, procedures or calculations - show every step),",
+  "warn/COMMON MISTAKE (include at least one), tip/EXAM TIP, recall/KEY",
+  "TERMS (a <ul> of term - meaning). END with",
+  '<div class="callout callout-recall"><div class="callout-label">KEY',
+  "TAKEAWAYS</div><ul>3-5 one-line takeaways</ul></div>. No other tags, no",
+  "attributes other than those class names, no inline styles, no images, no",
+  "links, no headings above h3, no LaTeX - plain Unicode math (× · ÷ ² ³ ≤ ≥",
+  "≠ → √ Σ π). Escape < and & inside text as &lt; and &amp;.",
+].join(" ");
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -112,7 +165,12 @@ export default async (req) => {
   const podcast = body.mode === "podcast";
   const mindmap = body.mode === "mindmap";
   const questions = body.mode === "questions";
-  const generated = podcast || mindmap || questions;
+  const outline = body.mode === "outline";
+  const lessonMode = body.mode === "lesson";
+  // Machine-parsed JSON modes: the client parses the reply directly, so no
+  // prose may ever be appended to them.
+  const machine = questions || outline || lessonMode;
+  const generated = podcast || mindmap || machine;
 
   // Bound everything the client can send: last 12 turns, 8KB per turn,
   // 16KB of lesson context. Keeps a single question to a few cents.
@@ -133,14 +191,23 @@ export default async (req) => {
 
   if (generated && !lesson) return json(400, { error: "no_lesson" });
 
+  const systemText = podcast ? PODCAST_SYSTEM
+    : mindmap ? MINDMAP_SYSTEM
+    : questions ? QUESTIONS_SYSTEM
+    : outline ? OUTLINE_SYSTEM
+    : lessonMode ? LESSON_SYSTEM
+    : TUTOR_SYSTEM;
   const system = [
-    { type: "text", text: podcast ? PODCAST_SYSTEM : (mindmap ? MINDMAP_SYSTEM : (questions ? QUESTIONS_SYSTEM : TUTOR_SYSTEM)), cache_control: { type: "ephemeral" } },
+    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
   ];
   if (lesson) {
+    const lead = outline ? "The candidate lines and opening sample"
+      : (questions || lessonMode) ? "The source material"
+      : generated ? "The lesson"
+      : "The student is currently reading this lesson";
     system.push({
       type: "text",
-      text: (questions ? "The source material" : (generated ? "The lesson" : "The student is currently reading this lesson")) +
-        (title ? ` ("${title}")` : "") + ":\n\n" + lesson,
+      text: lead + (title ? ` ("${title}")` : "") + ":\n\n" + lesson,
     });
   }
 
@@ -155,7 +222,7 @@ export default async (req) => {
   // max_tokens 2048 caps the cost of any single answer.
   const stream = client.beta.messages.stream({
     model: "claude-opus-5",
-    max_tokens: podcast ? 3500 : (mindmap ? 2000 : (questions ? 6400 : 2048)),
+    max_tokens: podcast ? 3500 : (mindmap ? 2000 : (questions ? 6400 : (outline ? 2500 : (lessonMode ? 4000 : 2048)))),
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "medium" },
@@ -166,7 +233,11 @@ export default async (req) => {
         ? [{ role: "user", content: "Produce the mind map JSON for the lesson." }]
         : (questions
           ? [{ role: "user", content: "Write exactly " + qCount + " questions from the source material as JSON." }]
-          : messages)),
+          : outline
+            ? [{ role: "user", content: "Return the outline JSON for these lines." }]
+            : lessonMode
+              ? [{ role: "user", content: "Write the lesson JSON for this section" + (title ? ` ("${title}")` : "") + "." }]
+              : messages)),
   });
 
   const enc = new TextEncoder();
@@ -179,13 +250,13 @@ export default async (req) => {
           }
         }
         const final = await stream.finalMessage();
-        // questions mode is machine-parsed JSON: appending prose to a
-        // truncated or refused response would only corrupt the parse -
-        // let bad JSON fail clean so the client falls back.
+        // questions / outline / lesson modes are machine-parsed JSON:
+        // appending prose to a truncated or refused response would only
+        // corrupt the parse - let bad JSON fail clean so the client falls back.
         if (final.stop_reason === "refusal") {
-          if (!questions) controller.enqueue(enc.encode("\n\nI can't help with that particular request."));
+          if (!machine) controller.enqueue(enc.encode("\n\nI can't help with that particular request."));
         } else if (final.stop_reason === "max_tokens") {
-          if (!questions) controller.enqueue(enc.encode("\n\n[Answer trimmed - ask me to continue if you need more.]"));
+          if (!machine) controller.enqueue(enc.encode("\n\n[Answer trimmed - ask me to continue if you need more.]"));
         }
       } catch (e) {
         const msg = e && e.message ? String(e.message).slice(0, 300) : "unknown error";
