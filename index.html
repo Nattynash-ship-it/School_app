@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.549">
+<meta name="app-build" content="18.550">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -18899,15 +18899,20 @@ function renderSection(courseId, chId, secId) {
  </div>`}
 
  <!-- TYPED NOTES — searchable, editable, autosaves on blur -->
- <div class="my-notes" style="margin-top: 28px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;">
- <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:8px;">
- <div style="display:flex; align-items:center; gap:8px;">
+ <div class="my-notes${store.myNotesCollapsed ? ' collapsed' : ''}" style="margin-top: 28px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;">
+ <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;" class="my-notes-head">
+ <!-- The heading is the collapse control: "it's in the way of the notes" -
+      folded, the block is one line, and it stays folded on every lesson
+      until she opens it again. -->
+ <button type="button" data-notes-toggle aria-expanded="${store.myNotesCollapsed ? 'false' : 'true'}" title="${store.myNotesCollapsed ? 'Show my notes' : 'Hide my notes'}" style="display:flex; align-items:center; gap:8px; flex:1; min-width:0; background:none; border:none; padding:4px 0; cursor:pointer; text-align:left; font-family:inherit;">
+ <span data-notes-chevron style="font-size:11px; color:var(--text-3); width:12px; display:inline-block; transition:transform .18s;${store.myNotesCollapsed ? ' transform:rotate(-90deg);' : ''}">▼</span>
  <span style="font-size:14px; color:var(--accent);">✎</span>
  <span style="font-size:13px; font-weight:700; color:var(--text); letter-spacing:0.02em;">MY NOTES</span>
  <span style="font-size:11px; color:var(--text-4);" data-notes-count>${notes.length} note${notes.length === 1 ? '' : 's'}</span>
- </div>
+ </button>
  <button data-note-add style="padding:6px 12px; background:var(--accent); color:var(--accent-text); border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">+ New note</button>
  </div>
+ <div data-notes-body style="margin-top:10px;${store.myNotesCollapsed ? ' display:none;' : ''}">
  <div data-notes-list>
  ${notes.map(n => `
  <div class="note-card" data-note-id="${n.id}" style="background:var(--bg-2); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:8px; padding:10px 12px; margin-bottom:8px;">
@@ -18921,6 +18926,7 @@ function renderSection(courseId, chId, secId) {
  </div>
  <div data-notes-empty style="display:${notes.length === 0 ? 'block' : 'none'}; padding: 18px 8px; text-align:center; color:var(--text-4); font-size:13px; font-style:italic;">
  Capture key ideas, questions, or your own examples — they'll be here next time you visit this lesson.
+ </div>
  </div>
  </div>
 
@@ -19382,8 +19388,25 @@ function wireTypedNotes(wrap, courseId, chId, secId) {
  // Wire existing cards
  list.querySelectorAll('.note-card').forEach(wireNoteCard);
 
+ // Fold / unfold. One preference for every lesson, remembered: once she
+ // folds it out of the way it stays out of the way.
+ const body = wrap.querySelector('[data-notes-body]');
+ const toggle = wrap.querySelector('[data-notes-toggle]');
+ const chevron = wrap.querySelector('[data-notes-chevron]');
+ const box = wrap.querySelector('.my-notes');
+ const setCollapsed = (on, remember) => {
+ on = !!on;
+ if (body) body.style.display = on ? 'none' : '';
+ if (chevron) chevron.style.transform = on ? 'rotate(-90deg)' : '';
+ if (toggle) { toggle.setAttribute('aria-expanded', on ? 'false' : 'true'); toggle.title = on ? 'Show my notes' : 'Hide my notes'; }
+ if (box) box.classList.toggle('collapsed', on);
+ if (remember) { store.myNotesCollapsed = on; saveStore(); }
+ };
+ if (toggle) toggle.addEventListener('click', () => setCollapsed(!(store.myNotesCollapsed === true), true));
+
  // New-note button
  addBtn.addEventListener('click', () => {
+ if (store.myNotesCollapsed) setCollapsed(false, true);   // a new note needs to be seen
  const newNote = { id: 'n' + Date.now(), text: '', createdAt: Date.now() };
  store.notes[k].unshift(newNote);
  saveStore();
