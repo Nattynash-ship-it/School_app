@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.546">
+<meta name="app-build" content="18.547">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -2054,6 +2054,41 @@
  .lesson table code { background: var(--code-bg); color: var(--code-text); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 /* Gentle zebra striping so long reference tables stay scannable (progressive enhancement) */
 .lesson table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+
+/* QUIZ / REVIEW TABLES (truth tables, comparison tables authored right into a
+   question). Before this they got zero styling at all - a bare, unstyled
+   HTML table, at whatever size the "lesson text" zoom setting happened to be
+   scaling prose to - so a 4-5 column truth table felt like it needed the
+   whole screen ("this requires so much space for a table"). Two independent
+   fixes: the font size is fixed here, not tied to --lesson-text-scale, so a
+   larger reading size for PROSE does not also balloon a data table that
+   wants to stay compact and scannable; and short cell values (T/F, numbers,
+   single symbols - the overwhelming majority of what a logic table holds)
+   are centered instead of left-hugging the column, which is what actually
+   made these feel cramped rather than raw pixel width. display:block +
+   overflow-x:auto is the safety net for a table that still doesn't fit -
+   it scrolls instead of squeezing illegibly or breaking the layout. */
+.quiz-text table, .quiz-table-host table {
+ display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+ width: auto; min-width: 0; margin: 12px 0;
+ font-size: 15px !important; line-height: 1.4;
+ border: 1px solid var(--surface-3); border-radius: 8px;
+}
+.quiz-text table th, .quiz-table-host table th {
+ padding: 8px 12px; text-align: center; font-weight: 700; color: var(--text);
+ background: var(--surface-2); border-bottom: 1.5px solid var(--accent); white-space: nowrap;
+}
+.quiz-text table td, .quiz-table-host table td {
+ padding: 7px 12px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums;
+ border-bottom: 0.5px solid var(--surface-3); white-space: nowrap;
+}
+/* the first column is usually a row label (#, term, condition) - let ONLY that one read left-to-right */
+.quiz-text table th:first-child, .quiz-table-host table th:first-child,
+.quiz-text table td:first-child, .quiz-table-host table td:first-child { text-align: left; }
+.quiz-text table tr:last-child td, .quiz-table-host table tr:last-child td { border-bottom: none; }
+.quiz-text table tbody tr:nth-child(even) td, .quiz-table-host table tbody tr:nth-child(even) td {
+ background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+}
 
  /* Section intro paragraph */
  .lesson .tb-intro { font-size: 14.5px; line-height: 1.7; color: var(--text); margin: 4px 0 14px; }
@@ -20259,7 +20294,7 @@ function buildQuizReviewHTML(questions, answers) {
  <div style="font-size:11px; color:var(--text-4); letter-spacing:0.06em; text-transform:uppercase;">Q${i + 1} · ${esc(q.topic || 'general')}</div>
  <div style="font-size:11px; font-weight:700; color:${barColor};">${verdict}</div>
  </div>
- <div style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.45;">${q.text}</div>
+ <div class="quiz-table-host" style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.45;">${q.text}</div>
  ${optsHTML}
  ${q.explain ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:13px; color:var(--text-2); line-height:1.55;"><strong style="color:var(--text);">Why:</strong> ${esc(q.explain)}</div>` : ''}
  </div>`;
