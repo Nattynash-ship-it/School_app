@@ -46,10 +46,23 @@ function same(a, b) {
   for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   return diff === 0;
 }
+// Mirrors gateConfig() in netlify/edge-functions/gate.js exactly: the password
+// hash comes from GATE_PASSWORD (hashed), else GATE_PASSWORD_SHA256, else the
+// built-in hash; the cookie key is GATE_SECRET, else derived from that hash
+// and the site's own id (which is not in the repository).
+const DEFAULT_PASSWORD_SHA256 = "570052f5b42248adaa457f6ef19d4d86a56c09813aa1a90fc1c53b2d099ac902";
+async function sha256hex(s) {
+  const d = await crypto.subtle.digest("SHA-256", enc.encode(s));
+  return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function gateSecret() {
+  const env = (k) => process.env[k] || "";
+  const plain = env("GATE_PASSWORD");
+  const hash = plain ? await sha256hex(plain) : (env("GATE_PASSWORD_SHA256") || DEFAULT_PASSWORD_SHA256).toLowerCase();
+  return env("GATE_SECRET") || await hmacHex(hash, "nsh-gate:" + (env("SITE_ID") || env("NETLIFY_SITE_ID") || "site"));
+}
 async function signedIn(req) {
-  const password = process.env.GATE_PASSWORD || "";
-  const secret = process.env.GATE_SECRET || (password ? "s:" + password : "");
-  if (!secret) return false;                       // no gate configured: fail closed
+  const secret = await gateSecret();
   const raw = req.headers.get("cookie") || "";
   let value = "";
   for (const part of raw.split(";")) { const [k, ...v] = part.trim().split("="); if (k === "nsh_gate") value = v.join("="); }
