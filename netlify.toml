@@ -6,3 +6,12 @@
 
 [functions]
   node_bundler = "esbuild"
+
+# THE GATE. Every request - the app, the course files, the functions - passes
+# through netlify/edge-functions/gate.js first. Without the sign-in cookie the
+# visitor gets the password page and nothing else. The password lives only in
+# the site's environment variables (GATE_PASSWORD; optional GATE_SECRET), never
+# in this repository.
+[[edge_functions]]
+  path = "/*"
+  function = "gate"

@@ -8,7 +8,7 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v722';
+const CACHE = 'study-hub-v723';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,12 +27,35 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// THE KILL SWITCH. The site is now behind a password gate, but every device
+// that opened it before the gate existed still holds a complete copy in this
+// worker's cache - and a cached PWA keeps working with no server at all.
+// /sw.js is the one file the gate serves to everyone, precisely so this
+// worker reaches those devices: on its first activation it deletes every
+// cache and reloads every open page. The reload goes to the network, meets
+// the gate, and shows the sign-in page. Nothing else on the device is
+// touched (localStorage and IndexedDB are not caches), so a signed-in owner
+// loses nothing; a stranger loses the copy. The marker cache records that
+// the switch has fired, so later deploys update quietly as before.
+const GATE_MARK = 'study-hub-gate-v1';
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    // an older worker's cache means this device held the site before the gate
+    const hadOld = keys.some((k) => k !== CACHE && k !== GATE_MARK);
+    await Promise.all(keys.filter((k) => k !== CACHE && k !== GATE_MARK).map((k) => caches.delete(k)));
+    await self.clients.claim();
+    if (!keys.includes(GATE_MARK)) {
+      try { await caches.open(GATE_MARK); } catch (e) {}
+      // A brand-new device has nothing to wipe and is not reloaded.
+      if (hadOld) {
+        try {
+          const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          for (const c of cs) { try { await c.navigate(c.url); } catch (e) {} }
+        } catch (e) {}
+      }
+    }
+  })());
 });
 
 // Let the page force a waiting worker to activate, or clear all caches on demand.
