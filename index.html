@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.554">
+<meta name="app-build" content="18.555">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -63973,10 +63973,19 @@ css.textContent = [
   '#mn-where{flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;',
   '  color:var(--text-4); max-width:26vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}',
 
-  /* pen strokes must not scroll the pad; a finger still can (pan-x pan-y).
-     overflow-x too: at writing scale the page can be wider than the panel. */
-  '#mn-pages{flex:1 1 auto; overflow-y:auto; overflow-x:auto; overscroll-behavior:contain;',
+  /* "scrolling on the notes is difficult... needs to not move side to side
+     but also needs to scroll seamlessly": the old approach let the browser
+     pan both axes and then had JS snap scrollLeft back to 0 on every scroll
+     event - fighting the OS's own momentum animation is exactly what made it
+     feel un-smooth. touch-action:pan-y tells iOS up front that this element
+     is vertical-only, so the compositor handles the scroll natively with no
+     JS correction and no possibility of sideways drift at all. Only at
+     writing zoom (paperScale() > 1, the page wider than the panel) is
+     horizontal scroll ever needed to reach the far side of the page - the
+     .mn-zoomed class (toggled in sizeSvg) opens both axes just for that. */
+  '#mn-pages{flex:1 1 auto; overflow-y:auto; overflow-x:hidden; touch-action:pan-y; overscroll-behavior:contain;',
   '  background:var(--bg-2); -webkit-overflow-scrolling:touch;}',
+  '#mn-pages.mn-zoomed{overflow-x:auto; touch-action:pan-x pan-y;}',
   /* paper over desk: the surface tint composited on an opaque base, so the
      page is never see-through even in themes where --surface is translucent */
   '#mn-ink{display:block; width:100%; touch-action:pan-x pan-y;',
@@ -64556,6 +64565,9 @@ function sizeSvg(){
   if (svg.getAttribute('viewBox') !== vb) svg.setAttribute('viewBox', vb);
   if (svg.style.width !== wPx) svg.style.width = wPx;
   if (svg.style.height !== hPx) svg.style.height = hPx;
+  // horizontal scroll only exists while the page is wider than the panel
+  // (writing zoom); see the #mn-pages.mn-zoomed CSS for why this matters.
+  if (pagesEl) pagesEl.classList.toggle('mn-zoomed', w > base + 1);
 }
 function pt(e){
   var r = svg.getBoundingClientRect();
@@ -65004,23 +65016,49 @@ function wireInk(){
    stores a page height alongside ink, so scrolled-but-empty pages are not
    remembered across sessions. */
 function wireScroll(){
-  var axis = null, sx = 0, sy = 0, keepL = 0, keepT = 0, held = false;
+  /* "must not move side to side, but must also scroll seamlessly": the dock
+     is narrow enough by default that the pad is almost always at writing
+     zoom (.mn-zoomed) - the page wider than the panel - so both axes are
+     genuinely scrollable there and a diagonal flick can drift the page
+     sideways underneath the pen. iOS decides a gesture's scroll direction at
+     the moment it starts and will not honour a touch-action change made
+     after that, so the browser cannot be told mid-gesture "vertical only" -
+     the lock has to be JS. What made it feel rough before was doing that
+     lock by fighting the native momentum: setting scrollLeft back on every
+     single 'scroll' tick pulls against the compositor's own animation, which
+     is what a stutter IS. Now the cross-axis is corrected once, the instant
+     the gesture commits to an axis, and then it is switched off entirely
+     (overflow-x: hidden) for the rest of that gesture - the OS is left to
+     run the vertical momentum on its own with nothing in JS touching it
+     until the finger lifts and the scroll goes quiet. At normal (unzoomed)
+     size #mn-pages is touch-action:pan-y in CSS and none of this runs at
+     all: scrolling is 100% native with no possibility of drift to begin
+     with. */
+  var axis = null, sx = 0, sy = 0, keepL = 0, keepT = 0, held = false, locked = false;
+  function zoomed(){ return pagesEl.classList.contains('mn-zoomed'); }
+  function unlockCross(){ if (locked) { pagesEl.style.overflowX = ''; pagesEl.style.overflowY = ''; locked = false; } }
   pagesEl.addEventListener('touchstart', function(e){
-    held = true; axis = null;
+    held = true; axis = null; unlockCross();
+    if (!zoomed()) return;
     if (e.touches && e.touches[0]) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
     keepL = pagesEl.scrollLeft; keepT = pagesEl.scrollTop;
   }, { passive: true });
   pagesEl.addEventListener('touchmove', function(e){
-    if (!held || axis || !(e.touches && e.touches[0])) return;
+    if (!held || axis || !zoomed() || !(e.touches && e.touches[0])) return;
     var dx = Math.abs(e.touches[0].clientX - sx);
     var dy = Math.abs(e.touches[0].clientY - sy);
     if (dx < 6 && dy < 6) return;               // not committed yet
     axis = (dy >= dx) ? 'y' : 'x';
+    // one correction, right now, then the cross-axis is switched off for the
+    // rest of the gesture - nothing left to fight the momentum on every tick
+    if (axis === 'y') { pagesEl.scrollLeft = keepL; pagesEl.style.overflowX = 'hidden'; }
+    else { pagesEl.scrollTop = keepT; pagesEl.style.overflowY = 'hidden'; }
+    locked = true;
   }, { passive: true });
   /* The finger lifting does not end the scroll: iOS carries it on as
-     momentum, and that phase used to run unlocked, so a slightly diagonal
-     flick drifted the page sideways after the lift. The axis stays pinned
-     until the scroll itself goes quiet. */
+     momentum, so the cross-axis stays switched off until that momentum
+     itself goes quiet (below, via the same idle timer that watches for the
+     foot of the page), not just until touchend. */
   var end = function(){ held = false; };
   pagesEl.addEventListener('touchend', end, { passive: true });
   pagesEl.addEventListener('touchcancel', end, { passive: true });
@@ -65029,7 +65067,7 @@ function wireScroll(){
   function atFoot(){ return pagesEl.scrollTop + pagesEl.clientHeight >= pagesEl.scrollHeight - 24; }
   function settled(){
     settle = 0;
-    axis = null;                                 // the gesture and its momentum are over
+    axis = null; unlockCross();                  // the gesture and its momentum are over
     try {
       if (tab !== 'write' || covered || held) return;
       if (!atFoot()) return;
@@ -65042,10 +65080,6 @@ function wireScroll(){
     } catch (e) {}
   }
   pagesEl.addEventListener('scroll', function(){
-    if (axis) {
-      if (axis === 'y') { if (pagesEl.scrollLeft !== keepL) pagesEl.scrollLeft = keepL; }
-      else { if (pagesEl.scrollTop !== keepT) pagesEl.scrollTop = keepT; }
-    }
     paintPageSoon();
     /* Growing the paper while the scroll is still moving is what made the
        page shift: the container's height changed under a live momentum
