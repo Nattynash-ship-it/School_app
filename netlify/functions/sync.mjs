@@ -46,6 +46,7 @@ function same(a, b) {
   for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   return diff === 0;
 }
+<<<<<<< HEAD
 // Mirrors gateConfig() in netlify/edge-functions/gate.js exactly: the password
 // hash comes from GATE_PASSWORD (hashed), else GATE_PASSWORD_SHA256, else the
 // built-in hash; the cookie key is GATE_SECRET, else derived from that hash
@@ -63,6 +64,12 @@ async function gateSecret() {
 }
 async function signedIn(req) {
   const secret = await gateSecret();
+=======
+async function signedIn(req) {
+  const password = process.env.GATE_PASSWORD || "";
+  const secret = process.env.GATE_SECRET || (password ? "s:" + password : "");
+  if (!secret) return false;                       // no gate configured: fail closed
+>>>>>>> origin/main
   const raw = req.headers.get("cookie") || "";
   let value = "";
   for (const part of raw.split(";")) { const [k, ...v] = part.trim().split("="); if (k === "nsh_gate") value = v.join("="); }
