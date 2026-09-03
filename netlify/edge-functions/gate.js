@@ -19,7 +19,6 @@ const COOKIE = "nsh_gate";
 const MAX_AGE = 180 * 24 * 60 * 60;          // seconds
 const PUBLIC = new Set(["/sw.js", "/favicon.ico", "/robots.txt"]);
 
-<<<<<<< HEAD
 // The built-in password, as a SHA-256 hash - the passphrase itself is not in
 // this repository (which is public). GATE_PASSWORD or GATE_PASSWORD_SHA256 in
 // the site's environment variables override it without a code change.
@@ -30,9 +29,6 @@ async function sha256hex(s) {
   const d = await crypto.subtle.digest("SHA-256", enc.encode(s));
   return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-=======
-const enc = new TextEncoder();
->>>>>>> origin/main
 
 async function hmac(secret, msg) {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -106,7 +102,6 @@ button{margin-top:14px;width:100%;font:inherit;font-size:16px;font-weight:700;pa
 <p class="foot">Nothing on this site is shared, indexed or public.</p></main></body></html>`;
 }
 
-<<<<<<< HEAD
 // Which password is in force, and the secret that signs cookies.
 //  - GATE_PASSWORD (plaintext, env) wins; else GATE_PASSWORD_SHA256 (env);
 //    else the built-in hash above.
@@ -129,22 +124,6 @@ export default async function gate(request, context) {
   const path = url.pathname;
   if (PUBLIC.has(path)) return context.next();
   const { hash, secret } = await gateConfig(env);
-=======
-export default async function gate(request, context) {
-  const url = new URL(request.url);
-  const path = url.pathname;
-  const password = env("GATE_PASSWORD");
-  const secret = env("GATE_SECRET") || (password ? "s:" + password : "");
-
-  if (PUBLIC.has(path)) return context.next();
-
-  if (!password) {
-    return page(`<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Locked</title>
-<body style="font-family:-apple-system,system-ui,sans-serif;padding:40px;max-width:520px;margin:auto;line-height:1.5">
-<h1 style="font-size:20px">Site locked - password not configured yet</h1>
-<p>Set <code>GATE_PASSWORD</code> in Netlify (Site configuration → Environment variables), then trigger a redeploy. Until then nothing is served.</p></body>`, 503);
-  }
->>>>>>> origin/main
 
   if (path === "/__gate") {
     if (request.method === "POST") {
@@ -155,11 +134,7 @@ export default async function gate(request, context) {
         next = String(form.get("next") || "/");
       } catch (e) {}
       if (!/^\/(?!\/)/.test(next)) next = "/";
-<<<<<<< HEAD
       if (await passwordMatches(given, hash)) {
-=======
-      if (given && same(given, password)) {
->>>>>>> origin/main
         return new Response(null, { status: 303, headers: { location: next, "set-cookie": await makeCookie(secret), "cache-control": "no-store" } });
       }
       return page(loginPage({ error: "That password is not right.", next }), 401);
