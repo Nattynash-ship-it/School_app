@@ -8,3 +8,6 @@
   Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
+/__gate
+  Cache-Control: no-store
+  X-Robots-Tag: noindex

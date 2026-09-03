@@ -30,7 +30,38 @@ function store() {
   catch (e) { return getStore("study-sync"); }
 }
 
+// THE GATE, a second time. The edge function in front of the site already
+// refuses requests without the sign-in cookie; this repeats the check here so
+// the blob store is safe even if the edge configuration is ever removed or
+// bypassed. Same cookie, same secret, same rule: no cookie, no data.
+const enc = new TextEncoder();
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function same(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+async function signedIn(req) {
+  const password = process.env.GATE_PASSWORD || "";
+  const secret = process.env.GATE_SECRET || (password ? "s:" + password : "");
+  if (!secret) return false;                       // no gate configured: fail closed
+  const raw = req.headers.get("cookie") || "";
+  let value = "";
+  for (const part of raw.split(";")) { const [k, ...v] = part.trim().split("="); if (k === "nsh_gate") value = v.join("="); }
+  const dot = value.indexOf(".");
+  if (dot < 1) return false;
+  const exp = value.slice(0, dot), sig = value.slice(dot + 1);
+  if (!/^\d{9,13}$/.test(exp) || Number(exp) * 1000 < Date.now()) return false;
+  return same(sig, await hmacHex(secret, exp));
+}
+
 export default async (req) => {
+  if (!(await signedIn(req))) return json(401, { error: "sign_in_required" });
   let url;
   try { url = new URL(req.url); } catch (e) { return json(400, { error: "bad request" }); }
   const key = String(url.searchParams.get("k") || "").toLowerCase();

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.550">
+<meta name="app-build" content="18.551">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -6112,6 +6112,7 @@ const COURSE_FOLDERS = [
  { id: 'portfolio-python', title: 'Python Projects', parentGroup: 'Portfolio Projects', icon: '🐍', desc: '1 end-to-end Python pipeline', portfolioChapter: 'python' },
  { id: 'portfolio-papps', title: 'Power Apps Projects', parentGroup: 'Portfolio Projects', icon: '📱', desc: '1 production-feeling business app', portfolioChapter: 'papps' },
  { id: 'portfolio-pauto', title: 'Power Automate Projects', parentGroup: 'Portfolio Projects', icon: '⚡', desc: '1 multi-step business workflow', portfolioChapter: 'pauto' },
+    { id: 'portfolio-team', title: 'Correspondence Team Projects', parentGroup: 'Portfolio Projects', icon: '📮', desc: '7 team projects: Python, Power Apps, Power BI, Power Automate + capstone', portfolioChapter: 'team' },
  { id: 'portfolio-capstone', title: 'Capstone Project', parentGroup: 'Portfolio Projects', icon: '🏆', desc: 'Combines SQL + Python + Power BI', portfolioChapter: 'capstone' },
  { id: 'portfolio-meta', title: 'Portfolio Strategy', parentGroup: 'Portfolio Projects', icon: '📝', desc: 'How to present and use these projects', portfolioChapter: 'meta' },
 ];
@@ -8902,7 +8903,7 @@ const COURSES = {
    id: 'PORTFOLIO',
    name: 'Portfolio Projects',
    code: 'PORTFOLIO',
-   desc: '13 resume-ready portfolio projects with full build guides. Each project includes a brief, step-by-step instructions, deliverables, resume bullets, and interview talking points.',
+   desc: '20 resume-ready portfolio projects with numbered build guides - including 7 built for a correspondence team on Python, Power Apps, Power BI and Power Automate. Each project has a brief, step-by-step instructions, deliverables, resume bullets and interview talking points.',
    color: 'purple',
    active: true,
    chapters: [
@@ -8934,6 +8935,15 @@ const COURSES = {
      ] },
      { id: 'pauto', title: 'Power Automate Projects', desc: '1 multi-step business workflow.', sections: [
        { id: 'p1', title: 'Daily Team Briefing Bot', objectives: ['Aggregate schedule, weather, key updates', 'Multi-source data orchestration', 'Send to Teams/Outlook automatically', 'Conditional logic and error handling'] },
+     ] },
+     { id: 'team', title: 'Correspondence Team Projects (7)', desc: 'Built for a correspondence team - Python, Power Apps, Power BI, Power Automate.', sections: [
+       { id: 'pa1', title: "Correspondence Queue: Team Intake, Assignment & SLA App", objectives: ["Build a canvas app your whole team uses to log, assign and close correspondence", "Design three SharePoint lists with lookups and a person column", "Write delegable Power Fx for queues, aging colours and one-tap assignment", "Roll it out to the team with a pilot, an SOP and a feedback loop"] },
+       { id: 'pau1', title: "Inbox Triage & Routing: Shared Mailbox to Queue, with SLA Reminders", objectives: ["Turn every email in the shared mailbox into a tracked queue item automatically", "Route by category to a default owner and set the due date in working days", "Post an adaptive card to Teams and send an acknowledgement to the sender", "Run a daily reminder flow for items due tomorrow or already late"] },
+       { id: 'pbi1', title: "Correspondence Volume & SLA Dashboard", objectives: ["Connect Power BI to the team's SharePoint list and shape it in Power Query", "Build a date table and a small star schema", "Write DAX for open items, overdue, on-time %, aging buckets and backlog trend", "Publish, schedule refresh, and pin the report in Teams"] },
+       { id: 'py1', title: "Intake Classifier & Response Drafter (Python)", objectives: ["Read the team's correspondence export with pandas and clean it", "Classify items by category with rules first, a trained model second", "Generate draft replies from Word templates with mail-merge fields", "Package it as a command-line tool with tests the team can run"] },
+       { id: 'py2', title: "SLA Aging & Weekly Backlog Report (Python)", objectives: ["Compute working-day age and SLA breaches with a holiday calendar", "Produce a formatted Excel workbook with charts the team lead can forward", "Generate an HTML summary for email and post it with Power Automate", "Schedule it so Monday's report is waiting before Monday starts"] },
+       { id: 'pau2', title: "Response Approval & Send: Draft to Signed Letter", objectives: ["Route a drafted response to a team lead for approval from inside the queue app", "Populate a Word template from the item, convert it to PDF, and send it from the shared mailbox", "Close the loop: stamp RespondedOn, archive the PDF, and handle rejection with comments", "Design for the audit: who approved what, when, with which document"] },
+       { id: 'cap', title: "Capstone: The Correspondence System End to End", objectives: ["Assemble the queue app, triage flow, approval flow, dashboard and Python reports into one system", "Build in the right order so each piece is usable before the next exists", "Run a pilot, measure the before/after, and roll out with an SOP and training", "Set up governance: environments, solutions, DLP, ownership and a runbook"] },
      ] },
      { id: 'capstone', title: 'Capstone Project', desc: 'The portfolio centerpiece combining everything.', sections: [
        { id: 'p1', title: 'NYC Subway Equity Audit (SQL + Python + Power BI)', objectives: ['Combine SQL, Python, BI in one project', 'Analyze MTA service equity', 'Geographic + time-series analysis', 'Executive dashboard + technical report'] },
@@ -16281,6 +16291,310 @@ const PROJECTS = {
  ],
  },
  {
+  "id": "correspondence-team",
+  "name": "Correspondence Team",
+  "icon": "📮",
+  "color": "teal",
+  "blurb": "Built for a correspondence team: automated intake, a shared queue app, one-tap approvals with generated letters, an SLA dashboard and scheduled Python reports. Each project links to its full step-by-step build guide.",
+  "projects": [
+   {
+    "id": "team-pa1",
+    "level": "intermediate",
+    "title": "Correspondence Queue: Team Intake, Assignment & SLA App",
+    "time": "14-18 hours",
+    "summary": "One shared queue for every letter, email and form the team owes an answer to — who has it, when it is due, and what has been sent.",
+    "youll_learn": [
+     "Build a canvas app your whole team uses to log, assign and close correspondence",
+     "Design three SharePoint lists with lookups and a person column",
+     "Write delegable Power Fx for queues, aging colours and one-tap assignment",
+     "Roll it out to the team with a pilot, an SOP and a feedback loop"
+    ],
+    "requirements": [
+     "Power Apps (canvas, tablet layout)",
+     "SharePoint Online lists ×3",
+     "Office 365 Users connector",
+     "Power Automate (from the next project)"
+    ],
+    "tasks": [
+     "3 lists with lookup + person column, filtered columns indexed",
+     "Queue with My work / Team / Overdue chips, delegable filters only",
+     "SLA colour bar and days-left label",
+     "Assign to me / to teammate with the Claims patch",
+     "Template picker with placeholders substituted",
+     "Intake form with auto-reference",
+     "Dashboard tiles + workload chart",
+     "Pilot done, SOP written, app shared with the team"
+    ],
+    "success": [
+     "Three lists, a lookup from Correspondence to Categories, a person column, three indexed columns, 20 seeded items.",
+     "Four screens with a shared header, three lists plus Office 365 Users connected, colCategories and colTeam populated.",
+     "Three chips switch the queue, rows are colour-coded by days to due, search works, tapping a row opens it.",
+     "Assign-to-me, assign-to-teammate, template copy, mark responded, and a form save all round-trip to SharePoint and show in the queue immediately."
+    ],
+    "stretch": [
+     "Attach the original letter (scan) to the item with the Attachments control",
+     "A Comments list for an internal thread per item",
+     "Mobile phone layout for the queue only",
+     "Hand the \"respond\" step to the approval flow (Power Automate project 2)"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "pa1"
+    }
+   },
+   {
+    "id": "team-pau1",
+    "level": "intermediate",
+    "title": "Inbox Triage & Routing: Shared Mailbox to Queue, with SLA Reminders",
+    "time": "10-14 hours",
+    "summary": "Nobody types an email into the tracker again. Two cloud flows: one that logs, routes and acknowledges every incoming item, and one that nags before anything goes late.",
+    "youll_learn": [
+     "Turn every email in the shared mailbox into a tracked queue item automatically",
+     "Route by category to a default owner and set the due date in working days",
+     "Post an adaptive card to Teams and send an acknowledgement to the sender",
+     "Run a daily reminder flow for items due tomorrow or already late"
+    ],
+    "requirements": [
+     "Office 365 Outlook — When a new email arrives in a shared mailbox (V2)",
+     "SharePoint connector",
+     "Microsoft Teams — Post card in a chat or channel",
+     "Office 365 Outlook — Send an email from a shared mailbox (V2)",
+     "Expressions: split, contains, addDays, dayOfWeek, formatDateTime, coalesce"
+    ],
+    "tasks": [
+     "Keywords column, Uncategorised fallback, document library",
+     "Shared-mailbox trigger with auto-reply and self-loop guards",
+     "Keyword classification loop setting category, owner and SLA",
+     "Timestamp reference; working-day due date expression",
+     "Create item, file attachments by reference",
+     "Teams adaptive card with deep link; acknowledgement from the shared mailbox",
+     "Try/Catch scopes with run-after on both flows",
+     "Weekday reminder flow: per-owner chats + channel summary"
+    ],
+    "success": [
+     "Send yourself a test email to the shared mailbox with the word \"complaint\" in the subject. Within a minute a Correspondence item exists with the Complaint category, its default owner, and a due date on a weekday.",
+     "Attachments appear in the library under the reference, the Teams card links to the item, the sender gets the acknowledgement, and a deliberately broken action (rename a list column temporarily) produces the Catch email instead of a silently failed run.",
+     "Use Test → Manually at any time of day: owners get a chat message for each item due tomorrow or late, the channel gets the summary, and nothing posts for Responded or Closed items."
+    ],
+    "stretch": [
+     "AI Builder category classification model trained on last year's items, with keywords as the fallback",
+     "Match follow-up emails to existing items by the [CR-…] reference in the subject and append a comment instead of creating a new item",
+     "Escalation: overdue by 3+ days posts to the team lead with an approval to reassign"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "pau1"
+    }
+   },
+   {
+    "id": "team-pbi1",
+    "level": "intermediate",
+    "title": "Correspondence Volume & SLA Dashboard",
+    "time": "10-12 hours",
+    "summary": "The team lead's Monday question — \"how are we doing?\" — answered by a report that refreshes itself from the queue.",
+    "youll_learn": [
+     "Connect Power BI to the team's SharePoint list and shape it in Power Query",
+     "Build a date table and a small star schema",
+     "Write DAX for open items, overdue, on-time %, aging buckets and backlog trend",
+     "Publish, schedule refresh, and pin the report in Teams"
+    ],
+    "requirements": [
+     "Power BI Desktop",
+     "SharePoint Online List connector (v2)",
+     "Power BI service — workspace + scheduled refresh"
+    ],
+    "tasks": [
+     "SharePoint list connected (Implementation 2.0), person and lookup columns expanded",
+     "Date table marked, active + inactive relationships",
+     "Measures: Open, Overdue, Due This Week, On Time %, Avg Days, Backlog",
+     "Age Bucket column with sort column",
+     "Page 1 Today, Page 2 Trends, slicers wired",
+     "Published, scheduled refresh, Teams tab"
+    ],
+    "success": [
+     "Four tables, four relationships, Date marked as a date table, and a table visual of Category with a count of Ref shows sensible numbers.",
+     "Both pages match a hand count from the list: pick one category, count its open items in SharePoint, compare with the card while the slicer is set to that category."
+    ],
+    "stretch": [
+     "Working-day SLA: replace DAY differences with a NETWORKDAYS-style measure over Date[IsWorkday]",
+     "Category SLA breach forecast: items whose age will exceed SLA within 2 days",
+     "Power BI alert on the Overdue card → Teams"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "pbi1"
+    }
+   },
+   {
+    "id": "team-py1",
+    "level": "intermediate",
+    "title": "Intake Classifier & Response Drafter (Python)",
+    "time": "14-18 hours",
+    "summary": "Point it at this morning's export; get back a category for every item and a first-draft reply in the team's own words, ready to review — not to send.",
+    "youll_learn": [
+     "Read the team's correspondence export with pandas and clean it",
+     "Classify items by category with rules first, a trained model second",
+     "Generate draft replies from Word templates with mail-merge fields",
+     "Package it as a command-line tool with tests the team can run"
+    ],
+    "requirements": [
+     "pandas, openpyxl",
+     "scikit-learn",
+     "docxtpl (python-docx-template)",
+     "typer",
+     "pytest"
+    ],
+    "tasks": [
+     "venv, package layout, data folders git-ignored",
+     "load_export validates columns and builds the text field",
+     "rules.yaml + classify_by_rules + tests green",
+     "Model trained with cross-validated F1 recorded",
+     "Rules → model → threshold → Uncategorised",
+     "docxtpl templates per category, drafts open cleanly",
+     "CLI with train and run, log written",
+     "README tested on a teammate"
+    ],
+    "success": [
+     "Rules classify roughly 60–70% of a real export; df[\"text\"].apply(lambda t: classify_by_rules(t, R)[0]).value_counts(dropna=False) shows the split.",
+     "Twenty drafts in drafts/, each opening cleanly in Word with the right name, reference and dates."
+    ],
+    "stretch": [
+     "Read the SharePoint list directly with Office365-REST-Python-Client instead of an export",
+     "Write drafts back to the item as attachments",
+     "Sentence-level highlighting of what triggered the category",
+     "Swap logistic regression for a small sentence-embedding model and compare F1"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "py1"
+    }
+   },
+   {
+    "id": "team-py2",
+    "level": "intermediate",
+    "title": "SLA Aging & Weekly Backlog Report (Python)",
+    "time": "8-10 hours",
+    "summary": "The precise numbers — working days, bank holidays, breaches by category and owner — in a workbook and an email, every Monday at 07:30, without anyone opening Excel.",
+    "youll_learn": [
+     "Compute working-day age and SLA breaches with a holiday calendar",
+     "Produce a formatted Excel workbook with charts the team lead can forward",
+     "Generate an HTML summary for email and post it with Power Automate",
+     "Schedule it so Monday's report is waiting before Monday starts"
+    ],
+    "requirements": [],
+    "tasks": [
+     "Holiday calendar (national + team CSV)",
+     "busday_count ages, busday_offset due dates, three hand-checked cases",
+     "Breach, DueSoon, LateResponse, Bucket columns",
+     "Workbook: 5 sheets, formatting, 2 PNG charts, dated file name",
+     "HTML summary with inline styles",
+     "Export flow → scheduled task → delivery flow",
+     "README with the number-of-record note"
+    ],
+    "success": [
+     "Three hand-checked ages match; df[[\"Ref\",\"Received\",\"DueWorking\",\"AgeWD\",\"Breach\",\"DueSoon\"]].head(10) looks right.",
+     "Trigger the task manually on a Friday afternoon; by the time you refresh your inbox, the email is there with the workbook attached and the HTML summary readable on a phone."
+    ],
+    "stretch": [
+     "Read SharePoint directly with Office365-REST-Python-Client using an app registration",
+     "Trend sheet: append this week's KPIs to a running CSV and chart 12 weeks",
+     "Per-owner emails with just their items"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "py2"
+    }
+   },
+   {
+    "id": "team-pau2",
+    "level": "advanced",
+    "title": "Response Approval & Send: Draft to Signed Letter",
+    "time": "10-12 hours",
+    "summary": "The agent writes the response in the queue app and taps \"Send for approval\". The lead approves on their phone. The letter is generated, converted to PDF, sent, archived and the item closed — with an audit trail nobody had to type.",
+    "youll_learn": [
+     "Route a drafted response to a team lead for approval from inside the queue app",
+     "Populate a Word template from the item, convert it to PDF, and send it from the shared mailbox",
+     "Close the loop: stamp RespondedOn, archive the PDF, and handle rejection with comments",
+     "Design for the audit: who approved what, when, with which document"
+    ],
+    "requirements": [
+     "SharePoint — When an item is created or modified + trigger condition",
+     "Approvals — Start and wait for an approval",
+     "Word Online (Business) — Populate a Microsoft Word template",
+     "OneDrive for Business — Convert file",
+     "Outlook — Send an email from a shared mailbox (V2)"
+    ],
+    "tasks": [
+     "Draft, Approver, ApprovedBy/On, Comments columns; templates with titled content controls",
+     "Send-for-approval button in the app",
+     "Trigger condition on Status + ApprovedOn-blank guard",
+     "Approval with the draft in Markdown and a deep link",
+     "Populate → DOCX → PDF → send → archive → update → notify",
+     "Reject path with comments and Teams DM",
+     "Try/Catch, list versioning, three test runs"
+    ],
+    "success": [
+     "Set an item to Awaiting approval from the app; the lead receives the approval card with the draft text; nothing happens until they respond.",
+     "Three runs in history: approved-and-sent, rejected-with-comments, and a caught failure. The Sent folder holds a DOCX and a PDF for the approved one."
+    ],
+    "stretch": [
+     "No premium? Build the letter as HTML in a Compose action, send it as the email body, and archive the HTML — no Word Online needed",
+     "Timeout on the approval (Settings → Timeout P3D) with escalation to a deputy",
+     "Sequential approval for FOI: lead then information governance",
+     "Attach the PDF back to the list item as well as the library"
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "pau2"
+    }
+   },
+   {
+    "id": "team-cap",
+    "level": "advanced",
+    "title": "Capstone: The Correspondence System End to End",
+    "time": "6 weeks, part time",
+    "summary": "Email in, tracked item, drafted reply, one-tap approval, signed PDF out, numbers on a dashboard and a Monday report — built as one system the team runs, with the evidence to show what it changed.",
+    "youll_learn": [
+     "Assemble the queue app, triage flow, approval flow, dashboard and Python reports into one system",
+     "Build in the right order so each piece is usable before the next exists",
+     "Run a pilot, measure the before/after, and roll out with an SOP and training",
+     "Set up governance: environments, solutions, DLP, ownership and a runbook"
+    ],
+    "requirements": [],
+    "tasks": [
+     "Site, groups, lists with all columns, versioning on",
+     "Environment + solution from day one",
+     "Week-by-week build order followed; value in week 1",
+     "Reconciliation page at zero",
+     "Approval flow live for all categories",
+     "Report and dashboard reconcile",
+     "SOP, training, runbook, DLP check, service-account ownership",
+     "Before/after one-pager"
+    ],
+    "success": [
+     "The spreadsheet is retired. Every new item this week exists in the list with an owner and a due date.",
+     "An email arrived, was triaged, drafted, approved on a phone, sent as a PDF and closed — and no human typed a reference, a date or a file name."
+    ],
+    "stretch": [
+     "Dataverse instead of SharePoint lists once volume passes ~50k items a year",
+     "AI Builder classification replacing keywords, with the drafter's log as training data",
+     "A citizen-facing status page: \"your reference CR-… is being handled, due by …\""
+    ],
+    "guide": {
+     "courseId": "PORTFOLIO",
+     "chId": "team",
+     "secId": "cap"
+    }
+   }
+  ]
+ },
+ {
  id: 'python-llms',
  name: 'Python & LLMs',
  icon: '🐍',
@@ -17517,7 +17831,7 @@ function renderProject(trackId, projectId) {
  ⚠ <strong>Learning project</strong> — Natasha is still learning and building this. This is study work in progress, not finished or production-ready.
  </div>
 
- <div class="proj-actions">${statusBtn}</div>
+ <div class="proj-actions">${statusBtn}${project.guide ? ` <button class="proj-action-btn proj-action-secondary" data-act="guide">📖 Full build guide — every step, code and diagrams</button>` : ''}</div>
 
  <div class="proj-section">
  <h3>You'll learn</h3>
@@ -17547,6 +17861,12 @@ function renderProject(trackId, projectId) {
  `;
 
  wrap.querySelector('[data-back]').addEventListener('click', () => go({ name: 'project-track', trackId: track.id }));
+ // Team projects carry a full build guide as a PORTFOLIO lesson: the task list
+ // here is the checklist to tick off; the guide is where the steps live.
+ wrap.querySelector('[data-act="guide"]')?.addEventListener('click', () => {
+ const g = project.guide || {};
+ go({ name: 'section', courseId: g.courseId || 'PORTFOLIO', chId: g.chId, secId: g.secId });
+ });
 
  // Action buttons
  wrap.querySelector('[data-act="start"]')?.addEventListener('click', () => {
@@ -20868,6 +21188,7 @@ async function helperJson(mode, source, title, extra) {
    context: { lesson: String(source || '').slice(0, 15500), title: String(title || '').slice(0, 180) },
   }, extra || {})),
  });
+ try { window.__gateCheck && window.__gateCheck(res); } catch (e) {}
  if (!res.ok) throw new Error('helper ' + res.status);
  return parseLooseJson(await res.text());
 }
@@ -37515,6 +37836,10 @@ function getQuestions(courseId, chId, secId) {
   for (var k in SAMPLE_LESSON){
     var L=SAMPLE_LESSON[k];
     if (!L || typeof L.body!=='string') continue;
+    /* Project build guides are steps and checklists, not definitions: the
+       extractor turned their bullet lists into a nonsense "definitions" table
+       at the top of every project page. */
+    if (k.indexOf('PORTFOLIO/')===0) continue;
     if (L.body.indexOf('data-visual=')>=0) continue;      /* hand-built visuals already lead */
     if (L.body.indexOf('def-glance')>=0) continue;         /* idempotent */
     if (L.body.length<400) continue;
@@ -59086,8 +59411,41 @@ var checking = false;
 // costs nothing. The Range request on index.html is the fallback for a server
 // that does not serve it; if Range is ignored the answer is a 20MB file, which
 // is dropped rather than spend her bandwidth on a version check.
+/* THE GATE WALL. The site sits behind a password (netlify/edge-functions/gate.js).
+   A signed-in device carries a cookie for 180 days; when it lapses, or on a
+   device that never signed in, every fetch comes back 401. The cached app can
+   still open (that is the point of a PWA), so this is what tells her why the
+   server has gone quiet and gives her the one tap that fixes it. */
+window.__gateWall = function(){
+  try {
+    if (document.getElementById('gate-wall')) return;
+    var d = document.createElement('div');
+    d.id = 'gate-wall';
+    d.style.cssText = 'position:fixed; inset:0; z-index:100000; display:flex; align-items:center; justify-content:center; padding:24px;' +
+      'background:rgba(20,18,36,0.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);';
+    d.innerHTML = '<div style="max-width:380px; width:100%; background:var(--surface,#fff); color:var(--text,#111); border:1px solid var(--border,rgba(0,0,0,.15)); border-radius:18px; padding:24px 22px; box-shadow:0 18px 50px rgba(0,0,0,.35); text-align:left;">' +
+      '<div style="font-size:18px; font-weight:800; margin-bottom:6px;">Sign in to keep going</div>' +
+      '<p style="margin:0 0 16px; font-size:14px; line-height:1.5; color:var(--text-2,#444);">This is a private site. Your sign-in on this device has expired (it lasts 180 days), so the server is not sending anything new. Your notes and progress on this device are untouched.</p>' +
+      '<button data-gate-go style="width:100%; font:inherit; font-size:15px; font-weight:800; padding:12px; border:0; border-radius:12px; background:var(--accent,#7c3aed); color:var(--accent-text,#fff); cursor:pointer;">Sign in</button>' +
+      '<button data-gate-later style="width:100%; margin-top:8px; font:inherit; font-size:13px; padding:8px; border:0; background:transparent; color:var(--text-3,#777); cursor:pointer;">Keep working offline for now</button></div>';
+    document.body.appendChild(d);
+    d.querySelector('[data-gate-go]').addEventListener('click', function(){
+      location.assign('/__gate?next=' + encodeURIComponent(location.pathname + location.search));
+    });
+    d.querySelector('[data-gate-later]').addEventListener('click', function(){ d.remove(); window.__gateWallSnoozed = Date.now(); });
+  } catch (e) {}
+};
+window.__gateCheck = function(r){
+  if (r && (r.status === 401 || r.status === 403)) {
+    if (!window.__gateWallSnoozed || Date.now() - window.__gateWallSnoozed > 30 * 60 * 1000) window.__gateWall();
+    return true;
+  }
+  return false;
+};
+
 function fetchServerBuild(){
   return fetch('/version.json?v=' + Date.now(), { cache: 'no-store' }).then(function(r){
+    if (window.__gateCheck(r)) throw new Error('gate');
     if (!r.ok) throw new Error('no version.json');
     return r.text();
   }).then(function(t){
@@ -59095,7 +59453,8 @@ function fetchServerBuild(){
     try { b = (JSON.parse(t) || {}).build || ''; } catch (e) { b = ''; }
     if (!b) throw new Error('unparsable');
     return b;
-  }).catch(function(){
+  }).catch(function(err){
+    if (err && err.message === 'gate') return '';   // signed out: the wall is up, nothing to compare
     return fetch('/index.html?vcheck=' + Date.now(), { cache: 'no-store', headers: { 'Range': 'bytes=0-1023' } })
       .then(function(res){
         if (res.status !== 206) { try { res.body && res.body.cancel(); } catch (e) {} return ''; }
@@ -59938,7 +60297,7 @@ function pull(){
   var c = cfg();
   if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
   return fetch(EP + '?k=' + encodeURIComponent(c.hash), { method: 'GET', cache: 'no-store' })
-    .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ('server said ' + r.status)); return j; }); })
+    .then(function(r){ try { window.__gateCheck && window.__gateCheck(r); } catch (e) {} return r.json().then(function(j){ if (!r.ok) throw new Error(r.status === 401 ? 'Signed out of the site - tap Sign in' : (j.error || ('server said ' + r.status))); return j; }); })
     .then(function(j){
       if (j.empty) return { empty: true, history: 0, ink: 0 };
       var snap = unpack(j.data);
@@ -59967,7 +60326,7 @@ function push(){
     method: 'POST', cache: 'no-store',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ data: data, device: c.label || '' })
-  }).then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || ('server said ' + r.status)); return j; }); })
+  }).then(function(r){ try { window.__gateCheck && window.__gateCheck(r); } catch (e) {} return r.json().then(function(j){ if (!r.ok) throw new Error(r.status === 401 ? 'Signed out of the site - tap Sign in' : (j.error || ('server said ' + r.status))); return j; }); })
     .then(function(j){ var cc = cfg() || {}; cc.lastPush = Date.now(); setCfg(cc); return j; });
   });
 }
