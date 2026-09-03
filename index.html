@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.552">
+<meta name="app-build" content="18.553">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -64616,8 +64616,23 @@ function label(g, x, y, txt, anchor){
   g.appendChild(t);
 }
 function drawRules(){
+  svg.appendChild(buildRules());
+}
+/* More paper must not rebuild the ink. redraw() tears down and re-creates
+   every stroke, which on the iPad showed as the page jumping while she
+   scrolled (auto-grow fired mid-scroll). The rules are their own group, so
+   growing the page swaps that one group and leaves every stroke node alone. */
+function refreshRules(){
+  if (!svg) return;
+  var fresh = buildRules();
+  var old = svg.querySelector('g.mn-rules');
+  if (old) svg.replaceChild(fresh, old);
+  else svg.insertBefore(fresh, svg.firstChild);
+}
+function buildRules(){
   var g = document.createElementNS(NS, 'g');
   g.setAttribute('aria-hidden', 'true');
+  g.setAttribute('class', 'mn-rules');
   var pages = pageCount();
   for (var p = 0; p < pages; p++) {
     var top = p * PAGE_H;
@@ -64638,7 +64653,7 @@ function drawRules(){
     label(g, 26, sumY + 24, 'SUMMARY');
     if (p < pages - 1) line(g, 'mn-pagebreak', 0, top + PAGE_H, UNITS, top + PAGE_H);
   }
-  svg.appendChild(g);
+  return g;
 }
 /* Cornell's actual purpose: cover the notes, read the cues, say the answer.
    The cover is painted, not stored, so it can never touch a stroke. */
@@ -65002,26 +65017,43 @@ function wireScroll(){
     if (dx < 6 && dy < 6) return;               // not committed yet
     axis = (dy >= dx) ? 'y' : 'x';
   }, { passive: true });
-  var end = function(){ held = false; axis = null; };
+  /* The finger lifting does not end the scroll: iOS carries it on as
+     momentum, and that phase used to run unlocked, so a slightly diagonal
+     flick drifted the page sideways after the lift. The axis stays pinned
+     until the scroll itself goes quiet. */
+  var end = function(){ held = false; };
   pagesEl.addEventListener('touchend', end, { passive: true });
   pagesEl.addEventListener('touchcancel', end, { passive: true });
-  var growLock = 0;
-  pagesEl.addEventListener('scroll', function(){
-    if (held && axis) {
-      if (axis === 'y') { if (pagesEl.scrollLeft !== keepL) pagesEl.scrollLeft = keepL; }
-      else { if (pagesEl.scrollTop !== keepT) pagesEl.scrollTop = keepT; }
-    }
-    paintPageSoon();
+  var growLock = 0, settle = 0;
+  var IDLE = 220;                                // ms without a scroll event = the scroll has settled
+  function atFoot(){ return pagesEl.scrollTop + pagesEl.clientHeight >= pagesEl.scrollHeight - 24; }
+  function settled(){
+    settle = 0;
+    axis = null;                                 // the gesture and its momentum are over
     try {
-      if (tab !== 'write' || covered) return;
-      if (pagesEl.scrollTop + pagesEl.clientHeight < pagesEl.scrollHeight - 24) return;
+      if (tab !== 'write' || covered || held) return;
+      if (!atFoot()) return;
       var now = Date.now();
       if (now - growLock < 700) return;          // one page per pull, not a burst
       if (now - autoGrowMute < 900) return;      // the ＋ button's own jump to the foot
       growLock = now;
       pageH = (pageCount() + 1) * PAGE_H;
-      sizeSvg(); redraw();
+      sizeSvg(); refreshRules();                 // more paper; every stroke node untouched
     } catch (e) {}
+  }
+  pagesEl.addEventListener('scroll', function(){
+    if (axis) {
+      if (axis === 'y') { if (pagesEl.scrollLeft !== keepL) pagesEl.scrollLeft = keepL; }
+      else { if (pagesEl.scrollTop !== keepT) pagesEl.scrollTop = keepT; }
+    }
+    paintPageSoon();
+    /* Growing the paper while the scroll is still moving is what made the
+       page shift: the container's height changed under a live momentum
+       scroll, and the old full redraw rebuilt every stroke at the same
+       moment. Now nothing changes until the scroll has been still for a
+       beat, and only the rules are redrawn. */
+    if (settle) clearTimeout(settle);
+    settle = setTimeout(settled, IDLE);
   }, { passive: true });
 }
 
