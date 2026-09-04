@@ -1,0 +1,13 @@
+{
+  "appId": "com.natashahenry.studyhub",
+  "appName": "Study Hub",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": true
+  },
+  "server": {
+    "url": "https://natashastudy.netlify.app",
+    "cleartext": false
+  }
+}
