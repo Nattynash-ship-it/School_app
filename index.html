@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.561">
+<meta name="app-build" content="18.562">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -3415,6 +3415,24 @@
  }
  .ganno-svg:not(.active) {
  display: none;
+ }
+
+ /* MARKS MUST STAY ON THEIR WORDS. When the notes panel takes the side,
+    body.mn-side-open slides #app left by --mn-shift. This overlay is a child
+    of <body>, not of #app, so it did not move: every highlight and pen mark
+    stayed where the text used to be and appeared shifted off it - measured at
+    183px on a landscape iPad. Move the overlay by exactly the same amount.
+    (Strokes are stored in document coordinates, so this keeps drawing
+    consistent too: the overlay's own rect moves with it, and new marks land
+    in the same space as the old ones.) */
+ body.mn-side-open .ganno-svg,
+ body.mn-side-open .ganno-hl-layer {
+ /* !important: the highlight layer is built in JS with an inline
+    left:0, and highlighter ink lives THERE, not in the overlay above
+    (each blended stroke gets its own tiny svg to keep the compositor
+    off the full-page layer). Her report was about highlights, so this
+    selector is the one that matters most. */
+ left: calc(-1 * var(--mn-shift, 0px)) !important;
  }
 
  /* ========== GOODNOTES-STYLE TOP TOOLBAR ========== */
