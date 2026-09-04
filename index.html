@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.557">
+<meta name="app-build" content="18.558">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1a1410">
@@ -19548,6 +19548,84 @@ window.__ttsApply = function(utter, text, hintLang){
 // no API key. Strips HTML, normalizes math/symbols, speaks the lesson.
 const audioState = { utterance: null, isSpeaking: false, isPaused: false };
 
+// Listen reads the LESSON, not the screen. Feeding innerText to the speech
+// engine meant it read code blocks, captured program output, chart labels and
+// the quiz aloud character by character - every worked example added made it
+// worse. So walk the lesson and keep only what is meant to be heard: headings,
+// prose, list items and table rows. A code block or an output box becomes one
+// short spoken marker, so nothing vanishes silently. Block boundaries are kept
+// as newlines, which is what makes the engine pause instead of running the
+// whole lesson into a single breathless sentence.
+function lessonSpeechText(root) {
+ if (!root) return '';
+ const SKIP_TAG = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, CANVAS: 1, BUTTON: 1, SELECT: 1, svg: 1 };
+ const SKIP_SEL = '.coach-card, .quiz-q, .quiz-wrap, .quiz-block, .mn-block, .mn-inline, [data-audio-toggle], [data-flag-question], .vl-orig';
+ const BLOCK = /^(H1|H2|H3|H4|H5|P|LI|DIV|SECTION|ARTICLE|TABLE|UL|OL|BLOCKQUOTE|DETAILS|SUMMARY|FIGCAPTION)$/;
+ const out = [];
+ // A captured-output box is a plain div styled as monospace pre-wrap, so it has
+ // to be recognised by how it renders rather than by a tag name.
+ function isMonoBlock(el) {
+  try {
+   const cs = getComputedStyle(el);
+   return (/^pre/.test(cs.whiteSpace) || /mono|courier|menlo|consolas/i.test(cs.fontFamily));
+  } catch (e) { return false; }
+ }
+ function walk(el) {
+  const kids = el.childNodes;
+  for (let i = 0; i < kids.length; i++) {
+   const node = kids[i];
+   if (node.nodeType === 3) {
+    const t = node.nodeValue.replace(/[ \t\r\n]+/g, ' ');
+    if (t.trim()) out.push(t);
+    continue;
+   }
+   if (node.nodeType !== 1) continue;
+   const tag = node.tagName;
+   if (tag === 'PRE') { out.push('\nCode example, on screen.\n'); continue; }
+   if (SKIP_TAG[tag] || SKIP_TAG[String(tag).toLowerCase()]) continue;
+   if (node.hidden) continue;
+   // Read what is actually on the page. A collapsed <details> is the app's
+   // "Show worked solution" - reading it aloud handed over the answer to a
+   // practice problem before it had been attempted.
+   if (tag === 'DETAILS' && !node.open) continue;
+   try { if (getComputedStyle(node).display === 'none') continue; } catch (e) {}
+   try { if (node.matches && node.matches(SKIP_SEL)) continue; } catch (e) {}
+   // Inline <code> inside a sentence IS read - only whole blocks are skipped.
+   if (tag !== 'CODE' && node.textContent.length > 80 && isMonoBlock(node)) {
+    out.push('\nProgram output, on screen.\n'); continue;
+   }
+   if (tag === 'TD' || tag === 'TH') { walk(node); out.push(' \u2014 '); continue; }
+   if (tag === 'TR') { walk(node); out.push('.\n'); continue; }
+   if (BLOCK.test(tag)) { out.push('\n'); walk(node); out.push('.\n'); continue; }
+   walk(node);
+  }
+ }
+ walk(root);
+ // Clean up line by line. An earlier version collapsed runs of dots globally,
+ // which quietly rewrote the lesson's own text - "../../../etc/passwd" came out
+ // as "./././etc/passwd". Never touch the inside of a line: only drop the
+ // separators this walk itself introduced, and give each line an ending so the
+ // engine takes a breath.
+ const lines = out.join('')
+  .replace(/[ \t]+/g, ' ')
+  .split('\n');
+ const keep = [];
+ for (let i = 0; i < lines.length; i++) {
+  let ln = lines[i].trim();
+  ln = ln.replace(/^[^A-Za-z0-9\u00C0-\u024F"'(\[]+/, '');   // leading icon or bullet
+  ln = ln.replace(/[\u2190-\u21FF\u2B00-\u2BFF\uFE0F\u2600-\u27BF]+\s*$/, '');  // trailing icon
+  ln = ln.replace(/\s*\u2014\s*\.?\s*$/, '');              // dangling cell separator
+  ln = ln.replace(/\.{2,}$/, '.');                           // doubled sentence end
+  ln = ln.trim();
+  if (!ln) continue;
+  if (!/[a-z0-9]/i.test(ln)) continue;          // decoration only, nothing to say
+  if (!/[.!?:;]$/.test(ln)) ln += '.';
+  keep.push(ln);
+ }
+ return keep.join('\n');
+}
+window.lessonSpeechText = lessonSpeechText;
+
 function wireAudioReadAloud(wrap, courseId, chId, secId) {
  const btn = wrap.querySelector('[data-audio-toggle]');
  if (!btn) return;
@@ -19579,7 +19657,7 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  const lessonEl = wrap.querySelector('.lesson');
  if (!lessonEl) return;
  // Extract plain text and normalize for natural speech
- let text = lessonEl.innerText || lessonEl.textContent || '';
+ let text = lessonSpeechText(lessonEl);
  text = text
  .replace(/→/g, ' becomes ')
  .replace(/←/g, ' comes from ')
@@ -19593,7 +19671,8 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  .replace(/∨/g, ' OR ')
  .replace(/¬/g, ' NOT ')
  .replace(/⊕/g, ' XOR ')
- .replace(/\s+/g, ' ')
+ .replace(/[ \t]+/g, ' ')
+ .replace(/ *\n+ */g, '\n')
  .trim();
  if (!text) { toast('Nothing to read'); return; }
  // Cap length to ~30k chars (browser limits vary)
@@ -20546,8 +20625,31 @@ function renderExplanation(q, ans) {
     while), then the correct answer, then the why. */
  let distractorsHtml = '';
  let pickedHtml = '';
- if (!correct && !q.multi && ans && typeof ans.choice === 'number' && q.distractors && q.distractors[ans.choice] != null) {
-  pickedHtml = `<div class="picked-why"><strong>You picked ${String.fromCharCode(65 + ans.choice)}:</strong> ${esc(String(q.distractors[ans.choice]))}</div>`;
+ /* A per-option rationale is shown only when it can be trusted.
+    An old pass reordered the answer options of ~25k questions to balance where
+    the correct answer sits, but never remapped the keys of this map - so its
+    texts can belong to a different option than the one they are filed under.
+    The tell is exact: a map that carries an entry for the CORRECT option cannot
+    be aligned, because a distractor map only ever explains wrong options. A
+    bare "Incorrect." carries nothing either. In both cases, say what she
+    actually picked, which is always true, rather than an explanation that may
+    describe some other answer. */
+ const trustedWhy = (qq, choice) => {
+  const d = qq.distractors;
+  if (!d || d[choice] == null) return '';
+  if (typeof qq.correct === 'number' && d[qq.correct] != null) return '';
+  const t = String(d[choice]).trim();
+  if (t.length <= 14 || /^(incorrect|wrong|not correct|no|nope)[.!]?$/i.test(t)) return '';
+  return t;
+ };
+ if (!correct && !q.multi && ans && typeof ans.choice === 'number' && Array.isArray(q.options)) {
+  const lbl = String.fromCharCode(65 + ans.choice);
+  const picked = q.options[ans.choice] != null ? esc(String(q.options[ans.choice])) : '';
+  const why = trustedWhy(q, ans.choice);
+  if (picked || why) {
+   pickedHtml = `<div class="picked-why"><strong>You picked ${lbl}:</strong> ${picked}` +
+                `${why ? ' — ' + esc(why) : ''}</div>`;
+  }
  }
  if (!correct && q.multi && Array.isArray(q.options)) {
   const cset = (Array.isArray(q.correctSet) ? q.correctSet : (Array.isArray(q.correct) ? q.correct : [])).slice().sort((a, b) => a - b);
