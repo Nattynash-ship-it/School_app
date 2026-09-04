@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.560">
+<meta name="app-build" content="18.561">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -64692,12 +64692,52 @@ function sizeSvg(){
   // (writing zoom); see the #mn-pages.mn-zoomed CSS for why this matters.
   if (pagesEl) pagesEl.classList.toggle('mn-zoomed', w > base + 1);
 }
+/* THE PAPER MUST NOT MOVE UNDER THE PEN. pt() maps a screen point through the
+   SVG's live rect, so any scroll BETWEEN two points of one stroke is baked
+   into the ink in page units and then saved by persist(). Measured at writing
+   zoom: a 120px scroll displaces the rest of the stroke by 133 units - over
+   three ruled lines - which is how one line of writing ends up sitting on top
+   of another one, permanently, and looking identical every time the note is
+   reopened. Freezing the scroller for the length of the stroke also halts
+   momentum that is still gliding when the pencil lands, which is the common
+   way this happens: flick to scroll, start writing before it has settled.
+   The axis lock in wireScroll() drives the same two properties, so their
+   values are saved and put back rather than cleared. */
+var penHold = null;
+var strokeAnchor = null;      // scroll offset when the current stroke started
+function freezePaper(on){
+  if (!pagesEl) return;
+  if (on) {
+    strokeAnchor = { t: pagesEl.scrollTop, l: pagesEl.scrollLeft };
+    if (penHold) return;
+    penHold = { t: pagesEl.scrollTop, l: pagesEl.scrollLeft,
+                ox: pagesEl.style.overflowX, oy: pagesEl.style.overflowY };
+    pagesEl.style.overflowX = 'hidden';
+    pagesEl.style.overflowY = 'hidden';
+    // overflow:hidden can clamp the offset; put it back exactly where it was
+    pagesEl.scrollTop = penHold.t; pagesEl.scrollLeft = penHold.l;
+  } else if (penHold) {
+    pagesEl.style.overflowX = penHold.ox;
+    pagesEl.style.overflowY = penHold.oy;
+    pagesEl.scrollTop = penHold.t; pagesEl.scrollLeft = penHold.l;
+    penHold = null;
+  }
+  if (!on) strokeAnchor = null;
+}
 function pt(e){
   var r = svg.getBoundingClientRect();
   var k = r.width ? (UNITS / r.width) : 1;
+  /* The rect moves with the scroller, so a scroll mid-stroke would otherwise
+     drag the rest of the stroke across the paper. Measure from where the
+     scroller was when the pen landed, not where it is now. */
+  var dT = 0, dL = 0;
+  if (strokeAnchor && pagesEl) {
+    dT = pagesEl.scrollTop - strokeAnchor.t;
+    dL = pagesEl.scrollLeft - strokeAnchor.l;
+  }
   return {
-    x: (e.clientX - r.left) * k,
-    y: (e.clientY - r.top) * k,
+    x: (e.clientX - r.left - dL) * k,
+    y: (e.clientY - r.top - dT) * k,
     p: (typeof e.pressure === 'number' && e.pressure > 0) ? e.pressure : 0.5
   };
 }
@@ -64844,7 +64884,14 @@ function addPage(){
   try { if (pagesEl) pagesEl.scrollTop = pagesEl.scrollHeight; } catch (e) {}
 }
 function grewIfNeeded(){
-  if (lowestInk() > pageH - GROW_AT) { pageH = (pageCount() + 1) * PAGE_H; sizeSvg(); return true; }
+  if (lowestInk() > pageH - GROW_AT) {
+    pageH = (pageCount() + 1) * PAGE_H; sizeSvg();
+    /* Writing at the foot grows the page here, and that same write leaves the
+       scroller sitting at the foot - so the scroll-settle grower fired too and
+       ONE stroke produced TWO pages. Both paths now share this one guard. */
+    autoGrowMute = Date.now();
+    return true;
+  }
   return false;
 }
 /* UNDO THAT UNDOES WHAT SHE DID. Undo used to pop the last stroke off the
@@ -65008,6 +65055,7 @@ function wireInk(){
     try { svg.setPointerCapture(e.pointerId); } catch (err) {}
     penId = e.pointerId;
     lastPenTs = Date.now();
+    freezePaper(true);        // before pt(): stop any glide, then read the rect
     var p = pt(e);
     if (tool === 'erase') { drawing = true; eraseBatch = { removed: [], added: [] }; eraseAt(p); return; }
     drawing = true;
@@ -65039,9 +65087,10 @@ function wireInk(){
     }
   });
   function end(e){
-    if (!drawing) return;
+    if (!drawing) { freezePaper(false); return; }
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
+    freezePaper(false);
     lastPenTs = Date.now();
     try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
     if (tool === 'erase') {
@@ -65196,7 +65245,7 @@ function wireScroll(){
       if (!atFoot()) return;
       var now = Date.now();
       if (now - growLock < 700) return;          // one page per pull, not a burst
-      if (now - autoGrowMute < 900) return;      // the ＋ button's own jump to the foot
+      if (now - autoGrowMute < 900) return;      // a grow just happened (＋ button, or writing at the foot)
       growLock = now;
       pageH = (pageCount() + 1) * PAGE_H;
       sizeSvg(); refreshRules();                 // more paper; every stroke node untouched
