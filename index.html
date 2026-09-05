@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.562">
+<meta name="app-build" content="18.563">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -64149,6 +64149,27 @@ css.textContent = [
   '  stroke-width:1; vector-effect:non-scaling-stroke;}',
   '#mn-ink .mn-cover-label{fill:var(--text-4,#94a3b8); font-size:20px; font-weight:600;',
   '  font-family:inherit; text-anchor:middle; opacity:.85;}',
+  /* the highlighter band - flat, even, translucent; it is painted UNDER the
+     writing (see redraw) so no blend mode is needed to keep the ink crisp */
+  '#mn-ink .mn-hl{fill:none; stroke-linecap:round; stroke-linejoin:round;}',
+  /* the straightedge: a real object lying on the paper, with inch ticks and a
+     grip at each end to swing it round */
+  '#mn-ink .mn-ruler{cursor:move;}',
+  '#mn-ink .mn-ruler-body{fill:var(--primary,#6366f1); fill-opacity:.12;',
+  '  stroke:var(--primary,#6366f1); stroke-opacity:.5; stroke-width:1.5;',
+  '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-ruler-edge{stroke:var(--primary,#6366f1); stroke-width:2.5;',
+  '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-ruler-tick{stroke:var(--primary,#6366f1); stroke-opacity:.7; stroke-width:1;',
+  '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-ruler-num{fill:var(--primary,#6366f1); opacity:.85; font-size:26px;',
+  '  font-weight:700; font-family:inherit;}',
+  '#mn-ink .mn-ruler-grip{fill:var(--surface); fill-opacity:.92; stroke:var(--primary,#6366f1);',
+  '  stroke-width:2; vector-effect:non-scaling-stroke; cursor:grab;}',
+  '.mn-dot.mn-dot-rule{width:22px; height:4px; border-radius:2px;',
+  '  background:var(--primary,#6366f1);}',
+  '.mn-dot.mn-dot-off{width:14px; height:14px; border-radius:4px; background:transparent;',
+  '  border:1.5px dashed var(--border-strong,var(--border));}',
 
   '#mn-typed{flex:1 1 auto; display:none; flex-direction:column; min-height:0;}',
   '#mn-dock.tab-type #mn-pages{display:none;}',
@@ -64231,6 +64252,81 @@ var WIDTHS = [
   { w: 5.0, name: 'Marker' }
 ];
 var DEFAULT_W = 1.4;
+
+/* THE HIGHLIGHTER. A wide, even, translucent band - a marker, not a nib, so it
+   keeps a plain stroked polyline rather than the pressure-shaped outline the
+   pen uses. Highlighter strokes are always painted BENEATH the writing (see
+   redraw), which is why no mix-blend-mode is needed: a blend inside this SVG
+   would force the whole multi-page paper to composite live, the same memory
+   cost the lesson overlay splits its highlights out to avoid on the iPad. */
+var HL_SWATCHES = ['#fde047', '#86efac', '#7dd3fc', '#f9a8d4', '#c4b5fd', '#fdba74'];
+var HL_WIDTHS = [
+  { w: 16, name: 'Fine' },
+  { w: 25, name: 'Medium' },
+  { w: 36, name: 'Broad' }
+];
+var DEFAULT_HL_W = 25;              // about two thirds of a ruled line (RULE 40)
+var HL_ALPHA = 0.42;
+function hlColor(){ return prefs().hlColor || HL_SWATCHES[0]; }
+function hlWidth(){ var w = +prefs().hlW; return (w > 0) ? w : DEFAULT_HL_W; }
+
+/* THE RULER. A straightedge that lies on the paper: drag the body to move it,
+   drag either end grip to swing it round, and a stroke that starts on or beside
+   it runs dead straight along its edge - what a real ruler does to a real pen.
+   Angles snap to every 15 degrees so flat, upright and 45 are easy to land on.
+   Its place is kept in page units, so the paper scrolls under it and it stays
+   where she put it, exactly like the real thing. It is a tool, not ink: it is
+   never saved into a stroke and never appears in an exported page. */
+var RULER_LEN  = Math.round(6.5 * IN);   // 765 - a 6.5 inch edge, the longest
+var RULER_MIN  = Math.round(2.5 * IN);   // 294 - short enough for a phone dock
+var RULER_BAND = Math.round(0.8 * IN);   //  94 - the body, below the edge
+var RULER_SNAP = Math.round(0.34 * IN);  //  40 - how far above the edge it grabs
+var RULER_GRIP = Math.round(0.26 * IN);  //  31 - the rotate handles
+function rulerPrefs(){
+  var p = prefs();
+  if (!p.ruler || typeof p.ruler !== 'object') p.ruler = {};
+  var r = p.ruler;
+  if (typeof r.x !== 'number' || !isFinite(r.x)) r.x = UNITS / 2;
+  if (typeof r.y !== 'number' || !isFinite(r.y)) r.y = PAGE_H / 2;
+  if (typeof r.a !== 'number' || !isFinite(r.a)) r.a = 0;   // radians
+  if (typeof r.len !== 'number' || !isFinite(r.len)) r.len = RULER_LEN;
+  return r;
+}
+/* A ruler longer than the paper she can see puts its rotate grips off-screen,
+   where she cannot reach them - and on the side panel the page is drawn zoomed,
+   so only part of its width is ever in view. Cut the edge to what fits. */
+function rulerLen(){
+  var r = rulerPrefs();
+  return Math.max(RULER_MIN, Math.min(RULER_LEN, r.len));
+}
+function fitRulerLen(){
+  try {
+    var wpx = svgWidthPx();
+    if (!(wpx > 0) || !pagesEl || !pagesEl.clientWidth) return;
+    var visible = pagesEl.clientWidth * (UNITS / wpx);      // page units on screen
+    rulerPrefs().len = Math.max(RULER_MIN, Math.min(RULER_LEN, Math.round(visible * 0.82)));
+  } catch (e) {}
+}
+function rulerOn(){ return prefs().rulerOn === true; }
+/* The edge: a point on it, and a unit vector along it. */
+function rulerLine(){
+  var r = rulerPrefs();
+  return { ox: r.x, oy: r.y, dx: Math.cos(r.a), dy: Math.sin(r.a) };
+}
+/* Does a stroke starting here run along the ruler? Anywhere on the body, or
+   within RULER_SNAP above the edge - the strip a pen tip actually occupies
+   when it is held against a straightedge. */
+function rulerCatches(p){
+  if (!rulerOn()) return null;
+  var L = rulerLine();
+  var d = (p.x - L.ox) * (-L.dy) + (p.y - L.oy) * L.dx;
+  if (d < -RULER_SNAP || d > RULER_BAND + RULER_SNAP) return null;
+  return L;
+}
+function rulerProject(p, L){
+  var t = (p.x - L.ox) * L.dx + (p.y - L.oy) * L.dy;
+  return { x: L.ox + L.dx * t, y: L.oy + L.dy * t, p: p.p };
+}
 
 /* ---------- build ---------- */
 function build(){
@@ -64328,7 +64424,10 @@ function mk(tag, cls, txt, label){
 function buildTools(){
   toolsEl.textContent = '';
   var penB = mk('button','mn-tool on','✏️','Pen — tap again for colour and point size'); penB.dataset.t='pen';
+  var hlB  = mk('button','mn-tool','🖍','Highlighter — tap again for colour and width'); hlB.dataset.t='hl';
   var erB  = mk('button','mn-tool','🩹','Eraser — tap again for eraser size'); erB.dataset.t='erase';
+  var ruB  = mk('button','mn-tool' + (rulerOn() ? ' on' : ''),'📏',
+                'Ruler — draw a straight line along its edge'); ruB.dataset.t='ruler';
   var unB  = mk('button','mn-tool','↩︎','Undo'); unB.dataset.t='undo';
   var rdB  = mk('button','mn-tool','↪︎','Redo'); rdB.dataset.t='redo';
   var clB  = mk('button','mn-tool','🗑','Clear this page'); clB.dataset.t='clear';
@@ -64347,7 +64446,7 @@ function buildTools(){
      is otherwise a long scroll to find one thing. Tap opens the page list. */
   var pgN = mk('button','mn-tool mn-pgbtn','1/1','Page — tap to jump to a page'); pgN.dataset.t='pages';
   var exB = mk('button','mn-tool','📷','Save this page as an image'); exB.dataset.t='export';
-  [penB, wB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
+  [penB, wB, hlB, ruB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
   paintUndo();
   paintPage();
 
@@ -64362,12 +64461,14 @@ function buildTools(){
       prefs().place = side ? 'bottom' : 'side';
       prefs().placeM2 = 1;                       // a deliberate choice, not the old stuck one
       save();
+      var keep2 = readAnchor();
       var g2 = wantSide();
       if (g2) { side = true; applySide(g2); }
       else {
         if (side) { side = false; releaseSide(); }
         document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
       }
+      holdPlace(keep2);
       b.textContent = side ? '⬓' : '⬒';
       sizeSvg(); redraw(); paintList();
       try { if (typeof toast === 'function')
@@ -64384,11 +64485,17 @@ function buildTools(){
       return;
     }
     if (t === 'width') { openPenPop(b); return; }
+    /* The ruler is not a drawing tool - it lies on the paper alongside
+       whichever one is in her hand, so it toggles instead of selecting.
+       Once it is out, tapping it again opens its angles and the way to put
+       it away, the same second-tap idiom the pen and eraser already use. */
+    if (t === 'ruler') { if (rulerOn()) { openRulerPop(b); } else { closePop(); setRuler(true); } return; }
     if (t === 'pages') { openPagePop(b); return; }
     if (t === 'export') { closePop(); exportPage(); return; }
     /* A second tap on the tool that is already selected opens its options -
        the pen's colour and size, the eraser's reach. */
     if (t === 'pen' && tool === 'pen') { openPenPop(b); return; }
+    if (t === 'hl' && tool === 'hl') { openHlPop(b); return; }
     if (t === 'erase' && tool === 'erase') { openEraserPop(b); return; }
     closePop();
     setTool(t);
@@ -64496,6 +64603,98 @@ function openPenPop(anchor){
       }));
     });
   });
+}
+function openHlPop(anchor){
+  openPop(anchor, 'hl', 'Highlighter colour and width', function(pop){
+    var grid = document.createElement('div');
+    grid.className = 'mn-pop-colors';
+    var curC = hlColor();
+    HL_SWATCHES.forEach(function(c){
+      var sw = mk('button','mn-sw' + (c === curC ? ' on' : ''),null,'Highlighter colour ' + c);
+      sw.style.background = c; sw.dataset.c = c;
+      sw.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        prefs().hlColor = c; save();
+        if (tool !== 'hl') setTool('hl');
+        closePop(); openHlPop(anchor);      // repaint the rows in the new colour
+      });
+      grid.appendChild(sw);
+    });
+    pop.appendChild(grid);
+    var lab = document.createElement('div');
+    lab.className = 'mn-pop-label';
+    lab.textContent = 'Width';
+    pop.appendChild(lab);
+    var cur = hlWidth();
+    HL_WIDTHS.forEach(function(opt){
+      var d = document.createElement('span');
+      d.className = 'mn-dot';
+      var px = Math.max(6, Math.min(22, Math.round(opt.w / 1.7)));
+      d.style.width = px + 'px'; d.style.height = px + 'px';
+      d.style.background = hlColor(); d.style.opacity = '0.62';
+      pop.appendChild(sizeRow(d, opt.name, Math.abs(opt.w - cur) < 0.01, function(){
+        prefs().hlW = opt.w; save();
+        closePop();
+        if (tool !== 'hl') setTool('hl');
+      }));
+    });
+  });
+}
+/* Turning the ruler by hand is precise enough with the 15-degree snap, but the
+   three angles anyone actually wants are one tap away here - and so is putting
+   it away, which is the only thing a toggle-that-opens-options has to keep
+   obvious. */
+function openRulerPop(anchor){
+  openPop(anchor, 'ruler', 'Ruler', function(pop){
+    var lab = document.createElement('div');
+    lab.className = 'mn-pop-label';
+    lab.textContent = 'Angle';
+    pop.appendChild(lab);
+    var curDeg = rulerPrefs().a * 180 / Math.PI;
+    [{ a: 0, name: 'Across the page' },
+     { a: 90, name: 'Down the page' },
+     { a: 45, name: '45°' },
+     { a: -45, name: '−45°' }].forEach(function(o){
+      var d = document.createElement('span');
+      d.className = 'mn-dot mn-dot-rule';
+      d.style.transform = 'rotate(' + o.a + 'deg)';
+      pop.appendChild(sizeRow(d, o.name, Math.abs(curDeg - o.a) < 0.5, function(){
+        rulerPrefs().a = o.a * Math.PI / 180; save();
+        paintRuler(); closePop();
+      }));
+    });
+    var off = document.createElement('span');
+    off.className = 'mn-dot mn-dot-off';
+    pop.appendChild(sizeRow(off, 'Put the ruler away', false, function(){
+      closePop(); setRuler(false);
+    }));
+  });
+}
+function setRuler(on){
+  prefs().rulerOn = !!on;
+  if (on) { fitRulerLen(); centreRuler(); }
+  save();
+  var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="ruler"]');
+  if (b) b.classList.toggle('on', !!on);
+  redraw();
+  try { if (typeof toast === 'function')
+    toast(on ? 'Ruler out — draw along its edge for a straight line, drag the ends to turn it'
+             : 'Ruler put away'); } catch (e) {}
+}
+/* Bring the straightedge to what is on screen, so switching it on never leaves
+   it stranded pages away in a long notebook. */
+function centreRuler(){
+  try {
+    var r = rulerPrefs();
+    var wpx = svgWidthPx();
+    if (!(wpx > 0) || !pagesEl) return;
+    var k = UNITS / wpx;                            // page units per screen pixel
+    var midX = (pagesEl.scrollLeft + pagesEl.clientWidth / 2) * k;
+    var midY = (pagesEl.scrollTop + pagesEl.clientHeight / 2) * k;
+    var half = rulerLen() / 2;
+    r.x = Math.max(half, Math.min(Math.max(half, UNITS - half), midX));
+    r.y = Math.max(RULER_BAND, Math.min(pageH - RULER_BAND, midY));
+  } catch (e) {}
 }
 function openEraserPop(anchor){
   openPop(anchor, 'eraser', 'Eraser size', function(pop){
@@ -64606,14 +64805,29 @@ function renderPagePng(pageNo){
   T(26, headY - 34, 'TOPIC'); T(UNITS - 20, headY - 34, 'DATE', true);
   T(26, headY + 24, 'CUE COLUMN'); T(CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN'); T(26, sumY + 24, 'SUMMARY');
   var drawn = 0;
+  /* same two passes as the screen: highlighter bands first, writing over them */
+  for (var pass = 0; pass < 2; pass++) {
   for (var i = 0; i < strokes.length; i++) {
     var s = strokes[i]; if (!s || !s.points || !s.points.length) continue;
+    if ((s.type === 'hl') !== (pass === 0)) continue;
     var y0 = s.points[0].y; if (y0 < top || y0 >= top + PAGE_H) continue;
     var pth = pathFor(s); if (!pth.d) continue;
     var P = new Path2D(pth.d);
-    if (pth.fill) { ctx.fillStyle = inkForPaper(s.color); ctx.fill(P); }
+    if (s.type === 'hl') {
+      /* the marker's own colour, NOT inkForPaper: that darkens anything this
+         pale to near-black, which would print the highlight as a solid bar
+         straight through the words it is meant to show off */
+      ctx.save();
+      ctx.globalAlpha = HL_ALPHA;
+      ctx.strokeStyle = s.color; ctx.lineWidth = s.width;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.stroke(P);
+      ctx.restore();
+    }
+    else if (pth.fill) { ctx.fillStyle = inkForPaper(s.color); ctx.fill(P); }
     else { ctx.strokeStyle = inkForPaper(s.color); ctx.lineWidth = s.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(P); }
     drawn++;
+  }
   }
   ctx.restore();
   var dataUrl = cv.toDataURL('image/png');
@@ -64661,7 +64875,7 @@ function setTool(t){
   var all = toolsEl.querySelectorAll('.mn-tool');
   for (var i = 0; i < all.length; i++) {
     var d = all[i].dataset.t;
-    if (d === 'pen' || d === 'erase') all[i].classList.toggle('on', d === t);
+    if (d === 'pen' || d === 'erase' || d === 'hl') all[i].classList.toggle('on', d === t);
   }
 }
 function setTab(t){
@@ -64723,6 +64937,8 @@ function sizeSvg(){
    values are saved and put back rather than cleared. */
 var penHold = null;
 var strokeAnchor = null;      // scroll offset when the current stroke started
+var rulerDrag = null;         // live move/turn gesture on the straightedge
+var inkLock = null;           // the ruler edge the current stroke is running along
 function freezePaper(on){
   if (!pagesEl) return;
   if (on) {
@@ -64759,23 +64975,36 @@ function pt(e){
     p: (typeof e.pressure === 'number' && e.pressure > 0) ? e.pressure : 0.5
   };
 }
+function polyD(pts){
+  if (!pts || !pts.length) return '';
+  var out = 'M ' + pts[0].x.toFixed(1) + ' ' + pts[0].y.toFixed(1);
+  for (var i = 1; i < pts.length; i++) out += ' L ' + pts[i].x.toFixed(1) + ' ' + pts[i].y.toFixed(1);
+  return out;
+}
 function pathFor(s){
+  /* The highlighter is a flat band of even width, not a pressure-shaped nib,
+     so it keeps the plain polyline and takes its width from stroke-width. */
+  if (s && s.type === 'hl') return { d: polyD(s.points), fill: false };
   var d = '';
   try {
     if (window.__INK && window.__INK.outline) d = window.__INK.outline(s.points, s.width, 0);
   } catch (e) {}
   if (d) return { d: d, fill: true };
   // fallback: a plain stroked polyline, still perfectly usable
-  var pts = s.points || [];
-  if (!pts.length) return { d: '', fill: false };
-  var out = 'M ' + pts[0].x.toFixed(1) + ' ' + pts[0].y.toFixed(1);
-  for (var i = 1; i < pts.length; i++) out += ' L ' + pts[i].x.toFixed(1) + ' ' + pts[i].y.toFixed(1);
-  return { d: out, fill: false };
+  return { d: polyD(s.points || []), fill: false };
 }
 function el(s){
   var p = pathFor(s);
   var n = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   n.setAttribute('d', p.d);
+  if (s && s.type === 'hl') {
+    n.setAttribute('class', 'mn-hl');
+    n.setAttribute('fill', 'none');
+    n.setAttribute('stroke', s.color);
+    n.setAttribute('stroke-width', String(s.width));
+    n.setAttribute('stroke-opacity', String(HL_ALPHA));
+    return n;
+  }
   if (p.fill) { n.setAttribute('fill', s.color); n.setAttribute('stroke', 'none'); }
   else {
     n.setAttribute('fill', 'none'); n.setAttribute('stroke', s.color);
@@ -64872,14 +65101,90 @@ function drawCover(){
   }
   svg.appendChild(g);
 }
+/* Where a new ink node belongs. Highlighter goes UNDER the writing, so a line
+   highlighted after it was written stays perfectly readable; the ruler stays on
+   top of everything, because it is an object lying on the paper. */
+function inkAnchor(s){
+  if (!svg) return null;
+  if (s && s.type === 'hl') {
+    var kids = svg.childNodes;
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i];
+      if (k.nodeType !== 1 || k.tagName !== 'path') continue;
+      if (!k.classList || !k.classList.contains('mn-hl')) return k;
+    }
+  }
+  return svg.querySelector('g.mn-ruler');
+}
+function addInk(node, s){
+  var at = inkAnchor(s);
+  if (at) svg.insertBefore(node, at); else svg.appendChild(node);
+}
+function buildRuler(){
+  var r = rulerPrefs();
+  var g = document.createElementNS(NS, 'g');
+  g.setAttribute('class', 'mn-ruler');
+  var LEN = rulerLen(), half = LEN / 2;
+  var body = document.createElementNS(NS, 'rect');
+  body.setAttribute('class', 'mn-ruler-body');
+  body.setAttribute('x', String(-half)); body.setAttribute('y', '0');
+  body.setAttribute('width', String(LEN)); body.setAttribute('height', String(RULER_BAND));
+  body.setAttribute('rx', '7');
+  g.appendChild(body);
+  var edge = document.createElementNS(NS, 'line');
+  edge.setAttribute('class', 'mn-ruler-edge');
+  edge.setAttribute('x1', String(-half)); edge.setAttribute('y1', '0');
+  edge.setAttribute('x2', String(half));  edge.setAttribute('y2', '0');
+  g.appendChild(edge);
+  /* real inch ticks: the page is 8.5in across 1000 units, so these measure */
+  var eighth = IN / 8;
+  for (var i = 0; i * eighth <= LEN + 0.5; i++) {
+    var x = -half + i * eighth;
+    var len = (i % 8 === 0) ? 30 : (i % 4 === 0) ? 20 : 12;
+    var t = document.createElementNS(NS, 'line');
+    t.setAttribute('class', 'mn-ruler-tick');
+    t.setAttribute('x1', x.toFixed(1)); t.setAttribute('y1', '0');
+    t.setAttribute('x2', x.toFixed(1)); t.setAttribute('y2', String(len));
+    g.appendChild(t);
+    if (i && i % 8 === 0) {
+      var num = document.createElementNS(NS, 'text');
+      num.setAttribute('class', 'mn-ruler-num');
+      num.setAttribute('x', x.toFixed(1)); num.setAttribute('y', String(len + 26));
+      num.setAttribute('text-anchor', 'middle');
+      num.textContent = String(i / 8);
+      g.appendChild(num);
+    }
+  }
+  for (var e = 0; e < 2; e++) {
+    var c = document.createElementNS(NS, 'circle');
+    c.setAttribute('class', 'mn-ruler-grip');
+    c.setAttribute('cx', String(e ? half : -half));
+    c.setAttribute('cy', String(RULER_BAND / 2));
+    c.setAttribute('r', String(RULER_GRIP));
+    g.appendChild(c);
+  }
+  paintRuler(g);
+  return g;
+}
+/* Moving the ruler must not rebuild the page - only its transform changes. */
+function paintRuler(node){
+  var g = node || (svg && svg.querySelector('g.mn-ruler'));
+  if (!g) return;
+  var r = rulerPrefs();
+  g.setAttribute('transform', 'translate(' + r.x.toFixed(1) + ',' + r.y.toFixed(1) +
+                 ') rotate(' + (r.a * 180 / Math.PI).toFixed(2) + ')');
+}
 function redraw(){
   if (!svg) return;
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   drawRules();
   strokeEls = new Map();          // rebuilt fresh - eraseAt() maintains it after this
-  for (var i = 0; i < strokes.length; i++) {
-    var s = strokes[i];
-    if (s && s.points && s.points.length) {
+  /* two passes: every highlighter band first, then the writing on top of it */
+  for (var pass = 0; pass < 2; pass++) {
+    for (var i = 0; i < strokes.length; i++) {
+      var s = strokes[i];
+      if (!s || !s.points || !s.points.length) continue;
+      if ((s.type === 'hl') !== (pass === 0)) continue;
       var node = el(s);
       svg.appendChild(node);
       strokeEls.set(s, node);
@@ -64887,6 +65192,7 @@ function redraw(){
   }
   // LAST, so it actually covers the notes. Painted after the ink, never before.
   if (covered) drawCover();
+  if (rulerOn()) svg.appendChild(buildRuler());
   liveEl = null;
   paintPageSoon();
 }
@@ -65067,6 +65373,19 @@ function eraseAt(p){
 }
 function wireInk(){
   svg.addEventListener('pointerdown', function(e){
+    /* The ruler is an object lying on the paper, so it is dragged the way one
+       is: with a finger OR the Pencil, and grabbing it never starts a stroke.
+       This runs before the touch guard below for exactly that reason. */
+    if (rulerOn() && e.target && e.target.closest && e.target.closest('g.mn-ruler')) {
+      e.preventDefault();
+      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+      var rp = rulerPrefs(), q = pt(e);
+      var onGrip = !!(e.target.classList && e.target.classList.contains('mn-ruler-grip'));
+      rulerDrag = { id: e.pointerId, turn: onGrip,
+                    px: q.x, py: q.y, x0: rp.x, y0: rp.y, a0: rp.a,
+                    g0: Math.atan2(q.y - rp.y, q.x - rp.x) };
+      return;
+    }
     if (e.pointerType === 'touch') return;        // a finger scrolls the pad
     if (covered) return;                          // reviewing, not writing
     e.preventDefault();
@@ -65077,12 +65396,40 @@ function wireInk(){
     var p = pt(e);
     if (tool === 'erase') { drawing = true; eraseBatch = { removed: [], added: [] }; eraseAt(p); return; }
     drawing = true;
-    live = { type:'pen', color: penColor(), width: penWidth(), points: [p],
-             ts: Date.now(), _ts: Date.now() };
+    /* Held against the straightedge, the line comes out straight: the edge is
+       locked in at pen-down, so the whole stroke runs along the ruler as it
+       was placed - it cannot slip onto a different line halfway through. */
+    inkLock = rulerCatches(p);
+    if (inkLock) p = rulerProject(p, inkLock);
+    var isHl = (tool === 'hl');
+    live = { type: isHl ? 'hl' : 'pen',
+             color: isHl ? hlColor() : penColor(),
+             width: isHl ? hlWidth() : penWidth(),
+             points: [p], ts: Date.now(), _ts: Date.now() };
     liveEl = el(live);
-    svg.appendChild(liveEl);
+    addInk(liveEl, live);
   });
   svg.addEventListener('pointermove', function(e){
+    if (rulerDrag && e.pointerId === rulerDrag.id) {
+      e.preventDefault();
+      var q = pt(e), rp = rulerPrefs();
+      if (rulerDrag.turn) {
+        var g = Math.atan2(q.y - rp.y, q.x - rp.x);
+        var a = rulerDrag.a0 + (g - rulerDrag.g0);
+        /* snap to every 15 degrees when she is close, so flat, upright and 45
+           are easy to land on without a steady hand */
+        var step = Math.PI / 12, near = Math.round(a / step) * step;
+        if (Math.abs(a - near) < 0.055) a = near;
+        rp.a = a;
+      } else {
+        rp.x = Math.max(-rulerLen() / 2, Math.min(UNITS + rulerLen() / 2,
+                        rulerDrag.x0 + (q.x - rulerDrag.px)));
+        rp.y = Math.max(-RULER_BAND, Math.min(pageH + RULER_BAND,
+                        rulerDrag.y0 + (q.y - rulerDrag.py)));
+      }
+      paintRuler();
+      return;
+    }
     if (!drawing || e.pointerId !== penId || e.pointerType === 'touch') return;
     e.preventDefault();
     /* getCoalescedEvents can return an EMPTY array - an empty array is truthy,
@@ -65094,6 +65441,7 @@ function wireInk(){
     if (!live) return;
     for (var k = 0; k < evs.length; k++) {
       var p = pt(evs[k]);
+      if (inkLock) p = rulerProject(p, inkLock);
       var last = live.points[live.points.length - 1];
       var dx = p.x - last.x, dy = p.y - last.y;
       if (dx*dx + dy*dy < 1.2) continue;
@@ -65105,6 +65453,13 @@ function wireInk(){
     }
   });
   function end(e){
+    if (rulerDrag && (!e || e.pointerId == null || e.pointerId === rulerDrag.id)) {
+      try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
+      rulerDrag = null;
+      save();                       // where she put it is where it stays
+      return;
+    }
+    inkLock = null;
     if (!drawing) { freezePaper(false); return; }
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
@@ -65154,6 +65509,11 @@ function wireInk(){
   function guardTouch(e){
     try {
       if (tab !== 'write') return;
+      /* A finger on the ruler is moving the ruler, not scrolling the paper:
+         swallow the gesture here so nothing scrolls under it. */
+      if (rulerOn() && e.target && e.target.closest && e.target.closest('g.mn-ruler')) {
+        e.preventDefault(); e.stopPropagation(); return;
+      }
       var n = (e.touches && e.touches.length) || 0;
       if (!n) return;
       if (drawing) { e.preventDefault(); return; }
@@ -65420,6 +65780,91 @@ function setMax(on){
   try { if (typeof toast === 'function')
     toast(maxed ? 'Full-size page — ⇲ tucks the notebook back' : 'Notebook tucked back'); } catch (e) {}
 }
+/* KEEP HER PLACE. "when I open the notes the page isn't where I left it and
+   when I close the notes it isn't where it's supposed to be."
+ *
+ * Opening the notebook can RE-WRAP the lesson - the column narrows on a squeeze
+ * (measured: the paragraph she was reading dropped 391px down the screen), and
+ * Full width switches off to make room for the panel (another 208px, and that
+ * one does not come back when the panel closes). A re-wrap moves every
+ * paragraph, so the scroll offset she left is pointing at different words.
+ *
+ * So do not preserve the offset - preserve the WORDS. Note which block is at
+ * the reading line and where it sits, let the layout change, then put that
+ * block back on the same line. The follow-up passes exist because the column
+ * settles late (web fonts, the dock's own transition); each one stops the
+ * moment she scrolls herself, so it can never fight her thumb. */
+function readAnchor(){
+  try {
+    var aim = (window.innerHeight || 0) * 0.35;
+    /* The first substantial block sitting ON or BELOW the reading line - the
+       thing she is about to read next, which is what the eye tracks. Table
+       cells are deliberately not candidates and two-word fragments are
+       skipped: the first version took whichever box was merely nearest, and
+       on a truth table that was a cell holding the single word "and". A
+       fragment inside a table re-wraps on its own terms and made a poor
+       landmark; the paragraph around it does not. */
+    var els = document.querySelectorAll('#app .app h1, #app .app h2, #app .app h3,'
+            + ' #app .app h4, #app .app p, #app .app li, #app .app blockquote, #app .app pre');
+    var best = null, bd = Infinity;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if ((el.textContent || '').trim().length < 12) continue;
+      var r = el.getBoundingClientRect();
+      if (!r.height || r.bottom < aim) continue;      // already read, above the line
+      var d = Math.max(0, r.top - aim);               // straddling the line is best of all
+      if (d < bd) { bd = d; best = { el: el, top: r.top }; }
+      if (bd === 0) break;                            // the first block on the line wins
+    }
+    return best;
+  } catch (e) { return null; }
+}
+function holdPlace(a){
+  if (!a || !a.el) return;
+  var expect = null, stop = false;
+  /* How this knows she has taken over: a real gesture. NOT "the offset moved",
+     which was the first attempt and was wrong - the browser runs its own scroll
+     anchoring as the column re-wraps, and its nudge (measured at 26px) read as
+     her thumb and made this give up 26px short of the words she was reading.
+     Overriding exactly that nudge is the whole job. The 400px backstop is only
+     for a scroll that arrives from nowhere at all. */
+  var evs = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+  var quit = function(){ stop = true; off(); };
+  var off = function(){ for (var i = 0; i < evs.length; i++) window.removeEventListener(evs[i], quit, true); };
+  for (var i = 0; i < evs.length; i++) window.addEventListener(evs[i], quit, true);
+  /* Let go the moment the layout has stopped moving. This used to keep
+     correcting for a whole second, which meant any scroll the APP itself made
+     just after the notebook closed - a scrollIntoView, say - was quietly
+     undone. Two clean passes in a row (and at least 150ms, so a late settle is
+     still caught) is the end of the job. */
+  var clean = 0, t0 = Date.now();
+  var put = function(){
+    try {
+      if (stop || !a.el.isConnected) return;
+      if (expect !== null && Math.abs(window.scrollY - expect) > 400) { quit(); return; }
+      var d = a.el.getBoundingClientRect().top - a.top;
+      if (Math.abs(d) < 1) {
+        if (++clean >= 2 && Date.now() - t0 >= 150) quit();
+        return;
+      }
+      clean = 0;
+      /* The page scrolls smoothly by choice (scroll-behavior on <html>), and a
+         correction must be a JUMP, not an animation: an animated one is still
+         travelling when the next pass measures it, so the passes chase each
+         other and settle 26px short - measured. */
+      var de = document.documentElement, prev = de.style.scrollBehavior;
+      de.style.scrollBehavior = 'auto';
+      window.scrollBy(0, d);
+      de.style.scrollBehavior = prev;
+      expect = Math.round(window.scrollY);
+    } catch (e) {}
+  };
+  put();
+  try { requestAnimationFrame(put); } catch (e) {}
+  setTimeout(put, 120);
+  setTimeout(put, 300);
+  setTimeout(off, 400);
+}
 function applySide(g){
   var root = document.documentElement;
   root.style.setProperty('--mn-w', g.w + 'px');
@@ -65495,6 +65940,9 @@ function setOpen(next){
 
   if (isOpen) {
     if (endFn) { dock.removeEventListener('transitionend', endFn); endFn = null; }
+    /* before wantSide(): that call is what turns Full width off, and the
+       re-wrap it causes is half of "the page isn't where I left it" */
+    var keep = readAnchor();
     var g = wantSide();
     side = !!g;
     if (side) {
@@ -65503,6 +65951,7 @@ function setOpen(next){
       releaseSide();
       document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
     }
+    holdPlace(keep);
     if (curKey !== secKey()) loadSection(secKey());
     setTab(prefs().tab === 'type' ? 'type' : 'write');
     try {
@@ -65523,10 +65972,12 @@ function setOpen(next){
   } else {
     draftFlush();
     prefs().tab = tab; save();
+    var keepC = readAnchor();
     dock.classList.remove('mn-open');
     document.body.classList.remove('mn-open');
     document.body.classList.remove('mn-max-open');
     if (side) { side = false; releaseSide(); }   // side=false first: the icon reads it
+    holdPlace(keepC);
     try { if (document.activeElement && dock.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     var done = function(){
       if (isOpen) return;
