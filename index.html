@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.563">
+<meta name="app-build" content="18.564">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -58359,7 +58359,7 @@ css.textContent = [
 '.aih-msg.a { align-self: flex-start; background: var(--surface-2); }',
 '.aih-msg.err { align-self: stretch; background: var(--warning-bg, var(--surface-2)); font-size: 13px; }',
 '.aih-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }',
-'.aih-row textarea { flex: 1; resize: none; min-height: 40px; max-height: 110px; padding: 9px 11px;',
+'.aih-row textarea { flex: 1; resize: none; min-height: 40px; max-height: 132px; overflow-y: auto; padding: 9px 11px;',
 '  border-radius: 10px; border: 1px solid var(--border-strong, var(--border)); background: var(--bg-2, var(--surface));',
 '  color: var(--text); font: inherit; font-size: 14px; }',
 '.aih-row button { padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: var(--accent-text, #fff);',
@@ -58371,8 +58371,23 @@ css.textContent = [
 '  background: var(--surface-2); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer;',
 '  white-space: nowrap; }',
 '.aih-chips button:active { transform: scale(0.96); }',
+'.aih-chips button:disabled { opacity: 0.45; cursor: default; transform: none; }',
+/* NOTHING SITTING ON THE SEND BUTTON. The sheet lives in the bottom-right
+   corner and the floating buttons live there too. Measured at three screen
+   sizes, five of them land inside its box; four are painted behind it, but the
+   calculator carries z-index 10054 - above the sheet AND above its backdrop -
+   so the abacus sat on top of Send and could be tapped through the modal.
+   They all go away while the helper is open, and come back when it closes. */
+'body.aih-open #calc-fab, body.aih-open .aih-fab, body.aih-open #pod-fab,',
+'body.aih-open #eli5-fab, body.aih-open #mm-fab { display: none !important; }',
+/* CODE THAT CAN BE READ. --code-bg is a dark terminal ground in all 38 themes
+   and is always paired with --code-text; this rule took the background and let
+   the colour inherit, so every `true`, `10 > 3` and `==` in an answer rendered
+   as dark-on-dark - measured at a contrast ratio of 1.04:1, which is a solid
+   black chip where the code should be. Same pairing as .lesson code. */
 '.aih-msg.a code { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.92em;',
-'  background: var(--code-bg, rgba(127,127,127,0.15)); padding: 1px 5px; border-radius: 5px; }',
+'  background: var(--code-bg, rgba(127,127,127,0.15)); color: var(--code-text, inherit);',
+'  padding: 1px 5px; border-radius: 5px; }',
 '.aih-msg.a strong { font-weight: 750; }',
 '.aih-msg.a sub, .aih-msg.a sup { font-size: 0.78em; }'
 ].join('\n');
@@ -58465,6 +58480,31 @@ var chat = [];        // { role, content } - memory only
 var busy = false;
 var sheet = null, log = null, ta = null, sendBtn = null;
 
+/* One owner for the busy state. Send was disabled while an answer streamed but
+   the three one-tap chips were not: tapping one mid-answer put its prompt in
+   the box, called send(), and send() returned at its own busy guard - so the
+   ask vanished and its text sat stranded in the input looking like something
+   she had typed. Now they grey out with Send. */
+function setBusy(on){
+  busy = !!on;
+  try { if (sendBtn) sendBtn.disabled = busy; } catch (e) {}
+  try {
+    if (sheet) {
+      var cs = sheet.querySelectorAll('[data-chip]');
+      for (var i = 0; i < cs.length; i++) cs[i].disabled = busy;
+    }
+  } catch (e) {}
+}
+/* A prompt is three lines long; the box was one line tall and clipped the rest
+   mid-sentence, so she could not read what she was about to send. */
+function fitTa(){
+  if (!ta) return;
+  try {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 132) + 'px';
+  } catch (e) {}
+}
+
 function lessonContext(){
   // A question she just got wrong is the thing she most wants re-explained, so
   // the quiz screen sends the question, the options, the right answer and the
@@ -58526,8 +58566,8 @@ async function send(){
   if (busy) return;
   var q = (ta.value || '').trim();
   if (!q) return;
-  ta.value = '';
-  busy = true; sendBtn.disabled = true;
+  ta.value = ''; fitTa();
+  setBusy(true);
   addMsg('u', q);
   chat.push({ role: 'user', content: q });
   var bubble = addMsg('a', '…');
@@ -58548,8 +58588,12 @@ async function send(){
       var r = await reader.read();
       if (r.done) break;
       full += dec.decode(r.value, { stream: true });
+      /* Follow the answer only when she is already at the foot of it. This
+         used to jump to the bottom on EVERY chunk, so scrolling up to re-read
+         the start of a long answer was impossible while it was still coming. */
+      var atFoot = (log.scrollHeight - log.scrollTop - log.clientHeight) < 48;
       bubble.innerHTML = aihFormat(full);
-      log.scrollTop = log.scrollHeight;
+      if (atFoot) log.scrollTop = log.scrollHeight;
     }
     if (!full.trim()) { bubble.className = 'aih-msg err'; bubble.textContent = 'No answer came back. Try again.'; chat.pop(); return; }
     chat.push({ role: 'assistant', content: full });
@@ -58560,7 +58604,7 @@ async function send(){
       : 'Could not reach the helper (' + (e && e.message ? e.message : 'network error') + ').';
     chat.pop();
   } finally {
-    busy = false; sendBtn.disabled = false;
+    setBusy(false);
     try { ta.focus(); } catch (e2) {}
   }
 }
@@ -58570,6 +58614,7 @@ function close(){
   if (b) b.remove();
   if (sheet) sheet.remove();
   sheet = null;
+  try { document.body.classList.remove('aih-open'); } catch (e) {}
 }
 
 function open(){
@@ -58591,14 +58636,20 @@ function open(){
     '<div class="aih-row"><textarea rows="1" placeholder="Ask about what you’re studying…"></textarea><button>Send</button></div>' +
     '<div class="aih-hint">Answers stream from an AI tutor that can see the lesson on your screen. It can make mistakes — verify anything surprising against the lesson.</div>';
   document.body.appendChild(sheet);
+  document.body.classList.add('aih-open');
   log = sheet.querySelector('.aih-log');
   ta = sheet.querySelector('textarea');
   sendBtn = sheet.querySelector('.aih-row button');
   sheet.querySelector('.aih-x').addEventListener('click', close);
   sendBtn.addEventListener('click', send);
   sheet.querySelectorAll('[data-chip]').forEach(function(c){
-    c.addEventListener('click', function(){ ta.value = PROMPTS[c.getAttribute('data-chip')] || ''; send(); });
+    c.addEventListener('click', function(){
+      if (busy) return;                    // the chip is disabled too; never strand its text
+      ta.value = PROMPTS[c.getAttribute('data-chip')] || '';
+      fitTa(); send();
+    });
   });
+  ta.addEventListener('input', fitTa);
   ta.addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -58611,9 +58662,9 @@ function open(){
 window.__aihAsk = function(key){
   try {
     if (!sheet) open();
-    if (!ta) return;
+    if (!ta || busy) return;               // never overwrite the box with an ask that cannot go
     ta.value = PROMPTS[key] || String(key || '');
-    send();
+    fitTa(); send();
   } catch (e) {}
 };
 window.__aihPrompts = PROMPTS;
