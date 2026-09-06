@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.564">
+<meta name="app-build" content="18.565">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -56268,6 +56268,53 @@ try {
     };
   }
 } catch (e) {}
+
+/* ONE-TIME REPAIR OF INK ALREADY DOUBLED.
+ *
+ * Until the pairing fix in the launch recovery, every launch after a page was
+ * compacted put its stale append log back on top of a packed slot that already
+ * held those strokes - so writing was duplicated on top of itself, and again
+ * on the next launch. Stopping it does not undo it: the doubled ink is on the
+ * device. Sweep it once.
+ *
+ * Only EXACT duplicates go - the same points, width and colour AND the same
+ * two millisecond timestamps. Two strokes made by hand cannot agree on all of
+ * that: the coordinates alone are Pencil floats. The first copy is kept, in
+ * place, so nothing moves and the page reads exactly as she wrote it.
+ */
+try {
+  if (store.inkDupSweep !== 1) {
+    var _keys = [];
+    try {
+      for (var _k in localStorage) if (_k.indexOf(PREFIX) === 0) _keys.push(_k.slice(PREFIX.length));
+    } catch (e) {}
+    var _dropped = 0, _pages = 0;
+    for (var _i = 0; _i < _keys.length; _i++) {
+      try {
+        var _rk = _keys[_i], _list = readInk(_rk);
+        if (!_list || _list.length < 2) continue;
+        var _seen = Object.create(null), _out = [], _cut = 0;
+        for (var _j = 0; _j < _list.length; _j++) {
+          var _sig = json(_list[_j]);
+          if (_seen[_sig]) { _cut++; continue; }
+          _seen[_sig] = 1;
+          _out.push(_list[_j]);
+        }
+        if (_cut) { rewrite(_rk, _out); _dropped += _cut; _pages++; }
+      } catch (e) {}
+    }
+    store.inkDupSweep = 1;
+    try { saveStore(); } catch (e) {}
+    if (_dropped) {
+      try {
+        if (typeof toast === 'function') {
+          toast('Repaired ' + _dropped + ' duplicated pen stroke' + (_dropped === 1 ? '' : 's') +
+                ' across ' + _pages + ' page' + (_pages === 1 ? '' : 's') + ' of notes \u2713', 7000);
+        }
+      } catch (e) {}
+    }
+  }
+} catch (e) {}
 })();
 
 
@@ -60000,22 +60047,48 @@ function runRecover(){
           if (wipeAt && (inkRec.at || 0) < wipeAt) return;
         } catch (e) {}
         var back = 0;
+        /* A PAGE IS TWO SLOTS, AND THEY ARE ONLY VALID TOGETHER.
+         *
+         * gsk: is the packed page. gsl: is NOT a page - it is the strokes
+         * appended since gsk: was last packed, and it is DELIBERATELY deleted
+         * every time the page is compacted back into gsk:. Restoring one on
+         * its own, because localStorage no longer has it, appends those
+         * strokes to a base that already contains them.
+         *
+         * Measured: four strokes came back as seven, and it happened again on
+         * every launch after a compaction. That is the doubled handwriting -
+         * "whenever I refresh or update the app this happens".
+         *
+         * So a page is restored as a pair, and only when it is genuinely gone
+         * from this device. A page still here has the newer copy by
+         * definition: compaction is the very thing that removed its log. */
+        var pageSlots = Object.create(null);
         for (var ik in inkRec.data) {
           if (!Object.prototype.hasOwnProperty.call(inkRec.data, ik)) continue;
+          if (ik.indexOf('gsk:') !== 0 && ik.indexOf('gsl:') !== 0) continue;
+          var rk0 = ik.slice(4);                        // both prefixes are 4 chars
+          if (!pageSlots[rk0]) pageSlots[rk0] = {};
+          pageSlots[rk0][ik.slice(0, 3)] = inkRec.data[ik];
+        }
+        for (var rk in pageSlots) {
+          if (!Object.prototype.hasOwnProperty.call(pageSlots, rk)) continue;
           try {
-            if (localStorage.getItem(ik) !== null) continue;
-            var rk = ik.slice(4);                       // both 'gsk:' and 'gsl:' are 4 chars
+            var pair = pageSlots[rk];
+            if (pair.gsk == null) continue;             // a log with no page of its own is not a page
+            if (localStorage.getItem('gsk:' + rk) !== null) continue;  // still here: local wins, whole
             var pAt = 0;
             try { pAt = (E2 && E2.pageAt) ? (E2.pageAt(rk) || 0) : 0; } catch (e) {}
             if (pAt && (inkRec.at || 0) < pAt) continue; // she erased this page after the mirror
-            localStorage.setItem(ik, inkRec.data[ik]);
+            localStorage.setItem('gsk:' + rk, pair.gsk);
+            // the pair IS the page: an absent log means the mirror was taken
+            // compacted, so any log left behind here belongs to nothing
+            if (pair.gsl != null) localStorage.setItem('gsl:' + rk, pair.gsl);
+            else localStorage.removeItem('gsl:' + rk);
             // repair the ink index too, so restored pages appear in
             // export/backup and timestamp-based erase, not just on screen
-            if (ik.indexOf('gsk:') === 0) {
-              try { if (!store.gannoInkIndex) store.gannoInkIndex = {}; store.gannoInkIndex[rk] = 1; } catch (e) {}
-            }
+            try { if (!store.gannoInkIndex) store.gannoInkIndex = {}; store.gannoInkIndex[rk] = 1; } catch (e) {}
             back++;
-          } catch (e) {}                                 // per-key: one quota error must not kill the rest
+          } catch (e) {}                                 // per-page: one quota error must not kill the rest
         }
         if (back > 0) {
           window.__fortress.inkRecovered = back;
