@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.567">
+<meta name="app-build" content="18.568">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -56673,12 +56673,76 @@ try {
 
 window.__freezes = function(){ return freezes; };
 
+/* SUSTAINED SLOWNESS LEAVES NO TRACE.
+ *
+ * Everything above stamps a moment only when it is BAD - a freeze over 1.5s, a
+ * clock drift over 400ms. An app that is merely slow, where closing the notes
+ * or the calculator takes a third of a second EVERY time, never trips either,
+ * so "everything is delaying" arrived with nothing recorded to explain it.
+ * Measured here, at a quarter of an iPad's speed, those same actions settle in
+ * 69-131ms with the main thread never blocked once - so whatever she is
+ * feeling belongs to her device or her data, and neither is visible from here.
+ *
+ * So every tap is now timed: from the touch to the frame that answers it. The
+ * slowest handful ride along in the report with what was tapped and where. One
+ * rAF per tap, nothing stored unless it is slow, and the list is kept short.
+ */
+var SLOW = 'diagSlow';
+var slow = [];
+try { slow = JSON.parse(localStorage.getItem(SLOW) || '[]') || []; } catch (e) { slow = []; }
+function tapLabel(t){
+  try {
+    var el = t && t.closest ? t.closest('[aria-label],[data-t],[data-act],[data-chip],button,a') : null;
+    if (!el) return (t && t.tagName) ? t.tagName.toLowerCase() : '?';
+    return (el.getAttribute('aria-label') || el.getAttribute('data-t') || el.getAttribute('data-act') ||
+            el.getAttribute('data-chip') || (el.textContent || '').trim().slice(0, 22) ||
+            el.id || el.tagName.toLowerCase()).slice(0, 28);
+  } catch (e) { return '?'; }
+}
+try {
+  document.addEventListener('pointerdown', function(e){
+    var t0 = performance.now(), label = tapLabel(e.target);
+    requestAnimationFrame(function(){
+      var ms = performance.now() - t0;
+      if (ms < 120) return;                       // answered inside two frames: not slow
+      try {
+        var row = { ms: Math.round(ms), what: label, at: new Date().toISOString().slice(11, 19) };
+        try { row.r = (typeof view === 'object' && view && view.name) ? view.name : '?'; } catch (e2) {}
+        try { if (performance.memory) row.mb = Math.round(performance.memory.usedJSHeapSize / 1048576); } catch (e2) {}
+        try { row.stKB = Math.round((localStorage.getItem(STORE_KEY) || '').length / 1024); } catch (e2) {}
+        try { row.inkPages = (typeof window.__inkKeys === 'function') ? window.__inkKeys().length : -1; } catch (e2) {}
+        slow.push(row);
+        slow.sort(function(a, b){ return b.ms - a.ms; });
+        if (slow.length > 8) slow = slow.slice(0, 8);
+        localStorage.setItem(SLOW, JSON.stringify(slow));
+      } catch (e2) {}
+    });
+  }, true);
+} catch (e) {}
+window.__slow = function(){ return slow; };
+
 window.__report = function(){
   // Only what is true of THIS session. The freeze log accumulates for days, and
   // sending all of it made every report kilobytes of history she had already
   // paid to send once - the count of what was left out says as much.
   var recent = freezes.slice(-6);
   var out = { build: (document.querySelector('meta[name=app-build]') || {}).content, freezes: recent };
+  // the slowest taps of this install - the evidence for "everything is delaying",
+  // which no freeze or stall threshold was ever going to catch
+  try { if (slow.length) out.slowTaps = slow.slice(0, 6); } catch (e) {}
+  try {
+    out.size = { storeKB: Math.round((localStorage.getItem(STORE_KEY) || '').length / 1024),
+                 inkPages: (typeof window.__inkKeys === 'function') ? window.__inkKeys().length : -1 };
+    var inkKB = 0, biggest = 0;
+    for (var lk in localStorage) {
+      if (lk.indexOf('gsk:') !== 0 && lk.indexOf('gsl:') !== 0) continue;
+      var n = (localStorage.getItem(lk) || '').length;
+      inkKB += n; if (n > biggest) biggest = n;
+    }
+    out.size.inkKB = Math.round(inkKB / 1024);
+    out.size.biggestPageKB = Math.round(biggest / 1024);
+    out.size.domNodes = document.getElementsByTagName('*').length;
+  } catch (e) {}
   if (freezes.length > recent.length) out.olderFreezesNotSent = freezes.length - recent.length;
   try { var d = window.__diag ? JSON.parse(window.__diag()) : null; if (d) { out.recent = d.now && d.now.samples; out.lastCrash = d.lastCrash; if (d.reloads) out.reloads = d.reloads; if (d.smooth) out.smooth = d.smooth; } } catch (e) {}
   try {
