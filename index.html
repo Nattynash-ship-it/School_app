@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.568">
+<meta name="app-build" content="18.569">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -15118,6 +15118,7 @@ function showOverflowMenu() {
  <button class="pomo-btn" data-act="sync-help" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.1); border-color: rgba(94,234,212,0.3);">⇄ Sync across devices — how?</button>
  <button class="pomo-btn" data-act="force-update" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.35);">⟳ Update app to latest &nbsp;<span style="opacity:.6; font-size:11px;">(${(document.querySelector('meta[name=app-build]')?.content || 'v?').split('-')[0]})</span></button>
  <button class="pomo-btn" data-act="find-notes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(255,206,64,0.14); border-color: rgba(255,206,64,0.4);">🔎 Find my notes</button>
+ <button class="pomo-btn" data-act="repair-notes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);">🩹 Repair scrambled notes</button>
  <button class="pomo-btn" data-act="export" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↓ Export backup (JSON)</button>
  <button class="pomo-btn" data-act="email-backup" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">✉ Email backup to myself</button>
  <button class="pomo-btn" data-act="import" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↑ Import backup (JSON)</button>
@@ -15141,6 +15142,29 @@ function showOverflowMenu() {
  sheet.querySelector('[data-act="sync-help"]')?.addEventListener('click', () => { close(); showSyncHelp(); });
  sheet.querySelector('[data-act="cloud-sync"]')?.addEventListener('click', () => { close(); showCloudSync(); });
  sheet.querySelector('[data-act="force-update"]')?.addEventListener('click', () => { close(); forceUpdateApp(); });
+ /* WRITING SITTING ON TOP OF ITSELF. The launch recovery used to put a page's
+    stale append log back over a packed slot that already held those strokes,
+    so ink doubled - and doubled again every launch. That is fixed and the
+    repair runs itself once, but a one-time sweep is a poor answer to "my notes
+    are still scrambled": she needs to be able to run it, on demand, and be
+    told what it actually found. */
+ sheet.querySelector('[data-act="repair-notes"]')?.addEventListener('click', () => {
+  close();
+  let r = null;
+  try { r = window.__inkRepair ? window.__inkRepair() : null; } catch (e) {}
+  if (!r) { alert('Could not check the notes just now. Try again after the app finishes loading.'); return; }
+  if (!r.dropped) {
+   alert('Checked ' + r.pages + ' page' + (r.pages === 1 ? '' : 's') + ' of handwriting.\n\n' +
+         'Nothing was written on top of itself, so nothing was removed.\n\n' +
+         'If a page still looks scrambled, the two copies are not identical — send me a photo and the ' +
+         'build number and I will look again.');
+   return;
+  }
+  alert('Repaired ' + r.dropped + ' duplicated stroke' + (r.dropped === 1 ? '' : 's') +
+        ' across ' + r.pagesFixed + ' page' + (r.pagesFixed === 1 ? '' : 's') + '.\n\n' +
+        'Nothing you actually wrote was removed — only copies of a stroke sitting exactly on top ' +
+        'of the same stroke.\n\nReopen the notes to see them.');
+ });
  sheet.querySelector('[data-act="export"]').addEventListener('click', () => { exportData(); close(); });
  sheet.querySelector('[data-act="email-backup"]')?.addEventListener('click', () => { emailBackup(); close(); });
  sheet.querySelector('[data-act="import"]').addEventListener('click', () => {
@@ -56269,47 +56293,96 @@ try {
   }
 } catch (e) {}
 
-/* ONE-TIME REPAIR OF INK ALREADY DOUBLED.
+/* REPAIRING INK ALREADY DOUBLED.
  *
  * Until the pairing fix in the launch recovery, every launch after a page was
  * compacted put its stale append log back on top of a packed slot that already
  * held those strokes - so writing was duplicated on top of itself, and again
  * on the next launch. Stopping it does not undo it: the doubled ink is on the
- * device. Sweep it once.
+ * device.
  *
- * Only EXACT duplicates go - the same points, width and colour AND the same
- * two millisecond timestamps. Two strokes made by hand cannot agree on all of
- * that: the coordinates alone are Pencil floats. The first copy is kept, in
- * place, so nothing moves and the page reads exactly as she wrote it.
+ * PASS 1 ONLY REMOVED BYTE-IDENTICAL COPIES, AND THAT MISSED THE OLDEST DAMAGE.
+ * The per-page store arrived in 18.430; coordinates were only rounded to a
+ * tenth from 18.437. So a page packed in that window holds FULL-PRECISION
+ * points, while the log entries duplicating them were written rounded - copies
+ * of the same stroke that differ in the second decimal and so survived a
+ * string comparison. That is the writing still sitting on top of itself.
+ *
+ * So a duplicate is now: the same kind of ink, the same colour and width, the
+ * same number of points, THE SAME MILLISECOND IT WAS STARTED, and every point
+ * within a quarter of a page unit - two thousandths of an inch, which is finer
+ * than the rounding that caused this. Two strokes made by hand cannot agree on
+ * all of that at once. The first copy is kept, in place, so nothing moves and
+ * the page reads exactly as she wrote it.
  */
-try {
-  if (store.inkDupSweep !== 1) {
-    var _keys = [];
+function inkBucket(s){
+  return (s.type || 'pen') + '|' + (s.color || '') + '|' + (s.width || 0) + '|' +
+         (s.ts || 0) + '|' + ((s.points && s.points.length) || 0);
+}
+function inkSameStroke(a, b){
+  var pa = a && a.points, pb = b && b.points;
+  // shapes (line, arrow, rect, ellipse, table) carry no point list - those
+  // only ever came from the lesson overlay, and an exact match is right there
+  if (!pa || !pb) { try { return json(a) === json(b); } catch (e) { return false; } }
+  if (pa.length !== pb.length) return false;
+  for (var i = 0; i < pa.length; i++) {
+    if (Math.abs(pa[i].x - pb[i].x) > 0.25) return false;
+    if (Math.abs(pa[i].y - pb[i].y) > 0.25) return false;
+  }
+  return true;
+}
+function inkRepairRun(){
+  var keys = [];
+  try {
+    for (var k in localStorage) if (k.indexOf(PREFIX) === 0) keys.push(k.slice(PREFIX.length));
+  } catch (e) {}
+  var dropped = 0, pagesFixed = 0;
+  for (var i = 0; i < keys.length; i++) {
     try {
-      for (var _k in localStorage) if (_k.indexOf(PREFIX) === 0) _keys.push(_k.slice(PREFIX.length));
-    } catch (e) {}
-    var _dropped = 0, _pages = 0;
-    for (var _i = 0; _i < _keys.length; _i++) {
-      try {
-        var _rk = _keys[_i], _list = readInk(_rk);
-        if (!_list || _list.length < 2) continue;
-        var _seen = Object.create(null), _out = [], _cut = 0;
-        for (var _j = 0; _j < _list.length; _j++) {
-          var _sig = json(_list[_j]);
-          if (_seen[_sig]) { _cut++; continue; }
-          _seen[_sig] = 1;
-          _out.push(_list[_j]);
+      var rk = keys[i], list = readInk(rk);
+      if (!list || list.length < 2) continue;
+      var by = Object.create(null), out = [], cut = 0;
+      for (var j = 0; j < list.length; j++) {
+        var s = list[j];
+        if (!s) continue;
+        var b = inkBucket(s), bucket = by[b] || (by[b] = []);
+        var dupe = false;
+        for (var q = 0; q < bucket.length; q++) {
+          if (inkSameStroke(bucket[q], s)) { dupe = true; break; }
         }
-        if (_cut) { rewrite(_rk, _out); _dropped += _cut; _pages++; }
-      } catch (e) {}
+        if (dupe) { cut++; continue; }
+        bucket.push(s);
+        out.push(s);
+      }
+      if (cut) { rewrite(rk, out); dropped += cut; pagesFixed++; }
+    } catch (e) {}
+  }
+  return { pages: keys.length, pagesFixed: pagesFixed, dropped: dropped };
+}
+/* On demand, from More -> Repair scrambled notes. A repair that only ever ran
+   itself, once, is no use to someone looking at a page that is still wrong. */
+window.__inkRepair = function(){
+  var r = inkRepairRun();
+  try { if (typeof saveStore === 'function') saveStore(); } catch (e) {}
+  try {
+    // whatever is open right now is holding the old list in memory
+    if (typeof gannoRender === 'function' && typeof ganno === 'object' && ganno && ganno.routeKey) {
+      if (store.gannoStrokes) delete store.gannoStrokes[ganno.routeKey];
+      gannoRender(gannoGetStrokes(ganno.routeKey), null);
     }
-    store.inkDupSweep = 1;
+  } catch (e) {}
+  return r;
+};
+try {
+  if (store.inkDupSweep !== 2) {
+    var _r = inkRepairRun();
+    store.inkDupSweep = 2;
     try { saveStore(); } catch (e) {}
-    if (_dropped) {
+    if (_r.dropped) {
       try {
         if (typeof toast === 'function') {
-          toast('Repaired ' + _dropped + ' duplicated pen stroke' + (_dropped === 1 ? '' : 's') +
-                ' across ' + _pages + ' page' + (_pages === 1 ? '' : 's') + ' of notes \u2713', 7000);
+          toast('Repaired ' + _r.dropped + ' duplicated pen stroke' + (_r.dropped === 1 ? '' : 's') +
+                ' across ' + _r.pagesFixed + ' page' + (_r.pagesFixed === 1 ? '' : 's') + ' of notes \u2713', 7000);
         }
       } catch (e) {}
     }
