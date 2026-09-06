@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.565">
+<meta name="app-build" content="18.566">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -65062,6 +65062,7 @@ function sizeSvg(){
 var penHold = null;
 var strokeAnchor = null;      // scroll offset when the current stroke started
 var rulerDrag = null;         // live move/turn gesture on the straightedge
+var liveD = '';               // the in-flight stroke's path, appended to per point
 var inkLock = null;           // the ruler edge the current stroke is running along
 function freezePaper(on){
   if (!pagesEl) return;
@@ -65244,6 +65245,38 @@ function addInk(node, s){
   var at = inkAnchor(s);
   if (at) svg.insertBefore(node, at); else svg.appendChild(node);
 }
+/* THE PEN MUST NOT GET SLOWER AS THE WORD GETS LONGER.
+ *
+ * The finished stroke is a pressure-shaped OUTLINE: two corner-cutting passes
+ * (four times the points), a per-point width pass that sorts the spacings, and
+ * a filled path built from all of it. That was rebuilt from scratch on every
+ * single point, so the cost of one more point grew with everything already
+ * drawn - O(n) work per point, O(n log n) with the sort, on a 120Hz pen.
+ *
+ * Measured at a quarter of this machine's speed, which is about her iPad:
+ *      50 points  0.92ms      150 points  3.04ms
+ *     300 points  4.73ms      400 points  5.23ms   (worst single point 7.4ms)
+ * A 120Hz Pencil gives 8.3ms per frame for EVERYTHING, so a long stroke was
+ * spending most of the frame on itself. That is the skipping.
+ *
+ * So while the pen is down the stroke is a plain polyline with one segment
+ * appended per point - O(1), the same trick the lesson overlay already uses -
+ * and the real smoothed outline is built ONCE, on pen-up. Nothing about the
+ * committed ink changes; only the preview is cheap.
+ */
+function liveNode(s){
+  var n = document.createElementNS(NS, 'path');
+  n.setAttribute('fill', 'none');
+  n.setAttribute('stroke-linecap', 'round');
+  n.setAttribute('stroke-linejoin', 'round');
+  n.setAttribute('stroke', s.color);
+  n.setAttribute('stroke-width', String(s.width));
+  if (s.type === 'hl') {
+    n.setAttribute('class', 'mn-hl');
+    n.setAttribute('stroke-opacity', String(HL_ALPHA));
+  }
+  return n;
+}
 function buildRuler(){
   var r = rulerPrefs();
   var g = document.createElementNS(NS, 'g');
@@ -65317,7 +65350,7 @@ function redraw(){
   // LAST, so it actually covers the notes. Painted after the ink, never before.
   if (covered) drawCover();
   if (rulerOn()) svg.appendChild(buildRuler());
-  liveEl = null;
+  liveEl = null; liveD = '';
   paintPageSoon();
 }
 /* A new page is added only when she reaches the very foot of the last one.
@@ -65530,7 +65563,9 @@ function wireInk(){
              color: isHl ? hlColor() : penColor(),
              width: isHl ? hlWidth() : penWidth(),
              points: [p], ts: Date.now(), _ts: Date.now() };
-    liveEl = el(live);
+    liveD = 'M ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+    liveEl = liveNode(live);
+    liveEl.setAttribute('d', liveD);
     addInk(liveEl, live);
   });
   svg.addEventListener('pointermove', function(e){
@@ -65563,6 +65598,7 @@ function wireInk(){
     if (!evs || !evs.length) evs = [e];
     if (tool === 'erase') { for (var i = 0; i < evs.length; i++) eraseAt(pt(evs[i])); return; }
     if (!live) return;
+    var added = false;
     for (var k = 0; k < evs.length; k++) {
       var p = pt(evs[k]);
       if (inkLock) p = rulerProject(p, inkLock);
@@ -65570,11 +65606,10 @@ function wireInk(){
       var dx = p.x - last.x, dy = p.y - last.y;
       if (dx*dx + dy*dy < 1.2) continue;
       live.points.push(p);
+      liveD += ' L ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+      added = true;
     }
-    if (liveEl) {
-      var np = pathFor(live);
-      liveEl.setAttribute('d', np.d);
-    }
+    if (added && liveEl) liveEl.setAttribute('d', liveD);
   });
   function end(e){
     if (rulerDrag && (!e || e.pointerId == null || e.pointerId === rulerDrag.id)) {
@@ -65599,16 +65634,21 @@ function wireInk(){
     if (live && live.points.length >= 2) {
       strokes.push(live);
       logOp({ op: 'draw', s: live, i: strokes.length - 1 });
-      if (grewIfNeeded()) redraw();
-      // redraw() (above) already remaps strokeEls fresh; otherwise register
-      // this stroke's already-on-screen node so an eraser hit can find it
-      // directly instead of falling back to a full rebuild.
-      else if (strokeEls) strokeEls.set(live, liveEl);
+      if (grewIfNeeded()) redraw();               // rebuilds everything anyway
+      else {
+        /* The pen is up: swap the cheap in-flight line for the real
+           pressure-shaped stroke. This is the ONLY time the outline is built,
+           so its cost is paid once per stroke instead of once per point. */
+        var fin = el(live);
+        if (liveEl && liveEl.parentNode) liveEl.parentNode.replaceChild(fin, liveEl);
+        else addInk(fin, live);
+        if (strokeEls) strokeEls.set(live, fin);
+      }
       persist(); paintBadge();
     } else if (liveEl && liveEl.parentNode) {
       liveEl.parentNode.removeChild(liveEl);       // a rest of the hand, not a mark
     }
-    live = null; liveEl = null;
+    live = null; liveEl = null; liveD = '';
   }
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
