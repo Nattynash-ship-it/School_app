@@ -16,3 +16,16 @@
 # new filename, so they can be cached hard - unlike the app shell above.
 /splash/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Security headers for everything. The app is one page that is never framed,
+# never embedded and never meant to be indexed; these say so to the browser.
+# The Content-Security-Policy is deliberately limited to what cannot break a
+# single-file app that runs from inline scripts and styles: nothing may frame
+# it, nothing may re-base its URLs, and no plugin objects may load.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), geolocation=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; object-src 'none'

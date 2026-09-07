@@ -1,0 +1,17 @@
+Networking Basics Study Guide
+
+Chapter 1 The OSI Model
+The OSI model describes seven layers of network communication. Each layer has a job and hands data to the next.
+The physical layer moves raw bits over a cable or radio. The data link layer frames bits and uses MAC addresses.
+Section 1.1 Upper layers
+The transport layer provides end-to-end delivery. TCP is reliable and ordered; UDP is fast and connectionless.
+The application layer is where HTTP, DNS and SMTP live. Students confuse the session and presentation layers.
+
+Chapter 2 IP Addressing
+An IPv4 address is 32 bits written as four octets. A subnet mask separates the network part from the host part.
+Section 2.1 Subnetting
+CIDR notation such as /24 gives the number of network bits. A /24 has 256 addresses, 254 usable for hosts.
+To find the number of hosts, compute 2 to the power of host bits minus 2. A /26 has 64 addresses and 62 hosts.
+Section 2.2 Private ranges
+The private ranges are 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16. They are not routed on the public internet.
+NAT translates private addresses to a public one at the edge router so many devices can share it.

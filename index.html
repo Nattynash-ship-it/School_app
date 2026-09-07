@@ -2357,6 +2357,9 @@
  .quiz-topic { font-size: 11px; color: var(--text-4); font-weight: 600; letter-spacing: 0.08em; margin-bottom: 6px; }
  .quiz-text { font-size: 16px; line-height: 1.55; margin-bottom: 16px; color: var(--text); }
  .quiz-text code { background: var(--code-bg); color: var(--code-text); padding: 2px 6px; border-radius: 4px; font-size: 14px; font-family: "JetBrains Mono", ui-monospace, monospace; }
+ pre.qcode { background: var(--code-bg); color: var(--code-text); padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; overflow-x: auto; margin: 8px 0 10px; white-space: pre; font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 400; text-align: left; }
+ pre.qcode code { background: none; color: inherit; padding: 0; font-size: inherit !important; font-family: inherit; }
+ .v2-pretest-q pre.qcode { font-size: 13px; font-weight: 400; }
 
  .quiz-opts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 1rem; }
 
@@ -9024,12 +9027,14 @@ function getQuestions(courseId, chId, secId) {
   const key = `${courseId}/${chId}/${secId}`;
   if (SAMPLE_QUESTIONS[key]) {
     var _pool = dedupeQuestions(SAMPLE_QUESTIONS[key].filter(Boolean));
-    // Exam sims keep the 50-question timed format: when the bank grows past 50,
-    // serve a fresh random 50 each attempt so retakes get new question mixes.
-    if (/_sim$/.test(chId) && _pool.length > 50) {
+    // Exam sims keep the timed format of the real assessment (50 questions, or
+    // the course's own size in SIM_SIZE): when the bank grows past that, serve
+    // a fresh random draw each attempt so retakes get new question mixes.
+    var _want = (typeof window !== 'undefined' && window.SIM_SIZE && window.SIM_SIZE[courseId]) || 50;
+    if (/_sim$/.test(chId) && _pool.length > _want) {
       var _a = _pool.slice();
       for (var _i = _a.length - 1; _i > 0; _i--) { var _j = Math.floor(Math.random() * (_i + 1)); var _t = _a[_i]; _a[_i] = _a[_j]; _a[_j] = _t; }
-      return _a.slice(0, 50);
+      return _a.slice(0, _want);
     }
     return _pool;
   }
@@ -20194,7 +20199,7 @@ function renderQuiz(v) {
  return `<span class="diff-badge" data-current-diff="${tier}" style="display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:3px 8px; border-radius:6px; background:${b.bg}; color:${b.color}; border:1px solid ${b.color}40;">● ${b.label}</span>${truly ? '<span title="This one is genuinely tough — based on your past attempts. Crushing it = extra credit." style="display:inline-flex; align-items:center; font-size:14px; line-height:1; margin-left:6px; animation:tp-pulse 2.4s ease-in-out infinite;">🌶️</span>' : ''}`;
  })()}
  </div>
- <div class="quiz-text">${q.text}</div>
+ <div class="quiz-text">${qTextHtml(q)}</div>
  ${q.kind === 'code' ? `
  <!-- Code-write question: monospace textarea, type your answer -->
  <div class="quiz-code-block">
@@ -20679,6 +20684,30 @@ function gradeCodeAnswer(q, code) {
 
  // No grading rules at all — fall back to self-grade (always shows solution)
  return false;
+}
+
+// ONE formatter for question stems, used by every screen that shows one.
+// Authors write stems as HTML (code inside <pre><code>), but 867 older
+// questions carry raw newlines in plain text - "What does this print?\n\nint
+// x = 3;\n..." - and a normal <div> collapses those to one line, so the Java
+// she is asked to trace arrives as a single run-on sentence. The exam-sim and
+// interleaved screens had the opposite fault: they escaped the stem, so a
+// question authored with <pre> showed its tags as text. Plain multi-line text
+// becomes prompt + code block; authored HTML passes through; anything else is
+// escaped as before.
+function qTextHtml(q) {
+ var t = String((q && q.text) || '');
+ if (/<[a-z][\s\S]*>/i.test(t)) return t;
+ if (t.indexOf('\n') === -1) return esc(t);
+ var isCode = function(l){ return /[;{}=()\[\]<>]|^\s{2,}\S|\b(int|double|String|boolean|char|System|for|while|if|else|return|public|static|void|new|OUTPUT|SET|IF|ELSE|PRINT|FUNCTION|WHILE|FOR|END|DISPLAY|INPUT)\b/.test(l); };
+ var lines = t.split('\n'), n = lines.length, a = 0, b = n;
+ while (a < n && !isCode(lines[a]) ) a++;            // leading prose
+ while (b > a && !isCode(lines[b - 1])) b--;          // trailing prose
+ if (a >= b) return esc(t).replace(/\n/g, '<br>');    // no code at all
+ var prompt = lines.slice(0, a).join(' ').trim();
+ var code = lines.slice(a, b).join('\n').replace(/^\n+|\n+$/g, '');
+ var tail = lines.slice(b).join(' ').trim();
+ return (prompt ? esc(prompt) : '') + '<pre class="qcode"><code>' + esc(code) + '</code></pre>' + (tail ? esc(tail) : '');
 }
 
 function renderExplanation(q, ans) {
@@ -24978,7 +25007,7 @@ function renderInterleaved() {
  </div>
  </div>
  <p class="label label-accent" style="margin-bottom:6px;">${c.code} · ${esc(ch.title.toUpperCase())} · ${esc(s.title)}</p>
- <h2 style="font-size:22px; margin-bottom:20px; line-height:1.4;">${esc(q.text)}</h2>
+ <div class="quiz-text" style="font-size:22px; margin-bottom:20px; line-height:1.4; font-weight:700;">${qTextHtml(q)}</div>
  <div class="quiz-options">
  ${q.options.map((opt, i) => `
  <button class="quiz-opt" data-opt="${i}" style="display:block; width:100%; text-align:left; padding:14px 16px; margin-bottom:10px; border-radius:12px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:14px; line-height:1.4; cursor:pointer;">
@@ -27112,7 +27141,7 @@ function renderExamSim() {
  <button class="pomo-btn ${flagged ? 'primary' : ''}" data-act="flag" style="padding:6px 10px; font-size:12px;">${flagged ? '⚑ Flagged' : '⚐ Flag'}</button>
  </div>
 
- <div style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:18px; line-height:1.5;">${esc(q.text)}</div>
+ <div class="quiz-text" style="font-size:17px; font-weight:600; color:var(--text); margin-bottom:18px; line-height:1.5;">${qTextHtml(q)}</div>
 
  <div class="scratch-host" style="margin:2px 0 22px; border-top:0; padding-top:0;"></div>
 
@@ -27326,7 +27355,7 @@ function showExamSimResults(session) {
  <div style="font-size:11px; color:var(--text-4); letter-spacing:0.06em; text-transform:uppercase;">Q${i + 1} · ${esc(q.topic || 'general')}${q.secTitle ? ' · ' + esc(q.secTitle) : ''}</div>
  <div style="font-size:11px; font-weight:700; color:${barColor};">${verdict}</div>
  </div>
- <div style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.4;">${esc(q.text)}</div>
+ <div class="quiz-text" style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.4;">${qTextHtml(q)}</div>
  ${q.options.map((opt, j) => {
  let bg = 'transparent', color = 'var(--text-3)', icon = '', weight = '400';
  if (j === q.correct) { bg = 'rgba(34,197,94,0.12)'; color = '#22c55e'; icon = '✓ '; weight = '700'; }
@@ -32440,7 +32469,7 @@ function renderPretest(courseId) {
  <div class="v2-pretest-progtxt">${session.idx + 1} / ${session.total}</div>
  </div>
  <p class="v2-pretest-meta">PRETEST · ${esc(course.code || courseId)} · ${esc(q.topic || '')}</p>
- <h2 class="v2-pretest-q">${esc(q.text)}</h2>
+ <h2 class="v2-pretest-q">${qTextHtml(q)}</h2>
  <div class="v2-pretest-opts">
  ${(q.options || []).map((opt, i) => `<button class="v2-pretest-opt" data-pick="${i}">${esc(opt)}</button>`).join('')}
  ${q.type === 'code' ? `<div class="v2-pretest-code">
@@ -35671,8 +35700,8 @@ function todayHeroHTML(){
   var cards = pool.map(function(c){
    return '<div class="hero-sim-card"><div class="hero-sim-code">'+esc(c.id)+'</div><div class="hero-sim-name">'+esc(c.name)+'</div>'
      + '<div class="hero-sim-btns">'
-     + '<button class="hero-sim-btn pa" data-sim-launch="'+c.id+'|pa_sim">PA \u00b7 50Q</button>'
-     + '<button class="hero-sim-btn oa" data-sim-launch="'+c.id+'|oa_sim">OA \u00b7 50Q</button>'
+     + '<button class="hero-sim-btn pa" data-sim-launch="'+c.id+'|pa_sim">PA \u00b7 '+((window.SIM_SIZE&&window.SIM_SIZE[c.id])||50)+'Q</button>'
+     + '<button class="hero-sim-btn oa" data-sim-launch="'+c.id+'|oa_sim">OA \u00b7 '+((window.SIM_SIZE&&window.SIM_SIZE[c.id])||50)+'Q</button>'
      + '</div></div>';
   }).join('');
   return '<div class="today-hero">'
@@ -36547,7 +36576,10 @@ setTimeout(function(){ try{
     }
   }
   if (pool.length >= 50){ SAMPLE_QUESTIONS['C959/oa_sim/sim'] = pool; SAMPLE_QUESTIONS['C959/pa_sim/sim'] = pool.slice(); }
-  window.C959_BLUEPRINT = { logic:11, sets_fn:8, bool:7, matrix:4, series:4, relations:8, graphs:8 };
+  // The real C959 OA is 72 questions over seven units, with graphs and trees the
+  // heaviest; this draw mirrors that shape (proofs are counted inside logic).
+  window.SIM_SIZE = { C959: 72 };
+  window.C959_BLUEPRINT = { logic:14, sets_fn:11, bool:10, matrix:6, series:7, relations:10, graphs:14 };
 } catch(e){ if(window.console&&console.warn) console.warn('blueprint sim failed:', e); } })();
 
 /* getQuestions override: identical to the original, plus a stratified draw for
@@ -36556,9 +36588,10 @@ function getQuestions(courseId, chId, secId) {
   const key = `${courseId}/${chId}/${secId}`;
   if (SAMPLE_QUESTIONS[key]) {
     var _pool = dedupeQuestions(SAMPLE_QUESTIONS[key].filter(Boolean));
-    if ((key === 'C959/oa_sim/sim' || key === 'C959/pa_sim/sim') && typeof window !== 'undefined' && window.C959_BLUEPRINT && _pool.length && _pool[0] && _pool[0]._dom) {
+    var _want = (typeof window !== 'undefined' && window.SIM_SIZE && window.SIM_SIZE[courseId]) || 50;
+    if ((key === 'C959/oa_sim/sim' || key === 'C959/pa_sim/sim') && typeof window !== 'undefined' && window.C959_BLUEPRINT && _pool.length && _pool.some(function(x){ return x && x._dom; })) {
       var groups = {};
-      for (var gi=0; gi<_pool.length; gi++){ var gq=_pool[gi]; (groups[gq._dom]=groups[gq._dom]||[]).push(gq); }
+      for (var gi=0; gi<_pool.length; gi++){ var gq=_pool[gi]; var gd = (gq && gq._dom && window.C959_BLUEPRINT[gq._dom]) ? gq._dom : '_other'; (groups[gd]=groups[gd]||[]).push(gq); }
       function shuf(a){ for (var x=a.length-1;x>0;x--){ var y=Math.floor(Math.random()*(x+1)); var t=a[x]; a[x]=a[y]; a[y]=t; } return a; }
       var picked=[], leftovers=[];
       for (var dom in window.C959_BLUEPRINT){
@@ -36566,13 +36599,14 @@ function getQuestions(courseId, chId, secId) {
         picked=picked.concat(g.slice(0,want));
         leftovers=leftovers.concat(g.slice(want));
       }
-      if (picked.length < 50) picked = picked.concat(shuf(leftovers).slice(0, 50 - picked.length));
-      return shuf(picked).slice(0, 50);
+      leftovers = leftovers.concat(groups._other || []);
+      if (picked.length < _want) picked = picked.concat(shuf(leftovers).slice(0, _want - picked.length));
+      return shuf(picked).slice(0, _want);
     }
-    if (/_sim$/.test(chId) && _pool.length > 50) {
+    if (/_sim$/.test(chId) && _pool.length > _want) {
       var _a = _pool.slice();
       for (var _i = _a.length - 1; _i > 0; _i--) { var _j = Math.floor(Math.random() * (_i + 1)); var _t = _a[_i]; _a[_i] = _a[_j]; _a[_j] = _t; }
-      return _a.slice(0, 50);
+      return _a.slice(0, _want);
     }
     return _pool;
   }
