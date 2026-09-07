@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.570">
+<meta name="app-build" content="18.571">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -29626,6 +29626,34 @@ function gannoDocPointerUp(e) {
 }
 
 // Resize handler — keep viewBox in sync with current document size
+/* A RENDER THAT CHANGES NOTHING MUST COST NOTHING.
+ *
+ * Opening a lesson fires six of these - one now, then at 120ms, 400ms, 900ms,
+ * 1800ms and 3000ms - because injected study blocks and web fonts settle long
+ * after first paint and ink placed before they land looks shifted. Sound
+ * reason, brutal method: each one rebuilt EVERY stroke from scratch.
+ *
+ * Her own flight recorder caught it twice: eight gannoRender calls inside one
+ * second, 94-137ms each, on a page holding 205 strokes - a 900ms freeze, and
+ * her iPad reloading the app under memory pressure every few minutes on top.
+ * Reproduced here at a quarter speed: ONE navigation, 16 renders, 1892ms.
+ *
+ * So each pass now asks whether anything it draws from has actually moved -
+ * the page's size, the column's box, the orientation, the theme, the stroke
+ * list itself. If nothing has, the pass is free. The settle passes still catch
+ * the block that lands at 1800ms; they just stop redrawing an unchanged page
+ * five more times to find out. */
+function gannoRenderSig() {
+ try {
+  const docH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, window.innerHeight);
+  const docW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth, window.innerWidth);
+  const a = gannoGetAnchor();
+  return docW + 'x' + docH + '|' +
+   (a ? (Math.round(a.x) + ',' + Math.round(a.y) + ',' + Math.round(a.w) + ',' + Math.round(a.h)) : '-') + '|' +
+   (ganno.routeKey || '') + '|' + gannoOrient() + '|' + (pageIsDark() ? 'd' : 'l') + '|' +
+   (window.__inkShowAllOrients ? 'a' : '');
+ } catch (e) { return String(Math.random()); }
+}
 function gannoOnResize() {
  if (!ganno.svg) return;
  const docH = Math.max(
@@ -59526,8 +59554,31 @@ window.gannoOnResize = function gannoOnResize(){
   var svg = svgEl(); if (!svg) return;
   apply(true);
   try {
-    if (typeof gannoRender === 'function' && typeof gannoGetStrokes === 'function' &&
-        typeof ganno !== 'undefined' && ganno) gannoRender(gannoGetStrokes(ganno.routeKey), null);
+    if (typeof gannoRender !== 'function' || typeof gannoGetStrokes !== 'function' ||
+        typeof ganno === 'undefined' || !ganno) return;
+    var list = gannoGetStrokes(ganno.routeKey);
+    var sig = (typeof gannoRenderSig === 'function') ? gannoRenderSig() : null;
+    /* A RENDER THAT CHANGES NOTHING MUST COST NOTHING.
+     *
+     * Opening a lesson fires six of these - now, then at 120, 400, 900, 1800
+     * and 3000ms - because injected study blocks and web fonts settle long
+     * after first paint and ink placed before they land looks shifted. Sound
+     * reason, brutal method: each pass rebuilt EVERY stroke from scratch.
+     *
+     * Her flight recorder caught it twice: eight renders inside one second,
+     * 94-137ms each, on a page holding 205 strokes. Reproduced at a quarter
+     * speed: one navigation, 16 renders, 1892ms of blocked main thread.
+     *
+     * Each pass now asks whether anything it draws from has moved - the page
+     * size, the column's box, the orientation, the theme, the ink itself.
+     * gannoSaveStrokes hands out a fresh array whenever the ink changes, so an
+     * identical reference means identical ink. The settle passes still catch
+     * the block that lands at 1800ms; they stop redrawing an unchanged page
+     * five more times to find out. */
+    if (sig !== null && ganno._sig === sig && ganno._list === list) return;
+    gannoRender(list, null);
+    try { ganno._sig = (typeof gannoRenderSig === 'function') ? gannoRenderSig() : null;
+          ganno._list = list; } catch(e2){}
   } catch(e){}
 };
 // The endless-scroll module's public fitter also re-inflates; point it here.
