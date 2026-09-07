@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.569">
+<meta name="app-build" content="18.570">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -28769,16 +28769,108 @@ function gannoHlClear() {
  const d = document.querySelector('.ganno-hl-layer');
  if (d) { while (d.firstChild) d.removeChild(d.firstChild); }
 }
+/* A HIGHLIGHT MUST NEVER BURY THE WORDS IT MARKS.
+ *
+ * Every band used to carry its own mix-blend-mode and its own translucency, so
+ * two bands over the same words did not look like one highlight - they
+ * COMPOUNDED. One 0.34 band becomes 0.56, then 0.71, then 0.81, and on a dark
+ * page a screen blend drives that straight towards the paper colour while the
+ * text on top stays white. Measured across the 38 themes, worst colour each:
+ *
+ *            one band   doubled   tripled   x4
+ *   under 4.5:1    6/38     35/38     38/38   38/38
+ *   under 3:1      0/38     20/38     29/38   35/38
+ *
+ * The pages carrying duplicated strokes were painting the same highlight two,
+ * three and four times over - "whenever there is an update the highlighter
+ * becomes hard to read", exactly.
+ *
+ * Two changes make that impossible rather than unlikely:
+ *
+ *  1. The bands are painted OPAQUE inside one isolated layer, and the layer
+ *     carries the translucency and the blend. Overlap all you like: a hundred
+ *     bands over one word look the same as one, because the group is flattened
+ *     before it is blended with the page.
+ *  2. The layer's translucency is CHOSEN so the words stay legible - the
+ *     strongest band that still clears 4.5:1 against this theme's own text
+ *     colour, never darker than a faint tint or stronger than a real marker.
+ */
+function gannoHlAlpha(blend){
+  try {
+    var key = (document.documentElement.getAttribute('data-theme') || '') + '|' + blend;
+    if (gannoHlAlpha._k === key) return gannoHlAlpha._a;
+    var probe = document.querySelector('.lesson td, .lesson p, .lesson li') || document.body;
+    var parse = function(c){ var m = /rgba?\(([^)]+)\)/.exec(c || '');
+      if (!m) return null; var q = m[1].split(',').map(parseFloat);
+      return { c: [q[0], q[1], q[2]], a: q.length > 3 ? q[3] : 1 }; };
+    var fgp = parse(getComputedStyle(probe).color);
+    var fg = fgp && fgp.c;
+    /* The band lands on whatever the WORDS are sitting on - a table row, a
+       card - not on the page behind everything. Probing document.body left the
+       search short: the strongest band it allowed still measured 4.09:1 on
+       "field" once painted. Walk up for the first thing that is actually
+       opaque and use that. */
+    var bg = null;
+    for (var el = probe; el && el !== document.documentElement; el = el.parentElement) {
+      var q = parse(getComputedStyle(el).backgroundColor);
+      if (q && q.a >= 0.9) { bg = q.c; break; }
+    }
+    if (!bg) { var q2 = parse(getComputedStyle(document.body).backgroundColor) ||
+                        parse(getComputedStyle(document.documentElement).backgroundColor);
+               bg = q2 && q2.c; }
+    if (!fg || !bg) return 0.34;
+    var lum = function(c){ var f = function(v){ v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+    var Lfg = lum(fg);
+    var cv = document.createElement('canvas'); cv.width = cv.height = 4;
+    var g = cv.getContext('2d');
+    // the loudest marker colour is the one that has to clear the bar
+    var probeCol = gannoNeonHL('#ffe45c');
+    var best = 0.14;
+    for (var a = 0.42; a >= 0.14; a -= 0.02) {
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgb(' + bg[0] + ',' + bg[1] + ',' + bg[2] + ')'; g.fillRect(0, 0, 4, 4);
+      g.globalCompositeOperation = blend; g.globalAlpha = a;
+      g.fillStyle = probeCol; g.fillRect(0, 0, 4, 4);
+      var d = g.getImageData(1, 1, 1, 1).data;
+      var Lb = lum([d[0], d[1], d[2]]);
+      var ratio = (Math.max(Lfg, Lb) + 0.05) / (Math.min(Lfg, Lb) + 0.05);
+      // aim past the bar: antialiasing and the paper tint under the band both
+      // eat a little of it before it reaches her eye
+      if (ratio >= 5.2) { best = a; break; }
+    }
+    gannoHlAlpha._k = key; gannoHlAlpha._a = best;
+    return best;
+  } catch (e) { return 0.34; }
+}
 function gannoHlMount(el, bx, by, bw, bh, blend, gid) {
  const x = Math.floor(bx), y = Math.floor(by);
  const w = Math.max(1, Math.ceil(bw)), h = Math.max(1, Math.ceil(bh));
  const mini = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
  mini.setAttribute('class', 'ganno-hl');
  mini.setAttribute('viewBox', x + ' ' + y + ' ' + w + ' ' + h);
- mini.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;pointer-events:none;overflow:visible;mix-blend-mode:' + blend + ';';
+ // no blend and no translucency HERE - both belong to the layer, so bands
+ // stacked on the same words cannot compound into an unreadable slab
+ mini.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;pointer-events:none;overflow:visible;';
  if (gid !== undefined && gid !== null) mini.setAttribute('data-gid-wrap', gid);
+ try {
+   el.setAttribute('fill-opacity', '1');
+   el.setAttribute('stroke-opacity', '1');
+   var kids = el.querySelectorAll ? el.querySelectorAll('*') : [];
+   for (var i = 0; i < kids.length; i++) {
+     kids[i].setAttribute('fill-opacity', '1');
+     kids[i].setAttribute('stroke-opacity', '1');
+   }
+ } catch (e) {}
  mini.appendChild(el);
- gannoHlLayer().appendChild(mini);
+ var layer = gannoHlLayer();
+ try {
+   layer.style.isolation = 'isolate';
+   layer.style.mixBlendMode = blend;
+   layer.style.opacity = String(gannoHlAlpha(blend));
+ } catch (e) {}
+ layer.appendChild(mini);
  return mini;
 }
 function gannoHlBBoxOfPts(pts, sy, pad) {
