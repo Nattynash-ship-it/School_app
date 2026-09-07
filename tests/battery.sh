@@ -39,4 +39,5 @@ run consolescan consolescan.js 3
 run refreshdistort refreshdistort.js 1
 run codewrap codewrap.js 1
 run fngate fngate.mjs 2
+run newcontent newcontent.js 1
 echo BATTERY_DONE
