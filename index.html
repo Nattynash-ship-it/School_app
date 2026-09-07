@@ -45251,7 +45251,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
 (function readinessMaterialV1(){
  try {
   if (window.__readinessMaterialV1) return; window.__readinessMaterialV1 = true;
-  var PRACT = /^(challenge|solving|solving_only|solving2|weak_drill|review_missed|hard_drill|pretest|final)$|_drill$|_sim$|playbook/;
+  // oa_prac / oa_lab / pa_build (18.572): exam-style practice, the coding lab and
+  // the staged PA build are practice too - never locked behind a lesson.
+  var PRACT = /^(challenge|solving|solving_only|solving2|weak_drill|review_missed|hard_drill|pretest|final|oa_prac|oa_lab|pa_build)$|_drill$|_sim$|playbook/;
   if (typeof isLearningChapter === 'function' && !isLearningChapter.__practiceWrapped) {
     var _isL = isLearningChapter;
     isLearningChapter = function(ch){
