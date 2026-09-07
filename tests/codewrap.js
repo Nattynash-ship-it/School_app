@@ -10,6 +10,9 @@ const { chromium } = require('playwright');
     const all=getQuestions('D286','u3','z3_5');
     const nl=all.filter(q=>/\n/.test(q.text) && !/<pre/.test(q.text));
     SAMPLE_QUESTIONS['D286/u3/z3_5']=nl;
+    // getQuestions memoizes per section; without this the served pool is the
+    // pre-override one and the test measures the wrong question.
+    try { if (window.__qCacheClear) window.__qCacheClear(); } catch(e){}
     go({name:'quiz',courseId:'D286',chId:'u3',secId:'z3_5',mode:'practice'}); await w(2500);
     const el=document.querySelector('.quiz-text');
     const pre=el.querySelector('pre.qcode');

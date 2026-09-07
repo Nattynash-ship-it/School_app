@@ -15,8 +15,11 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     await w(400);
     const oa = SAMPLE_QUESTIONS['C959/oa_sim/sim'] || [];
     const pa = SAMPLE_QUESTIONS['C959/pa_sim/sim'] || [];
-    o.oaGrew = oa.length === 452;
-    o.paGrew = pa.length === 65;
+    // Banks GROW as practice packs land, so pin a floor, not an exact size,
+    // and require the OA-practice items to have reached both sims.
+    o.oaGrew = oa.length >= 452;
+    o.paGrew = pa.length >= 65;
+    o.pracInSims = oa.some(q => /^oa\d_/.test(String(q.id||''))) && pa.some(q => /^oa\d_/.test(String(q.id||'')));
     const nx = oa.concat(pa).filter(q => String(q.id||'').startsWith('nx_'));
     o.nxCount = nx.length === 82;
     o.shapes = nx.every(q =>
