@@ -142,8 +142,50 @@ const json = (status, obj) =>
     headers: { "content-type": "application/json", "cache-control": "no-store" },
   });
 
+
+// THE GATE, a second time. The edge function in front of the site already
+// refuses requests without the sign-in cookie; this repeats the check here so
+// this endpoint - which spends the owner's API credit - stays closed even if
+// the edge configuration is ever removed or bypassed. Same cookie, same
+// secret, same rule as sync.mjs: no cookie, no answer.
+const _enc = new TextEncoder();
+const DEFAULT_PASSWORD_SHA256 = "570052f5b42248adaa457f6ef19d4d86a56c09813aa1a90fc1c53b2d099ac902";
+async function sha256hex(s) {
+  const d = await crypto.subtle.digest("SHA-256", _enc.encode(s));
+  return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", _enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, _enc.encode(msg));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function same(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+async function gateSecret() {
+  const env = (k) => process.env[k] || "";
+  const plain = env("GATE_PASSWORD");
+  const hash = plain ? await sha256hex(plain) : (env("GATE_PASSWORD_SHA256") || DEFAULT_PASSWORD_SHA256).toLowerCase();
+  return env("GATE_SECRET") || await hmacHex(hash, "nsh-gate:" + (env("SITE_ID") || env("NETLIFY_SITE_ID") || "site"));
+}
+async function signedIn(req) {
+  const secret = await gateSecret();
+  const raw = req.headers.get("cookie") || "";
+  let value = "";
+  for (const part of raw.split(";")) { const [k, ...v] = part.trim().split("="); if (k === "nsh_gate") value = v.join("="); }
+  const dot = value.indexOf(".");
+  if (dot < 1) return false;
+  const exp = value.slice(0, dot), sig = value.slice(dot + 1);
+  if (!/^\d{9,13}$/.test(exp) || Number(exp) * 1000 < Date.now()) return false;
+  return same(sig, await hmacHex(secret, exp));
+}
+
 export default async (req) => {
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
+  if (!(await signedIn(req))) return json(401, { error: "sign_in_required" });
 
   // Same-site guard: this endpoint spends the owner's API credit, so refuse
   // browsers sending a foreign Origin. (Not bulletproof - the real protection
