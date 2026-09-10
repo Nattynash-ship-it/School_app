@@ -5224,6 +5224,28 @@ html { scroll-behavior: smooth; }
  border: 1.5px solid transparent; background: var(--surface-2); border-radius: 10px; cursor: pointer; }
 .ganno-sticker-tray button.sel { border-color: var(--accent); background: var(--accent-bg); }
 .ganno-bar { position: relative; }
+/* Realign notes: a page-wide drag that puts ink that an earlier build left
+   behind back on the lines it belongs to. */
+.ganno-realign-bar {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 9600; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 14px;
+  background: var(--surface); color: var(--text-1);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.22);
+  font-size: 14px; max-width: calc(100vw - 24px); flex-wrap: wrap;
+}
+.ganno-realign-msg { font-weight: 600; }
+.ganno-realign-btn {
+  min-width: 40px; min-height: 36px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-2, var(--surface));
+  color: var(--text-1); font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.ganno-realign-btn:active { transform: scale(0.96); }
+.ganno-realign-ok { background: var(--accent); color: #fff; border-color: transparent; }
+body.ganno-realigning { cursor: grab; }
+body.ganno-realigning .ganno-svg { opacity: 0.92; }
+body.ganno-realigning #app { user-select: none; }
 
 /* Scroll hardening for popups (iPad-safe) */
 .pomo-sheet .pomo-card { min-height: 0; touch-action: pan-y; }
@@ -6185,7 +6207,193 @@ function getUncategorizedCourses() {
 }
 
 
+// Some courses keep their chapters in their content file rather than inline, so
+// until that file lands the class page can only show the generic drill chapters.
+// Touching the course's content makes the loader absorb the real structure, so
+// the page paints the right chapters the first time instead of a stub.
+function gannoEnsureCourseChapters(cid) {
+ try {
+  var c = (typeof COURSES !== 'undefined') && COURSES[cid];
+  if (!c || !Array.isArray(c.chapters)) return;
+  var DRILL = /^(weak_drill|review_missed|userdocs|hard_drill|challenge)$/;
+  if (c.chapters.some(function (ch) { return ch && !DRILL.test(ch.id); })) return;
+  if (window.__hydrateCourse) window.__hydrateCourse(cid);
+  var first = c.chapters[0];
+  if (first && first.sections && first.sections[0] && typeof getLesson === 'function') {
+   getLesson(cid, first.id, first.sections[0].id);   // forces the lazy content in
+  }
+ } catch (e) {}
+}
+
 const COURSES = {
+ 'ALGEBRA': {
+  id: 'ALGEBRA',
+  name: "Abstract Algebra",
+  code: 'ALGEBRA',
+  desc: "Groups, rings and fields, built up from the group axioms with worked problems.",
+  color: 'violet',
+  active: false,
+  // Chapters ship in content-ALGEBRA.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'DIFFEQ': {
+  id: 'DIFFEQ',
+  name: "Differential Equations",
+  code: 'DIFFEQ',
+  desc: "First- and second-order ODEs, Laplace transforms, systems and numerical methods.",
+  color: 'blue',
+  active: false,
+  // Chapters ship in content-DIFFEQ.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'COMPLEX': {
+  id: 'COMPLEX',
+  name: "Complex Analysis",
+  code: 'COMPLEX',
+  desc: "Complex numbers and functions, analyticity, and contour integration.",
+  color: 'teal',
+  active: false,
+  // Chapters ship in content-COMPLEX.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'CALC3': {
+  id: 'CALC3',
+  name: "Calculus III",
+  code: 'CALC3',
+  desc: "Vectors and space geometry, partial derivatives, multiple integrals and vector calculus.",
+  color: 'blue',
+  active: false,
+  // Chapters ship in content-CALC3.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'NUMER': {
+  id: 'NUMER',
+  name: "Numerical Analysis",
+  code: 'NUMER',
+  desc: "Error and root-finding, interpolation and quadrature, linear systems and ODE solvers.",
+  color: 'amber',
+  active: false,
+  // Chapters ship in content-NUMER.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'PDE': {
+  id: 'PDE',
+  name: "Partial Differential Equations",
+  code: 'PDE',
+  desc: "Classification, and the heat, wave and Laplace equations.",
+  color: 'teal',
+  active: false,
+  // Chapters ship in content-PDE.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'RANALYSIS': {
+  id: 'RANALYSIS',
+  name: "Real Analysis",
+  code: 'RANALYSIS',
+  desc: "The real numbers, sequences, continuity, differentiation, integration and series.",
+  color: 'violet',
+  active: false,
+  // Chapters ship in content-RANALYSIS.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-CS': {
+  id: 'AIM-CS',
+  name: "AI Mastery: Computer Science",
+  code: 'AIM-CS',
+  desc: "Algorithms and data structures, systems programming, and computer architecture for AI.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-CS.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-ML': {
+  id: 'AIM-ML',
+  name: "AI Mastery: Machine Learning",
+  code: 'AIM-ML',
+  desc: "Classical machine learning and deep learning, with qualifier-level problem sets.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-ML.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-MATH': {
+  id: 'AIM-MATH',
+  name: "AI Mastery: Mathematics",
+  code: 'AIM-MATH',
+  desc: "Linear algebra, calculus, probability and statistics, and optimization for AI.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-MATH.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-ENG': {
+  id: 'AIM-ENG',
+  name: "AI Mastery: AI Engineering",
+  code: 'AIM-ENG',
+  desc: "Large language models, retrieval-augmented generation, and AI agents.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-ENG.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-INFRA': {
+  id: 'AIM-INFRA',
+  name: "AI Mastery: Infrastructure",
+  code: 'AIM-INFRA',
+  desc: "Cloud AI platforms and MLOps.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-INFRA.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-CAREER': {
+  id: 'AIM-CAREER',
+  name: "AI Mastery: Career",
+  code: 'AIM-CAREER',
+  desc: "Flagship portfolio projects, candidate positioning, and interview preparation.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-CAREER.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
+ 'AIM-FRONTIER': {
+  id: 'AIM-FRONTIER',
+  name: "AI Mastery: Frontier Topics",
+  code: 'AIM-FRONTIER',
+  desc: "Reinforcement learning, computer vision and scientific AI.",
+  color: 'indigo',
+  active: false,
+  // Chapters ship in content-AIM-FRONTIER.json and are filled in by courseAbsorb on load.
+  // Without this registry entry the app had nowhere to attach them, so the
+  // course downloaded its content and rendered an empty page.
+  chapters: [],
+ },
  'CALC1': {
   id: 'CALC1',
   name: 'Calculus I',
@@ -14719,7 +14927,7 @@ function render() {
  else if (v.name === 'notebook') root.appendChild(renderNotebook(v.nbId));
  // Existing routes (kept intact)
  else if (v.name === 'home') root.appendChild(renderHomeV3()); // dashboard redesign; classic renderHome retained for rollback
- else if (v.name === 'class') { try { root.appendChild(renderClass(v.courseId)); } catch(_ce) { var _r=document.createElement('div'); _r.className='app'; _r.style.padding='24px'; _r.innerHTML='<button class="back-btn" data-back>\u2039 Back</button><h2 style="margin-top:8px;">This class hit a snag opening</h2><p style="color:var(--text-2);line-height:1.55;">Something in this class\u2019s saved data caused an error. Your work is safe. Try fully closing and reopening the app first. If it keeps happening on this specific class, tell Claude the code below \u2014 it points right at the fix.</p><pre style="background:var(--surface-2);padding:10px;border-radius:8px;font-size:11px;white-space:pre-wrap;overflow:auto;">'+String((_ce&&_ce.message)||_ce)+'</pre>'; try{ _r.querySelector('[data-back]').addEventListener('click', function(){ go({name:'home'}); }); }catch(_b){} root.appendChild(_r); try{ if(window.console) console.error('renderClass failed for', v.courseId, _ce); }catch(_l){} } }
+ else if (v.name === 'class') { try { gannoEnsureCourseChapters(v.courseId); root.appendChild(renderClass(v.courseId)); } catch(_ce) { var _r=document.createElement('div'); _r.className='app'; _r.style.padding='24px'; _r.innerHTML='<button class="back-btn" data-back>\u2039 Back</button><h2 style="margin-top:8px;">This class hit a snag opening</h2><p style="color:var(--text-2);line-height:1.55;">Something in this class\u2019s saved data caused an error. Your work is safe. Try fully closing and reopening the app first. If it keeps happening on this specific class, tell Claude the code below \u2014 it points right at the fix.</p><pre style="background:var(--surface-2);padding:10px;border-radius:8px;font-size:11px;white-space:pre-wrap;overflow:auto;">'+String((_ce&&_ce.message)||_ce)+'</pre>'; try{ _r.querySelector('[data-back]').addEventListener('click', function(){ go({name:'home'}); }); }catch(_b){} root.appendChild(_r); try{ if(window.console) console.error('renderClass failed for', v.courseId, _ce); }catch(_l){} } }
  else if (v.name === 'chapter') root.appendChild(renderChapter(v.courseId, v.chId));
  else if (v.name === 'section') root.appendChild(renderSection(v.courseId, v.chId, v.secId));
  else if (v.name === 'quiz') root.appendChild(renderQuiz(v));
@@ -28941,6 +29149,9 @@ function gannoRender(strokes, currentStroke) {
  }
  svg.appendChild(defs);
 
+ gannoTaInvalidate();          // lesson content may have changed since last render
+ ganno._taDirty = false;
+
  // SVG is position:absolute and scrolls with the document, so strokes
  // already in document coordinates render at the correct spot — no
  // viewport offset translation needed. Keep sy=0 for code-shape parity.
@@ -28952,7 +29163,26 @@ function gannoRender(strokes, currentStroke) {
  // Ink drawn in the other orientation is hidden (not deleted) until you
  // rotate back. Legacy strokes without a tag render in both, as before.
  if (!window.__inkShowAllOrients && s.orient && s.orient !== currentOrient) return;
+ // Paragraph anchor first - it is the only one that survives a build that
+ // inserts content above this stroke. Column anchor is the fallback.
+ var _ta = gannoTextReanchor(s);
+ if (_ta) { s = _ta; }
+ else {
+ // MIGRATION: ink saved before paragraph anchoring existed. Give it one from
+ // where it sits right now, so this is the last build that can move it. This
+ // does not undo a shift that already happened - "Realign notes" does that.
+ if (!s.tanchor) { var _m = gannoMakeTextAnchor(s); if (_m) { s.tanchor = _m; ganno._taDirty = true; } }
  s = gannoReanchor(s, currentAnchor);
+ }
+            // Realign preview: the whole page's ink moves as one sheet while she
+ // drags. Nothing is written until Done.
+ if (ganno.realign && (ganno.realign.dx || ganno.realign.dy)) {
+ var _rd = ganno.realign, _c = Object.assign({}, s);
+ if (s.points) _c.points = s.points.map(function (q) { return { x: q.x + _rd.dx, y: q.y + _rd.dy, p: q.p }; });
+ if (s.start) _c.start = { x: s.start.x + _rd.dx, y: s.start.y + _rd.dy };
+ if (s.end) _c.end = { x: s.end.x + _rd.dx, y: s.end.y + _rd.dy };
+ s = _c;
+ }
  const sy = (s.anchorY !== undefined) ? (s.anchorY - currentAnchorY) : 0;
  // Table type: draws a grid of rows × cols within a rectangle bounded by start/end
  if (s.type === 'table') {
@@ -29143,6 +29373,10 @@ function gannoRender(strokes, currentStroke) {
  // geometry — only the paint and its backing store are dropped. Pen-down
  // restores it before any stroke needs to appear.
  try { svg.style.visibility = (svg.childElementCount > 1 || currentStroke) ? '' : 'hidden'; } catch (e) {}
+ // Paragraph anchors filled in during this render are worth keeping: without
+ // saving them, every future build would have to migrate again from wherever
+ // the ink had drifted to by then.
+ if (ganno._taDirty) { ganno._taDirty = false; try { gannoSaveStrokes(ganno.routeKey, strokes); } catch (e) {} }
 }
 
 // SVG now scrolls naturally with the document (position:absolute, full-height).
@@ -29204,7 +29438,8 @@ function gannoEraseAtPointAnchored(strokes, point, radius) {
  // could ever touch them - the only way out was clearing the whole page.
  // Same condition as the renderer now: visible means erasable.
  if (!window.__inkShowAllOrients && s && s.orient && s.orient !== curOrient) return true;
- return gannoEraseAtPoint([gannoReanchor(s, cur)], point, radius).length > 0;
+ var _t = gannoTextReanchor(s) || gannoReanchor(s, cur);
+ return gannoEraseAtPoint([_t], point, radius).length > 0;
  });
 }
 
@@ -29248,6 +29483,8 @@ function gannoPointerDown(e) {
  // Stamp the chosen sticker where the pen/finger lands; commit immediately.
  var _stl = gannoGetStrokes(ganno.routeKey);
  var _stk = { type: 'sticker', emoji: ganno.stickerEmoji || '\u2b50', size: 34, color: '#000', width: 1, points: [pt], anchor: gannoGetAnchor(), orient: gannoOrient() };
+ try { _stk.tanchor = gannoMakeTextAnchor(_stk); } catch (e) {}
+
  _stl.push(_stk);
  gannoLogOp({ op: 'draw', s: _stk, i: _stl.length - 1 });
  gannoSaveStrokes(ganno.routeKey, _stl);
@@ -29451,6 +29688,7 @@ function gannoPointerUp(e) {
  if (valid) {
  c.anchor = gannoGetAnchor();
  c.orient = gannoOrient();
+ c.tanchor = gannoMakeTextAnchor(c);
  const strokes = gannoGetStrokes(ganno.routeKey);
  ganno._sid = (ganno._sid || 0) + 1; c._id = ganno._sid;
  // When it was drawn. Underscore-prefixed, so the sync's stroke signature
@@ -29877,6 +30115,7 @@ function gannoRenderToolbar() {
  <div class="ganno-divider"></div>
  <button class="ganno-action" data-act="undo" title="Undo">${icons.undo}</button>
  <button class="ganno-action" data-act="redo" title="Redo">${icons.redo}</button>
+ <button class="ganno-action" data-act="realign" title="Move this page's notes back onto the text">↕</button>
  <button class="ganno-action" data-act="clear" title="Clear this page">${icons.clear}</button>
  <button class="ganno-action" data-act="clearall" title="Clear ALL annotations everywhere">${icons.clearAll}</button>
  <button class="ganno-action" data-act="settings" title="Settings">${icons.settings}</button>
@@ -29901,6 +30140,7 @@ function gannoRenderToolbar() {
  }));
  // Action clicks
  primary.querySelector('[data-act="undo"]').addEventListener('click', () => { gannoUndo(); });
+ primary.querySelector('[data-act="realign"]').addEventListener('click', () => { gannoRealignStart(); });
  primary.querySelector('[data-act="redo"]').addEventListener('click', () => { gannoRedo(); });
  primary.querySelector('[data-act="clear"]').addEventListener('click', () => {
  const strokes = gannoGetStrokes(ganno.routeKey);
@@ -30207,6 +30447,221 @@ function gannoGetAnchor() {
  y: oy + (ar.top - sr.top) * ky,
  w: Math.max(1, ar.width * kx),
  h: Math.max(1, ar.height * ky)
+ };
+}
+
+// ===== TEXT ANCHORING (fix for "a new version moves my notes") =====
+// The column anchor above pins ink to #app's OUTER box. That box does not move
+// when a diagram or worked example is inserted INSIDE the lesson, but every
+// paragraph below the insertion does - so the text slid down and the ink stayed
+// where it was. Measured on a lesson: inserting a 260px block above a stroke
+// left that stroke 260px above the line it was drawn on.
+// Fix: each stroke also records the paragraph it was drawn over - a fingerprint
+// of that element's text, plus the offset of the stroke's first point inside it.
+// At render time the paragraph is found again by fingerprint and the stroke is
+// translated to wherever that paragraph is NOW. Content inserted above simply
+// carries the ink along with the text it belongs to.
+// Falls back to the column anchor when there is no fingerprint (ink from an
+// older build, before its page has been visited) or when the paragraph's own
+// text has changed, so nothing is ever lost.
+var GANNO_TA_SEL = 'p, li, h1, h2, h3, h4, td, th, blockquote, pre, dd, dt, figcaption';
+
+function gannoTaSig(el) {
+ try {
+ var t = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+ if (t.length < 8) return null;          // too short to identify anything
+ return el.tagName + '|' + t;
+ } catch (e) { return null; }
+}
+
+// sig -> [element, ...] for the current lesson. Rebuilt once per render and
+// cached against a cheap layout signature so repeated renders stay O(1).
+function gannoTaIndex() {
+ var app = document.getElementById('app');
+ if (!app) return null;
+ var stamp = app.childElementCount + ':' + Math.round(app.getBoundingClientRect().height);
+ if (ganno._taIdx && ganno._taStamp === stamp) return ganno._taIdx;
+ var idx = new Map();
+ var els = app.querySelectorAll(GANNO_TA_SEL);
+ for (var i = 0; i < els.length; i++) {
+ var sig = gannoTaSig(els[i]);
+ if (!sig) continue;
+ if (!idx.has(sig)) idx.set(sig, []);
+ idx.get(sig).push(els[i]);
+ }
+ ganno._taIdx = idx; ganno._taStamp = stamp;
+ return idx;
+}
+function gannoTaInvalidate() { ganno._taIdx = null; ganno._taStamp = null; }
+
+// Element box in the same units the strokes live in (overlay viewBox units),
+// derived exactly like gannoGetAnchor so this is zoom-proof.
+function gannoTaBox(el) {
+ var svg = ganno.svg || document.querySelector('.ganno-svg');
+ if (!el || !svg || typeof svg.getBoundingClientRect !== 'function') return null;
+ var er = el.getBoundingClientRect(), sr = svg.getBoundingClientRect();
+ if (!sr.width || !sr.height) return null;
+ var vb = (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0) ? svg.viewBox.baseVal : null;
+ var kx = vb ? (vb.width / sr.width) : 1;
+ var ky = (vb && vb.height > 0) ? (vb.height / sr.height) : 1;
+ var ox = vb ? vb.x : 0, oy = vb ? vb.y : 0;
+ return { x: ox + (er.left - sr.left) * kx, y: oy + (er.top - sr.top) * ky,
+          w: Math.max(1, er.width * kx), h: Math.max(1, er.height * ky) };
+}
+
+function gannoTaFirstPoint(s) {
+ if (s && s.points && s.points.length) return s.points[0];
+ if (s && s.start) return s.start;
+ return null;
+}
+
+// Build the text anchor for a stroke: the paragraph whose box contains (or is
+// nearest to) the stroke's first point, and the point's offset within it.
+function gannoMakeTextAnchor(s) {
+ try {
+ var pt = gannoTaFirstPoint(s);
+ var app = document.getElementById('app');
+ if (!pt || !app) return null;
+ var els = app.querySelectorAll(GANNO_TA_SEL);
+ var best = null, bestD = Infinity, bestSig = null;
+ for (var i = 0; i < els.length; i++) {
+ var sig = gannoTaSig(els[i]);
+ if (!sig) continue;
+ var b = gannoTaBox(els[i]);
+ if (!b) continue;
+ // Vertical distance to the box decides: ink is drawn on a LINE of text.
+ var dy = (pt.y < b.y) ? (b.y - pt.y) : (pt.y > b.y + b.h ? pt.y - (b.y + b.h) : 0);
+ var dx = (pt.x < b.x) ? (b.x - pt.x) : (pt.x > b.x + b.w ? pt.x - (b.x + b.w) : 0);
+ var d = dy * 4 + dx;                 // vertical proximity dominates
+ if (d < bestD) { bestD = d; best = b; bestSig = sig; }
+ }
+ if (!best || bestD > 240) return null;  // nothing close enough to trust
+ // Which occurrence of this fingerprint, so repeated text stays unambiguous.
+ var idx = gannoTaIndex(), n = 0;
+ if (idx && idx.has(bestSig)) {
+ var list = idx.get(bestSig);
+ for (var j = 0; j < list.length; j++) {
+ var lb = gannoTaBox(list[j]);
+ if (lb && Math.abs(lb.y - best.y) < 0.5 && Math.abs(lb.x - best.x) < 0.5) { n = j; break; }
+ }
+ }
+ return { sig: bestSig, n: n, dx: pt.x - best.x, dy: pt.y - best.y };
+ } catch (e) { return null; }
+}
+
+// Translate a stroke so its first point sits at the same spot inside its
+// paragraph as when it was drawn. Returns null when the paragraph is gone.
+function gannoTextReanchor(s) {
+ var ta = s && s.tanchor;
+ if (!ta || !ta.sig) return null;
+ var idx = gannoTaIndex();
+ if (!idx || !idx.has(ta.sig)) return null;
+ var list = idx.get(ta.sig);
+ var el = list[Math.min(ta.n || 0, list.length - 1)];
+ var b = gannoTaBox(el);
+ var pt = gannoTaFirstPoint(s);
+ if (!b || !pt) return null;
+ var tx = (b.x + ta.dx) - pt.x;
+ var ty = (b.y + ta.dy) - pt.y;
+ if (Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5) return s;   // already right
+ var t = Object.assign({}, s);
+ if (s.points) t.points = s.points.map(function (q) { return { x: q.x + tx, y: q.y + ty, p: q.p }; });
+ if (s.start) t.start = { x: s.start.x + tx, y: s.start.y + ty };
+ if (s.end) t.end = { x: s.end.x + tx, y: s.end.y + ty };
+ return t;
+}
+
+// ===== REALIGN NOTES =====
+// Paragraph anchoring stops ink drifting from here on, but it cannot undo a
+// shift that already happened in an earlier build - the ink was saved at the
+// old spot and there is no record of which line it belonged to. This puts the
+// correction in her hands: drag the page's ink until it sits right, and on
+// release every stroke is rewritten at its new position AND re-anchored to the
+// paragraph it now covers, so that page is settled for good.
+function gannoRealignActive() { return !!(ganno && ganno.realign); }
+
+function gannoRealignStart() {
+ var strokes = gannoGetStrokes(ganno.routeKey);
+ if (!strokes.length) { toast('No notes on this page to move'); return; }
+ ganno.realign = { dx: 0, dy: 0, dragging: false, x0: 0, y0: 0 };
+ document.body.classList.add('ganno-realigning');
+ gannoRealignBanner();
+ gannoRender(strokes, null);
+}
+
+function gannoRealignEnd(commit) {
+ var r = ganno.realign;
+ ganno.realign = null;
+ document.body.classList.remove('ganno-realigning');
+ var b = document.querySelector('.ganno-realign-bar');
+ if (b) b.remove();
+ var strokes = gannoGetStrokes(ganno.routeKey);
+ if (commit && r && (r.dx || r.dy)) {
+ var moved = 0;
+ for (var i = 0; i < strokes.length; i++) {
+ var s = strokes[i];
+ if (!s) continue;
+ if (s.points) s.points = s.points.map(function (q) { return { x: q.x + r.dx, y: q.y + r.dy, p: q.p }; });
+ if (s.start) s.start = { x: s.start.x + r.dx, y: s.start.y + r.dy };
+ if (s.end) s.end = { x: s.end.x + r.dx, y: s.end.y + r.dy };
+ s.anchor = gannoGetAnchor();
+ s.tanchor = gannoMakeTextAnchor(s);   // pin to whatever line it now covers
+ moved++;
+ }
+ gannoHistReset(ganno.routeKey);
+ gannoSaveStrokes(ganno.routeKey, strokes);
+ gannoPersistNow();
+ toast(moved + (moved === 1 ? ' note' : ' notes') + ' realigned and pinned to the text');
+ }
+ gannoRender(strokes, null);
+}
+
+function gannoRealignNudge(dy) {
+ if (!ganno.realign) return;
+ ganno.realign.dy += dy;
+ gannoRender(gannoGetStrokes(ganno.routeKey), null);
+}
+
+function gannoRealignBanner() {
+ var old = document.querySelector('.ganno-realign-bar');
+ if (old) old.remove();
+ var bar = document.createElement('div');
+ bar.className = 'ganno-realign-bar';
+ bar.innerHTML =
+ '<span class="ganno-realign-msg">Drag your notes onto the right lines.</span>' +
+ '<button type="button" class="ganno-realign-btn" data-ra="up" aria-label="Move notes up">↑</button>' +
+ '<button type="button" class="ganno-realign-btn" data-ra="down" aria-label="Move notes down">↓</button>' +
+ '<button type="button" class="ganno-realign-btn ganno-realign-ok" data-ra="ok">Done</button>' +
+ '<button type="button" class="ganno-realign-btn" data-ra="cancel">Cancel</button>';
+ document.body.appendChild(bar);
+ bar.addEventListener('click', function (e) {
+ var t = e.target.closest('[data-ra]'); if (!t) return;
+ var a = t.dataset.ra;
+ if (a === 'up') gannoRealignNudge(-8);
+ else if (a === 'down') gannoRealignNudge(8);
+ else gannoRealignEnd(a === 'ok');
+ });
+ // Drag anywhere on the page body to move the ink as one sheet.
+ var move = function (e) {
+ var r = ganno.realign; if (!r || !r.dragging) return;
+ r.dx = r.ox + (e.clientX - r.x0); r.dy = r.oy + (e.clientY - r.y0);
+ gannoRender(gannoGetStrokes(ganno.routeKey), null);
+ e.preventDefault();
+ };
+ var down = function (e) {
+ var r = ganno.realign; if (!r) return;
+ if (e.target.closest('.ganno-realign-bar') || e.target.closest('.ganno-bar')) return;
+ r.dragging = true; r.x0 = e.clientX; r.y0 = e.clientY; r.ox = r.dx; r.oy = r.dy;
+ e.preventDefault();
+ };
+ var up = function () { var r = ganno.realign; if (r) r.dragging = false; };
+ document.addEventListener('pointerdown', down, true);
+ document.addEventListener('pointermove', move, true);
+ document.addEventListener('pointerup', up, true);
+ bar.__off = function () {
+ document.removeEventListener('pointerdown', down, true);
+ document.removeEventListener('pointermove', move, true);
+ document.removeEventListener('pointerup', up, true);
  };
 }
 
@@ -57675,6 +58130,18 @@ function fvOf(cid){ try { return (FV && FV[cid]) || null; } catch (e) { return n
 function courseUrl(cid){ return '/content-' + cid + '.json?v=' + encodeURIComponent(fvOf(cid) || BUILD_V); }
 var SRCC = {};              // cid -> { l: str|null(consumed), q: str|null }
 var packLoaded = false;     // kept name: "manifest absorbed"
+// Display names for courses whose chapters ship only in their content file.
+// Taken from each course's own chapter titles - nothing invented.
+var PACK_ONLY_NAMES = {
+  ALGEBRA: 'Abstract Algebra', DIFFEQ: 'Differential Equations',
+  COMPLEX: 'Complex Analysis', CALC3: 'Calculus III',
+  NUMER: 'Numerical Analysis', PDE: 'Partial Differential Equations',
+  RANALYSIS: 'Real Analysis',
+  'AIM-CS': 'AI Mastery: Computer Science', 'AIM-ML': 'AI Mastery: Machine Learning',
+  'AIM-MATH': 'AI Mastery: Mathematics', 'AIM-ENG': 'AI Mastery: AI Engineering',
+  'AIM-INFRA': 'AI Mastery: Infrastructure', 'AIM-CAREER': 'AI Mastery: Career',
+  'AIM-FRONTIER': 'AI Mastery: Frontier Topics'
+};
 window.__packMeta = null;   // cid -> { 'CID/ch/sec': [question ids] }
 
 var _manifestRetried = false;
@@ -57768,9 +58235,17 @@ function courseAbsorb(cid, p){
   // cut - Korean ch23-30 said "Coming soon" while the real chapters sat in
   // history). The file's structure is the last full build's ground truth.
   try {
-    if (typeof p.s === 'string' && p.s && typeof COURSES !== 'undefined' && COURSES[cid]) {
+    if (typeof p.s === 'string' && p.s && typeof COURSES !== 'undefined') {
       var ns = JSON.parse(p.s);
-      if (Array.isArray(ns) && ns.length) {
+      // A course whose chapters live ONLY in its content file had no COURSES
+      // entry to attach them to, so this guard used to bail and the class page
+      // rendered nothing at all - fourteen courses downloaded their content and
+      // then discarded it. Create the entry instead of skipping the course.
+      if (!COURSES[cid] && Array.isArray(ns) && ns.length) {
+        COURSES[cid] = { id: cid, code: cid, name: (PACK_ONLY_NAMES[cid] || cid),
+                         desc: '', active: false, color: 'indigo', chapters: [] };
+      }
+      if (Array.isArray(ns) && ns.length && COURSES[cid]) {
         COURSES[cid].chapters = ns;
         try { if (window.__qCacheClear) window.__qCacheClear(); } catch (e0) {}
         setTimeout(function(){
