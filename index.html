@@ -64650,7 +64650,11 @@ var PAGE_H = Math.round(11 * IN);   // 1294
 var CUE_X  = Math.round(2.5 * IN);  //  294
 var SUM_H  = Math.round(2 * IN);    //  235
 var HEAD_H = Math.round(1 * IN);    //  118
-var PAGE0  = PAGE_H;            // start with exactly one page
+var HEADROOM = 2;               // blank pages kept ahead of the lowest ink
+var MAX_PAGES = 60;             // a hard ceiling, so a long scroll cannot run away
+var PAGE0  = 3 * PAGE_H;        // open with three pages, not one - one filled up
+                                // in a single sitting and every further page had
+                                // to be pulled for one at a time.
 var MINH = 200, MAXH = 620;     // dock height in CSS px
 var ANIM = 240;
 
@@ -64894,7 +64898,9 @@ function persist(){
   try { if (typeof gannoSaveStrokes === 'function') gannoSaveStrokes(padKey(curKey), strokes); } catch (e) {}
   try {
     if (!store.padNotes) store.padNotes = {};
-    if (strokes.length) store.padNotes[curKey] = { n: strokes.length, h: pageH, ts: Date.now() };
+    // Height of the WRITING, not of the blank headroom below it: otherwise every
+    // scroll to the foot would be saved as permanent extra paper.
+    if (strokes.length) store.padNotes[curKey] = { n: strokes.length, h: inkPages() * PAGE_H, ts: Date.now() };
     else delete store.padNotes[curKey];
     save();
   } catch (e) {}
@@ -64912,7 +64918,17 @@ function pageHFor(){
   var stored = 0;
   try { var m = (store.padNotes || {})[curKey]; if (m && m.h > 0) stored = m.h; } catch (e) {}
   var need = Math.max(stored, lowestInk() + 1);
-  return Math.max(1, Math.ceil(need / PAGE_H)) * PAGE_H;
+  var pages = Math.max(1, Math.ceil(need / PAGE_H));
+  return withHeadroom(pages) * PAGE_H;
+}
+/* Blank paper is free, and running out of it mid-thought is not. Every notebook
+   keeps HEADROOM pages past wherever the writing currently ends, and never opens
+   with fewer than the three PAGE0 starts at, so there is always somewhere to go.
+   MAX_PAGES is the ceiling that stops a long scroll extending the pad forever. */
+function inkPages(){ return Math.max(1, Math.ceil((lowestInk() + 1) / PAGE_H)); }
+function withHeadroom(pages){
+  var want = Math.max(pages, inkPages() + HEADROOM, PAGE0 / PAGE_H);
+  return Math.min(MAX_PAGES, want);
 }
 
 /* ---------- styles ---------- */
@@ -65694,8 +65710,9 @@ function openPagePop(anchor){
         }));
       })(p);
     }
-    var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add a page', false, function(){ closePop(); addPage(); });
+    var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add a page', false, function(){ closePop(); addPage(1); });
     pop.appendChild(addRow);
+    pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add 5 pages', false, function(){ closePop(); addPage(5); }));
   });
 }
 
@@ -66162,15 +66179,20 @@ function redraw(){
    summary band - so simply writing the summary spawned a blank page every time.
    There is also an explicit "+ page" button, so this never has to be guessed. */
 var GROW_AT = 58;               // units from the foot of the last page
-function addPage(){
-  pageH = (pageCount() + 1) * PAGE_H;
+function addPage(n){
+  n = Math.max(1, n | 0 || 1);
+  var was = pageCount();
+  pageH = Math.min(MAX_PAGES, was + n) * PAGE_H;
   autoGrowMute = Date.now();     // the scroll below lands on the foot - one page, not two
   sizeSvg(); redraw(); persist();
   try { if (pagesEl) pagesEl.scrollTop = pagesEl.scrollHeight; } catch (e) {}
+  if (pageCount() === was && typeof toast === 'function') toast('This notebook is at its ' + MAX_PAGES + '-page limit');
 }
 function grewIfNeeded(){
-  if (lowestInk() > pageH - GROW_AT) {
-    pageH = (pageCount() + 1) * PAGE_H; sizeSvg();
+  if (lowestInk() > pageH - GROW_AT || pageCount() < withHeadroom(pageCount())) {
+    var want = withHeadroom(pageCount() + 1);
+    if (want === pageCount()) return false;      // already at the ceiling
+    pageH = want * PAGE_H; sizeSvg();
     /* Writing at the foot grows the page here, and that same write leaves the
        scroller sitting at the foot - so the scroll-settle grower fired too and
        ONE stroke produced TWO pages. Both paths now share this one guard. */
@@ -66612,7 +66634,9 @@ function wireScroll(){
       if (now - growLock < 700) return;          // one page per pull, not a burst
       if (now - autoGrowMute < 900) return;      // a grow just happened (＋ button, or writing at the foot)
       growLock = now;
-      pageH = (pageCount() + 1) * PAGE_H;
+      var want = withHeadroom(pageCount() + HEADROOM);
+      if (want === pageCount()) return;          // at the ceiling: stop extending
+      pageH = want * PAGE_H;
       sizeSvg(); refreshRules();                 // more paper; every stroke node untouched
     } catch (e) {}
   }
@@ -67010,6 +67034,9 @@ window.__notesPanel = {
   tab: function(t){ if (dock) setTab(t); },
   page: function(){ return { cur: curPage(), count: pageCount() }; },
   gotoPage: function(n){ gotoPage(n); },
+  addPage: function(n){ addPage(n); return pageCount(); },
+  limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H,
+                              count: pageCount(), inkPages: inkPages() }; },
   renderPage: function(n){ var o = renderPagePng(n || curPage()); return { name: o.name, w: o.w, h: o.h, bytes: o.blob.size, strokes: o.strokes, blob: o.blob }; },
   state: function(){
     var r = dock ? dock.getBoundingClientRect() : null;
