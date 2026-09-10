@@ -111,6 +111,28 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('realign pins the ink to that paragraph', realign.pinned, JSON.stringify(realign));
   ok('realign banner closes on Done', realign.barGone, JSON.stringify(realign));
 
+
+  // ---- Idle migration: ink from before paragraph anchoring gets its fingerprint
+  //      after the page settles, off the render path, and is saved with it. ----
+  const migrated = await page.evaluate(async () => {
+    const app = document.getElementById('app');
+    const p = app.querySelector('p, li, h3');
+    const r = p.getBoundingClientRect();
+    const y = r.top + scrollY + r.height / 2;
+    const s = { type: 'pen', color: '#1a1', width: 3,
+      points: [{ x: r.left + 20, y, p: 0.5 }, { x: r.left + 120, y, p: 0.5 }],
+      anchor: gannoGetAnchor(), orient: gannoOrient(), _ts: 3 };   // no tanchor
+    gannoSaveStrokes(ganno.routeKey, [s]);
+    gannoRender(gannoGetStrokes(ganno.routeKey), null);
+    const atRender = !!s.tanchor;                       // must NOT be computed inline
+    await new Promise(res => setTimeout(res, 2500));    // let the idle callback run
+    gannoPersistNow();
+    const saved = gannoGetStrokes(ganno.routeKey)[0];
+    return { atRender, afterIdle: !!(saved && saved.tanchor && saved.tanchor.sig) };
+  });
+  ok('unanchored ink is not fingerprinted during render', migrated.atRender === false, JSON.stringify(migrated));
+  ok('unanchored ink is fingerprinted once the page is idle', migrated.afterIdle, JSON.stringify(migrated));
+
   ok('no page errors', errs.length === 0, errs.join(' | '));
   console.log(`inkanchor: ${pass}/${pass + fail} passed`);
   await browser.close();

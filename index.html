@@ -29149,8 +29149,6 @@ function gannoRender(strokes, currentStroke) {
  }
  svg.appendChild(defs);
 
- gannoTaInvalidate();          // lesson content may have changed since last render
- ganno._taDirty = false;
 
  // SVG is position:absolute and scrolls with the document, so strokes
  // already in document coordinates render at the correct spot — no
@@ -29168,10 +29166,11 @@ function gannoRender(strokes, currentStroke) {
  var _ta = gannoTextReanchor(s);
  if (_ta) { s = _ta; }
  else {
- // MIGRATION: ink saved before paragraph anchoring existed. Give it one from
- // where it sits right now, so this is the last build that can move it. This
- // does not undo a shift that already happened - "Realign notes" does that.
- if (!s.tanchor) { var _m = gannoMakeTextAnchor(s); if (_m) { s.tanchor = _m; ganno._taDirty = true; } }
+ // Ink saved before paragraph anchoring existed renders exactly as it always
+ // did, on the column anchor. Its fingerprint is computed later, when the
+ // page is idle (gannoScheduleMigration) - the position is identical either
+ // way, so nothing needs redrawing, and the search stays off the hot path.
+ if (!s.tanchor) ganno._taNeedsMigration = true;
  s = gannoReanchor(s, currentAnchor);
  }
             // Realign preview: the whole page's ink moves as one sheet while she
@@ -29376,7 +29375,33 @@ function gannoRender(strokes, currentStroke) {
  // Paragraph anchors filled in during this render are worth keeping: without
  // saving them, every future build would have to migrate again from wherever
  // the ink had drifted to by then.
- if (ganno._taDirty) { ganno._taDirty = false; try { gannoSaveStrokes(ganno.routeKey, strokes); } catch (e) {} }
+ if (ganno._taNeedsMigration) { ganno._taNeedsMigration = false; gannoScheduleMigration(); }
+}
+// Fingerprint ink from before paragraph anchoring, once the page is idle. One
+// pass per page: after it every stroke carries an anchor and is saved, so this
+// is the last build that can move it. It does not undo a shift that already
+// happened - "Realign notes" does that.
+function gannoScheduleMigration() {
+ if (ganno._taMigrating) return;
+ ganno._taMigrating = true;
+ var key = ganno.routeKey;                     // the page this was scheduled for
+ var run = function () {
+ ganno._taMigrating = false;
+ try {
+ if (ganno.routeKey !== key) return;         // she navigated away
+ var strokes = gannoGetStrokes(key);         // re-fetch: the store may hand back a new array
+ var changed = 0;
+ for (var i = 0; i < strokes.length; i++) {
+ var s = strokes[i];
+ if (!s || s.tanchor) continue;
+ var m = gannoMakeTextAnchor(s);
+ if (m) { s.tanchor = m; changed++; }
+ }
+ if (changed) gannoSaveStrokes(ganno.routeKey, strokes);
+ } catch (e) {}
+ };
+ if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
+ else setTimeout(run, 1000);
 }
 
 // SVG now scrolls naturally with the document (position:absolute, full-height).
@@ -30464,13 +30489,18 @@ function gannoGetAnchor() {
 // Falls back to the column anchor when there is no fingerprint (ink from an
 // older build, before its page has been visited) or when the paragraph's own
 // text has changed, so nothing is ever lost.
-var GANNO_TA_SEL = 'p, li, h1, h2, h3, h4, td, th, blockquote, pre, dd, dt, figcaption';
+// Tables anchor as a whole: a truth table's thousands of cells would swamp the
+// index, and ink on a row still moves with its table.
+var GANNO_TA_SEL = 'p, li, h1, h2, h3, h4, table, blockquote, pre, dd, dt, figcaption';
 
+var _gannoSigCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
 function gannoTaSig(el) {
  try {
+ if (_gannoSigCache && _gannoSigCache.has(el)) return _gannoSigCache.get(el);
  var t = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
- if (t.length < 8) return null;          // too short to identify anything
- return el.tagName + '|' + t;
+ var sig = (t.length < 8) ? null : (el.tagName + '|' + t);   // too short to identify anything
+ if (_gannoSigCache) _gannoSigCache.set(el, sig);
+ return sig;
  } catch (e) { return null; }
 }
 
@@ -30479,20 +30509,37 @@ function gannoTaSig(el) {
 function gannoTaIndex() {
  var app = document.getElementById('app');
  if (!app) return null;
- var stamp = app.childElementCount + ':' + Math.round(app.getBoundingClientRect().height);
+ // Column child count and height catch content that grew; the overlay's own
+ // size catches a rotation or zoom, since cached boxes are in overlay units.
+ var _sv = ganno.svg || document.querySelector('.ganno-svg');
+ var _sr = _sv && _sv.getBoundingClientRect ? _sv.getBoundingClientRect() : { width: 0, height: 0 };
+ var stamp = app.childElementCount + ':' + Math.round(app.getBoundingClientRect().height) +
+             ':' + Math.round(_sr.width) + 'x' + Math.round(_sr.height);
  if (ganno._taIdx && ganno._taStamp === stamp) return ganno._taIdx;
  var idx = new Map();
  var els = app.querySelectorAll(GANNO_TA_SEL);
+ var flat = [];                                 // [el, sig] for the migration search
  for (var i = 0; i < els.length; i++) {
  var sig = gannoTaSig(els[i]);
  if (!sig) continue;
  if (!idx.has(sig)) idx.set(sig, []);
  idx.get(sig).push(els[i]);
+ flat.push([els[i], sig]);
  }
+ idx.flat = flat;
+ idx.boxes = new Map();                         // el -> box, measured at most once per stamp
  ganno._taIdx = idx; ganno._taStamp = stamp;
  return idx;
 }
 function gannoTaInvalidate() { ganno._taIdx = null; ganno._taStamp = null; }
+// Box lookup through the per-stamp cache: the renderer, the eraser and the
+// migration all measure the same paragraphs, and measuring once per element
+// per layout is what keeps a page with many strokes from thrashing layout.
+function gannoTaBoxCached(idx, el) {
+ if (!idx || !idx.boxes) return gannoTaBox(el);
+ if (idx.boxes.has(el)) return idx.boxes.get(el);
+ var b = gannoTaBox(el); idx.boxes.set(el, b); return b;
+}
 
 // Element box in the same units the strokes live in (overlay viewBox units),
 // derived exactly like gannoGetAnchor so this is zoom-proof.
@@ -30520,14 +30567,13 @@ function gannoTaFirstPoint(s) {
 function gannoMakeTextAnchor(s) {
  try {
  var pt = gannoTaFirstPoint(s);
- var app = document.getElementById('app');
- if (!pt || !app) return null;
- var els = app.querySelectorAll(GANNO_TA_SEL);
+ var idx = gannoTaIndex();
+ if (!pt || !idx) return null;
+ var flat = idx.flat || [];
  var best = null, bestD = Infinity, bestSig = null;
- for (var i = 0; i < els.length; i++) {
- var sig = gannoTaSig(els[i]);
- if (!sig) continue;
- var b = gannoTaBox(els[i]);
+ for (var i = 0; i < flat.length; i++) {
+ var sig = flat[i][1];
+ var b = gannoTaBoxCached(idx, flat[i][0]);
  if (!b) continue;
  // Vertical distance to the box decides: ink is drawn on a LINE of text.
  var dy = (pt.y < b.y) ? (b.y - pt.y) : (pt.y > b.y + b.h ? pt.y - (b.y + b.h) : 0);
@@ -30537,11 +30583,11 @@ function gannoMakeTextAnchor(s) {
  }
  if (!best || bestD > 240) return null;  // nothing close enough to trust
  // Which occurrence of this fingerprint, so repeated text stays unambiguous.
- var idx = gannoTaIndex(), n = 0;
- if (idx && idx.has(bestSig)) {
+ var n = 0;
+ if (idx.has(bestSig)) {
  var list = idx.get(bestSig);
  for (var j = 0; j < list.length; j++) {
- var lb = gannoTaBox(list[j]);
+ var lb = gannoTaBoxCached(idx, list[j]);
  if (lb && Math.abs(lb.y - best.y) < 0.5 && Math.abs(lb.x - best.x) < 0.5) { n = j; break; }
  }
  }
@@ -30558,7 +30604,7 @@ function gannoTextReanchor(s) {
  if (!idx || !idx.has(ta.sig)) return null;
  var list = idx.get(ta.sig);
  var el = list[Math.min(ta.n || 0, list.length - 1)];
- var b = gannoTaBox(el);
+ var b = gannoTaBoxCached(idx, el);
  var pt = gannoTaFirstPoint(s);
  if (!b || !pt) return null;
  var tx = (b.x + ta.dx) - pt.x;
