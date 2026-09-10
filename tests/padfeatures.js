@@ -57,18 +57,22 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 
   // ---- page counter + jump
   const pg0 = await p.evaluate(() => ({ ...window.__notesPanel.page(), txt: document.querySelector('.mn-tool[data-t="pages"]').textContent }));
-  ok('page button reads 1/1 on a one-page pad', pg0.txt === '1/1' && pg0.cur === 1 && pg0.count === 1, JSON.stringify(pg0));
+  // The pad opens with several blank pages by design (see notespages.js); the
+  // counter must read 1/N for whatever N that is, sitting on page 1.
+  const N0 = pg0.count;
+  ok('page button reads 1/N on a fresh pad', pg0.txt === '1/' + N0 && pg0.cur === 1 && N0 >= 1, JSON.stringify(pg0));
   await p.click('.mn-tool[data-t="page"]'); await p.waitForTimeout(300);  // ＋ page (scrolls to the foot)
   const pg1 = await p.evaluate(() => ({ ...window.__notesPanel.page(), txt: document.querySelector('.mn-tool[data-t="pages"]').textContent }));
-  ok('after adding a page the counter shows 2/2 (scrolled to the new page)', pg1.txt === '2/2', JSON.stringify(pg1));
+  ok('after adding a page the counter shows (N+1)/(N+1), scrolled to the new page', pg1.txt === (N0 + 1) + '/' + (N0 + 1) && pg1.cur === N0 + 1, JSON.stringify(pg1));
   await p.click('.mn-tool[data-t="pages"]'); await p.waitForTimeout(150);
   const rows = await p.evaluate(() => [...document.querySelectorAll('.mn-pop[data-kind="pages"] .mn-size')].map(r => ({ t: r.textContent.trim(), on: r.classList.contains('on') })));
-  ok('page list shows both pages and an add row', rows.length === 3 && /Page 1/.test(rows[0].t) && /Page 2/.test(rows[1].t) && /Add/.test(rows[2].t), JSON.stringify(rows));
+  const pageRows = rows.filter(r => /^Page \d/.test(r.t)), addRows = rows.filter(r => /Add/.test(r.t));
+  ok('page list shows every page and the add rows', pageRows.length === N0 + 1 && /Page 1/.test(pageRows[0].t) && new RegExp('Page ' + (N0 + 1)).test(pageRows[N0].t) && addRows.length >= 1, JSON.stringify(rows));
   ok('page 1 is marked as having ink, page 2 blank', !/blank/.test(rows[0].t) && /blank/.test(rows[1].t), JSON.stringify(rows));
-  ok('the current page (2) is highlighted', rows[1].on && !rows[0].on, JSON.stringify(rows));
+  ok('the current (newly added) page is highlighted and no other', pageRows[N0].on && pageRows.filter(r => r.on).length === 1, JSON.stringify(rows));
   await p.locator('.mn-pop[data-kind="pages"] .mn-size').first().click(); await p.waitForTimeout(250);
   const pg2 = await p.evaluate(() => ({ ...window.__notesPanel.page(), txt: document.querySelector('.mn-tool[data-t="pages"]').textContent, top: document.getElementById('mn-pages').scrollTop, pop: !!document.querySelector('.mn-pop') }));
-  ok('jumping to page 1 scrolls to the top and reads 1/2', pg2.txt === '1/2' && pg2.top === 0 && !pg2.pop, JSON.stringify(pg2));
+  ok('jumping to page 1 scrolls to the top and reads 1/(N+1)', pg2.txt === '1/' + (N0 + 1) && pg2.top === 0 && !pg2.pop, JSON.stringify(pg2));
   await p.evaluate(() => window.__notesPanel.gotoPage(2)); await p.waitForTimeout(200);
   const pg3 = await p.evaluate(() => ({ ...window.__notesPanel.page(), top: document.getElementById('mn-pages').scrollTop }));
   ok('gotoPage(2) lands on page 2', pg3.cur === 2 && pg3.top > 100, JSON.stringify(pg3));

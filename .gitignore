@@ -1,2 +1,5 @@
 node_modules/
 ios-app/node_modules/
+
+# Screenshots written by the Playwright suites while they run
+tests/*.png
