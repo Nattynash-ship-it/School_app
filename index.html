@@ -31717,6 +31717,11 @@ function isCourseInProgress(courseId) {
  const _go = window.go;
  window.go = function(v) {
  if (v && (v.name === 'class' || v.name === 'chapter' || v.name === 'section') && v.courseId) {
+ // Courses whose chapters ship only in their content file have nothing but
+ // the drill stubs until that file is absorbed. This is the moment she is
+ // about to look at the course - even a locked one, whose preview should
+ // list real chapters - so pull them in before deciding what to show.
+ try { if (typeof gannoEnsureCourseChapters === 'function') gannoEnsureCourseChapters(v.courseId); } catch (e) {}
  const st = getCourseState(v.courseId);
  if (st === 'locked') {
  openLockModal(v.courseId);
