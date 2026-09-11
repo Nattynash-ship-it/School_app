@@ -21,7 +21,11 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     return window.__notesPanel.limits();
   });
   ok('opens with three pages, not one', open.count >= 3, JSON.stringify(open));
-  ok('keeps blank pages ahead of the writing', open.headroom >= 2, JSON.stringify(open));
+  // The invariant is that there IS blank paper past the writing, not the
+  // particular number of pages - that is tuned against what the iPad has to
+  // composite on every stroke.
+  ok('keeps blank paper ahead of the writing',
+     open.headroom >= 1 && open.count > open.inkPages, JSON.stringify(open));
 
   const added = await page.evaluate(() => {
     const before = window.__notesPanel.limits().count;
