@@ -29,6 +29,7 @@ run penperf penperf.js 1
 run inkdupe inkdupe.js 1
 run inkanchor inkanchor.js 1
 run notespages notespages.js 1
+run notesline notesline.js 1
 run helperui helperui.js 1
 run padtools padtools.js 1
 run scrollkeep scrollkeep.js 1

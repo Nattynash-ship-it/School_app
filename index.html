@@ -65415,6 +65415,8 @@ function buildTools(){
   toolsEl.textContent = '';
   var penB = mk('button','mn-tool on','✏️','Pen — tap again for colour and point size'); penB.dataset.t='pen';
   var hlB  = mk('button','mn-tool','🖍','Highlighter — tap again for colour and width'); hlB.dataset.t='hl';
+  var lnB  = mk('button','mn-tool' + (tool === 'line' ? ' on' : ''),'╱',
+                'Straight line — or draw one with the pen and hold still at the end'); lnB.dataset.t='line';
   var erB  = mk('button','mn-tool','🩹','Eraser — tap again for eraser size'); erB.dataset.t='erase';
   var ruB  = mk('button','mn-tool' + (rulerOn() ? ' on' : ''),'📏',
                 'Ruler — draw a straight line along its edge'); ruB.dataset.t='ruler';
@@ -65436,7 +65438,7 @@ function buildTools(){
      is otherwise a long scroll to find one thing. Tap opens the page list. */
   var pgN = mk('button','mn-tool mn-pgbtn','1/1','Page — tap to jump to a page'); pgN.dataset.t='pages';
   var exB = mk('button','mn-tool','📷','Save this page as an image'); exB.dataset.t='export';
-  [penB, wB, hlB, ruB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
+  [penB, wB, hlB, lnB, ruB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
   paintUndo();
   paintPage();
 
@@ -65485,6 +65487,7 @@ function buildTools(){
     /* A second tap on the tool that is already selected opens its options -
        the pen's colour and size, the eraser's reach. */
     if (t === 'pen' && tool === 'pen') { openPenPop(b); return; }
+    if (t === 'line' && tool === 'line') { openPenPop(b); return; }   // a line is drawn with the pen's ink
     if (t === 'hl' && tool === 'hl') { openHlPop(b); return; }
     if (t === 'erase' && tool === 'erase') { openEraserPop(b); return; }
     closePop();
@@ -65930,6 +65933,44 @@ var penHold = null;
 var strokeAnchor = null;      // scroll offset when the current stroke started
 var rulerDrag = null;         // live move/turn gesture on the straightedge
 var liveD = '';               // the in-flight stroke's path, appended to per point
+/* STRAIGHT LINES, THE GOODNOTES WAY. Draw a roughly straight stroke and keep
+   the pen still at the end for a beat: the stroke snaps to the line between
+   where it started and where it stopped, and from then on the far end follows
+   the pen while the line stays straight. A curve held still is left alone. The
+   ╱ tool draws the same thing from the first touch. Nothing new is stored - a
+   straight line is a two-point stroke - so undo, sync and the eraser are as
+   they were. Strokes locked to the ruler are already straight and are skipped. */
+var snapped = false;          // the live stroke has become a straight line
+var stillTimer = null;        // fires when the pen has rested at the end of a stroke
+var HOLD_MS = 600;            // how long the rest has to be
+function clearStill(){ if (stillTimer) { clearTimeout(stillTimer); stillTimer = null; } }
+function armStill(){ clearStill(); stillTimer = setTimeout(trySnap, HOLD_MS); }
+function snapAngle(a, b){
+  /* a line within a few degrees of flat or upright is meant to be exactly that */
+  var dx = b.x - a.x, dy = b.y - a.y, lim = Math.tan(4 * Math.PI / 180);
+  if (Math.abs(dy) <= Math.abs(dx) * lim) return { x: b.x, y: a.y };
+  if (Math.abs(dx) <= Math.abs(dy) * lim) return { x: a.x, y: b.y };
+  return b;
+}
+function lineD(a, b){ return 'M ' + a.x.toFixed(1) + ' ' + a.y.toFixed(1) + ' L ' + b.x.toFixed(1) + ' ' + b.y.toFixed(1); }
+function trySnap(){
+  stillTimer = null;
+  if (!drawing || !live || snapped || inkLock || live.points.length < 4) return;
+  var pts = live.points, a = pts[0], b = pts[pts.length - 1];
+  var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 40) return;                       // a dot or a tick, not a line
+  var worst = 0;
+  for (var i = 1; i < pts.length - 1; i++) {   // furthest any point strays from the chord
+    var d = Math.abs((pts[i].x - a.x) * dy - (pts[i].y - a.y) * dx) / len;
+    if (d > worst) worst = d;
+  }
+  if (worst > Math.max(6, len * 0.08)) return;  // she drew a curve: leave it
+  var end = snapAngle(a, b);
+  live.points = [a, { x: end.x, y: end.y }];
+  snapped = true;
+  liveD = lineD(a, live.points[1]);
+  if (liveEl) liveEl.setAttribute('d', liveD);
+}
 var inkLock = null;           // the ruler edge the current stroke is running along
 function freezePaper(on){
   if (!pagesEl) return;
@@ -66431,11 +66472,13 @@ function wireInk(){
     inkLock = rulerCatches(p);
     if (inkLock) p = rulerProject(p, inkLock);
     var isHl = (tool === 'hl');
+    snapped = (tool === 'line');                  // the ╱ tool is straight from the first touch
+    clearStill();
     live = { type: isHl ? 'hl' : 'pen',
              color: isHl ? hlColor() : penColor(),
              width: isHl ? hlWidth() : penWidth(),
-             points: [p], ts: Date.now(), _ts: Date.now() };
-    liveD = 'M ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+             points: snapped ? [p, { x: p.x, y: p.y }] : [p], ts: Date.now(), _ts: Date.now() };
+    liveD = snapped ? lineD(p, p) : ('M ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1));
     liveEl = liveNode(live);
     liveEl.setAttribute('d', liveD);
     addInk(liveEl, live);
@@ -66470,6 +66513,13 @@ function wireInk(){
     if (!evs || !evs.length) evs = [e];
     if (tool === 'erase') { for (var i = 0; i < evs.length; i++) eraseAt(pt(evs[i])); return; }
     if (!live) return;
+    if (snapped) {
+      var pe2 = pt(evs[evs.length - 1]);
+      live.points[1] = snapAngle(live.points[0], pe2);
+      liveD = lineD(live.points[0], live.points[1]);
+      if (liveEl) liveEl.setAttribute('d', liveD);
+      return;
+    }
     var added = false;
     for (var k = 0; k < evs.length; k++) {
       var p = pt(evs[k]);
@@ -66481,6 +66531,7 @@ function wireInk(){
       liveD += ' L ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
       added = true;
     }
+    if (added && !inkLock) armStill();           // the rest at the end is what straightens it
     /* THE INK MUST REACH THE TIP. Between the Pencil touching the glass and
        the line appearing on it there are two or three frames of pipeline that
        no amount of faster code removes - which is why ink trails the nib. The
@@ -66513,6 +66564,8 @@ function wireInk(){
     if (!drawing) { freezePaper(false); return; }
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
+    clearStill();
+    var wasLine = snapped; snapped = false;
     freezePaper(false);
     lastPenTs = Date.now();
     try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
@@ -66521,6 +66574,10 @@ function wireInk(){
       if (eraseBatch && eraseBatch.removed.length) logOp({ op: 'erase', removed: eraseBatch.removed, added: eraseBatch.added });
       eraseBatch = null;
       live = null; liveEl = null; return;
+    }
+    if (wasLine && live && live.points.length === 2) {
+      var la = live.points[0], lb = live.points[1];
+      if ((la.x - lb.x) * (la.x - lb.x) + (la.y - lb.y) * (la.y - lb.y) < 4) live.points.length = 1;
     }
     if (live && live.points.length >= 2) {
       strokes.push(live);
@@ -67081,6 +67138,9 @@ window.__notesPanel = {
   page: function(){ return { cur: curPage(), count: pageCount() }; },
   gotoPage: function(n){ gotoPage(n); },
   addPage: function(n){ addPage(n); return pageCount(); },
+  surface: function(){ var r = svg ? svg.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 }; return { x: r.left, y: r.top, w: r.width, h: r.height }; },
+  lastStroke: function(){ var s = strokes[strokes.length - 1]; return s ? JSON.parse(JSON.stringify(s)) : null; },
+  livePoints: function(){ return live ? live.points.length : 0; },
   limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
   renderPage: function(n){ var o = renderPagePng(n || curPage()); return { name: o.name, w: o.w, h: o.h, bytes: o.blob.size, strokes: o.strokes, blob: o.blob }; },
@@ -67093,7 +67153,7 @@ window.__notesPanel = {
              display: dock ? getComputedStyle(dock).display : 'none',
              area: r ? Math.round(r.width * r.height) : 0,
              notes: curKey ? notesFor(curKey).length : 0,
-             strokes: strokes.length, pageH: pageH,
+             strokes: strokes.length, pageH: pageH, tool: tool,
              padding: getComputedStyle(document.getElementById('app') || document.body).paddingBottom };
   }
 };
