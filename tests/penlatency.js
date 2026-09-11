@@ -108,6 +108,29 @@ const THEMES = ['arcade','architect','aurora','boldstudy','brightblocks','butter
       };
       requestAnimationFrame(step);
     });
+    // ---- the paper must be measured once per stroke, not once per point.
+    // pt() runs for every coalesced sample and every predicted point, and each
+    // getBoundingClientRect forces a layout flush on a frame that has just
+    // rewritten the live path. That is what makes ink trail the nib, and it
+    // costs more the taller the paper gets.
+    {
+      // Every coordinate is worked out BEFORE the counter goes on, so what it
+      // counts is the app reading the box, never the test doing it.
+      const pts = [];
+      for (let i = 0; i <= 31; i++) pts.push({ x: cx(40 + i * 4), y: cy(900) });
+      const orig = Element.prototype.getBoundingClientRect;
+      let reads = 0;
+      svg.getBoundingClientRect = function () { reads++; return orig.apply(this, arguments); };
+      const co = (q) => { const a = []; for (let c = 0; c < 4; c++) a.push(mk('pointermove', q.x + c, q.y)); return a; };
+      svg.dispatchEvent(mk('pointerdown', pts[0].x, pts[0].y));
+      const atDown = reads;                       // the one measurement per stroke
+      for (let i = 1; i <= 30; i++) svg.dispatchEvent(mk('pointermove', pts[i].x, pts[i].y, co(pts[i])));
+      o.rectReadsDuringStroke = reads - atDown;
+      o.rectReadsAtPenDown = atDown;
+      svg.dispatchEvent(mk('pointerup', pts[31].x, pts[31].y));
+      svg.getBoundingClientRect = orig;
+    }
+
     frames.shift();
     const sorted = frames.slice().sort((a,bb)=>a-bb);
     o.medianFrameMs = Math.round(sorted[Math.floor(sorted.length/2)]*10)/10;
@@ -132,6 +155,10 @@ const THEMES = ['arcade','architect','aurora','boldstudy','brightblocks','butter
   ok('every point she actually drew is kept', R.savedPoints >= 40, R.savedPoints + ' points');
   ok('drawing holds the frame rate', R.medianFrameMs <= 18 && R.droppedFrames <= 3,
      'median ' + R.medianFrameMs + 'ms, ' + R.droppedFrames + ' dropped of ' + R.totalFrames);
+  ok('the paper is measured once per stroke, not once per point',
+     R.rectReadsDuringStroke === 0 && R.rectReadsAtPenDown >= 1,
+     R.rectReadsDuringStroke + ' forced layouts across 30 frames of 4 points, '
+       + R.rectReadsAtPenDown + ' at pen-down');
   ok('no page errors', errs.length===0, errs.slice(0,2).join('|'));
   for (const f of F) console.log((f.pass?'PASS ':'FAIL ')+f.n+(f.x?'  '+f.x:''));
   console.log('penlatency: '+F.filter(f=>f.pass).length+'/'+F.length+' passed');

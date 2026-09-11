@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.577">
+<meta name="app-build" content="18.578">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -31717,6 +31717,11 @@ function isCourseInProgress(courseId) {
  const _go = window.go;
  window.go = function(v) {
  if (v && (v.name === 'class' || v.name === 'chapter' || v.name === 'section') && v.courseId) {
+ // Courses whose chapters ship only in their content file have nothing but
+ // the drill stubs until that file is absorbed. This is the moment she is
+ // about to look at the course - even a locked one, whose preview should
+ // list real chapters - so pull them in before deciding what to show.
+ try { if (typeof gannoEnsureCourseChapters === 'function') gannoEnsureCourseChapters(v.courseId); } catch (e) {}
  const st = getCourseState(v.courseId);
  if (st === 'locked') {
  openLockModal(v.courseId);
@@ -39888,6 +39893,10 @@ function getQuestions(courseId, chId, secId) {
       if (store.pretests && store.pretests[cid]) delete store.pretests[cid];
       // per-lesson user flashcards created from this course's quizzes (keys start "CID/")
       if (store.userFlashcards){ Object.keys(store.userFlashcards).forEach(function(k){ if (k.indexOf(cid+'/')===0) delete store.userFlashcards[k]; }); }
+      /* Record the erase before saving. A reset that is not recorded is undone
+         by the next sync pull, which merges the pre-reset copy back in - which
+         is what "it resets, then reverts" was. */
+      try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch (e2) {}
       if (typeof saveStore==='function') saveStore();
     }catch(e){ if(window.console&&console.warn) console.warn('reset failed', e); return {ok:false}; }
     return {ok:true, removed:removed};
@@ -61025,6 +61034,7 @@ function read(){
   try { o = JSON.parse(localStorage.getItem(LKEY) || 'null'); } catch (e) {}
   if (!o || typeof o !== 'object') o = {};
   if (!o.pages || typeof o.pages !== 'object') o.pages = {};
+  if (!o.courses || typeof o.courses !== 'object') o.courses = {};
   return o;
 }
 function write(o){
@@ -61144,6 +61154,8 @@ function absorb(remote){
   }
   var rp = remote.pages || {};
   for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
+  var rc = remote.courses || {};
+  for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) { o.courses[k] = rc[k]; changed = true; }
   if (changed) write(o);
   if (applied) {
     try { saveStore(); } catch (e) {}
@@ -61154,6 +61166,7 @@ function absorb(remote){
 function mark(kind, rk){
   var o = read(), now = Date.now();
   if (kind === 'page' && rk) o.pages[rk] = now;
+  else if (kind === 'course' && rk) o.courses[rk] = now;
   else if (KINDS[kind]) {
     o[kind] = now;
     if (kind === 'all') { o.scores = now; o.ink = now; o.pages = {}; }
@@ -61181,20 +61194,55 @@ function mark(kind, rk){
 }
 // Strip out of an incoming copy whatever she erased after that copy was made.
 // Returns null when the whole copy predates a full erase.
+/* Resetting ONE class is an erase too. Without a record of it the next sync
+   pull merged that class's history straight back in - reset, then reverted.
+   The 'scores' mark is all-or-nothing and would have thrown away every other
+   class as well, so the reset is recorded per course and only that course's
+   entries are stripped out of a copy taken before it. Exactly the keys the
+   reset itself clears, so an older copy can never re-add what it removed and
+   can still carry everything it did not touch. */
+var COURSE_ARRAYS = ['quizHistory', 'examSessions', 'sessions'];
+var COURSE_MAPS = ['pretests', 'knowtProgress', 'preOaProgress'];
+function stripResetCourses(incoming, when){
+  var o = read(), gone = [], cid;
+  for (cid in o.courses) if (when < o.courses[cid]) gone.push(cid);
+  if (!gone.length) return incoming;
+  var hit = function(c){ return !!c && gone.indexOf(c) !== -1; };
+  var out = {}, k;
+  for (k in incoming) out[k] = incoming[k];
+  COURSE_ARRAYS.forEach(function(key){
+    if (Array.isArray(out[key]))
+      out[key] = out[key].filter(function(r){ return !(r && hit(r.courseId)); });
+  });
+  COURSE_MAPS.forEach(function(key){
+    var src = out[key];
+    if (!src || typeof src !== 'object') return;
+    var cp = {}; for (var kk in src) if (!hit(kk)) cp[kk] = src[kk];
+    out[key] = cp;
+  });
+  if (out.userFlashcards && typeof out.userFlashcards === 'object') {
+    var uf = {};
+    for (var fk in out.userFlashcards)
+      if (!hit(String(fk).split('/')[0])) uf[fk] = out.userFlashcards[fk];
+    out.userFlashcards = uf;
+  }
+  return out;
+}
 function filter(incoming, when){
   if (!incoming) return incoming;
   when = when || 0;
   if (!when) return incoming;                     // undated copy - leave it alone
   if (when < at('all')) return null;
+  var out = incoming;
   if (when < at('scores')) {
-    var out = {};
+    out = {};
     for (var k in incoming) if (!SCORE_KEYS[k]) out[k] = incoming[k];
-    return out;
   }
-  return incoming;
+  return stripResetCourses(out, when);
 }
 window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter,
-                  read: read, hydrate: hydrate };
+                  read: read, hydrate: hydrate,
+                  courseAt: function(cid){ return (read().courses || {})[cid] || 0; } };
 // Bring the durable record back into the synchronous copy at launch, before the
 // sync layers pull anything. The recovery in the backup module awaits this too.
 hydrate();
@@ -64696,7 +64744,9 @@ var PAGE_H = Math.round(11 * IN);   // 1294
 var CUE_X  = Math.round(2.5 * IN);  //  294
 var SUM_H  = Math.round(2 * IN);    //  235
 var HEAD_H = Math.round(1 * IN);    //  118
-var HEADROOM = 2;               // blank pages kept ahead of the lowest ink
+var HEADROOM = 1;               // one blank page ahead of the lowest ink: more
+                                // paper than that is surface the iPad composites
+                                // on every stroke for writing that is not there
 var MAX_PAGES = 60;             // a hard ceiling, so a long scroll cannot run away
 var PAGE0  = 3 * PAGE_H;        // open with three pages, not one - one filled up
                                 // in a single sitting and every further page had
@@ -65905,6 +65955,7 @@ function paperScale(){
 }
 function sizeSvg(){
   if (!svg) return;
+  penRect = null;                 // the box just changed; next point re-measures
   var base = (pagesEl && pagesEl.clientWidth) || svg.clientWidth || 0;
   if (!(base > 0)) return;
   var w = Math.round(base * paperScale());
@@ -65991,14 +66042,45 @@ function freezePaper(on){
   }
   if (!on) strokeAnchor = null;
 }
-function pt(e){
+/* THE PAPER IS MEASURED ONCE PER STROKE, NOT ONCE PER POINT.
+   pt() runs for every coalesced sample the Pencil delivers and again for every
+   predicted point - up to fourteen times in a single frame - and each
+   getBoundingClientRect forces the browser to flush layout. The frame has just
+   written a new `d` on the live path, so that layout is always dirty: fourteen
+   forced synchronous layouts per frame, every frame, the whole time she writes.
+   The paper cannot move during a stroke (freezePaper locks the scroller, and
+   strokeAnchor already corrects for any residual scroll), so one measurement
+   serves the whole gesture. sizeSvg drops it, because growing the page is the
+   one thing that legitimately changes the box mid-stroke. */
+var penRect = null, penGesture = false;
+/* The cached box is stored ALREADY SHIFTED BACK to where the paper was when the
+   pen landed. The scroller moves the live box, and the point of the correction
+   below has always been to undo that movement; baking it into the cache keeps
+   exactly one correction in play. Doing both - a frozen box AND the running
+   delta - subtracts the same scroll twice, which is a stroke that slides away
+   from the nib. Measuring again mid-stroke (the page grew) re-bakes it, so the
+   answer is the pen-down frame however often the box is taken. */
+function svgBox(){
+  if (penGesture && penRect) return penRect;
   var r = svg.getBoundingClientRect();
+  if (!penGesture) return r;
+  var top = r.top, left = r.left;
+  if (strokeAnchor && pagesEl) {
+    top  += pagesEl.scrollTop  - strokeAnchor.t;
+    left += pagesEl.scrollLeft - strokeAnchor.l;
+  }
+  penRect = { top: top, left: left, width: r.width, height: r.height };
+  return penRect;
+}
+function pt(e){
+  var r = svgBox();
   var k = r.width ? (UNITS / r.width) : 1;
   /* The rect moves with the scroller, so a scroll mid-stroke would otherwise
      drag the rest of the stroke across the paper. Measure from where the
-     scroller was when the pen landed, not where it is now. */
+     scroller was when the pen landed, not where it is now. During a gesture
+     svgBox has already applied this, so applying it again here would double it. */
   var dT = 0, dL = 0;
-  if (strokeAnchor && pagesEl) {
+  if (!(penGesture && penRect) && strokeAnchor && pagesEl) {
     dT = pagesEl.scrollTop - strokeAnchor.t;
     dL = pagesEl.scrollLeft - strokeAnchor.l;
   }
@@ -66449,6 +66531,7 @@ function wireInk(){
     if (rulerOn() && e.target && e.target.closest && e.target.closest('g.mn-ruler')) {
       e.preventDefault();
       try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+      penGesture = true; penRect = null;
       var rp = rulerPrefs(), q = pt(e);
       var onGrip = !!(e.target.classList && e.target.classList.contains('mn-ruler-grip'));
       rulerDrag = { id: e.pointerId, turn: onGrip,
@@ -66463,6 +66546,7 @@ function wireInk(){
     penId = e.pointerId;
     lastPenTs = Date.now();
     freezePaper(true);        // before pt(): stop any glide, then read the rect
+    penGesture = true; penRect = null;   // one measurement for this whole stroke
     var p = pt(e);
     if (tool === 'erase') { drawing = true; eraseBatch = { removed: [], added: [] }; eraseAt(p); return; }
     drawing = true;
@@ -66557,13 +66641,15 @@ function wireInk(){
     if (rulerDrag && (!e || e.pointerId == null || e.pointerId === rulerDrag.id)) {
       try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
       rulerDrag = null;
+      penGesture = false; penRect = null;
       save();                       // where she put it is where it stays
       return;
     }
     inkLock = null;
-    if (!drawing) { freezePaper(false); return; }
+    if (!drawing) { freezePaper(false); penGesture = false; penRect = null; return; }
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
+    penGesture = false; penRect = null;
     clearStill();
     var wasLine = snapped; snapped = false;
     freezePaper(false);
