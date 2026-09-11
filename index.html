@@ -13548,6 +13548,26 @@ function _persistStore() {
   const packed = (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized;
   localStorage.setItem(STORE_KEY, packed);
 }
+/* WRITE IT NOW, NOT IN 600ms.
+   saveStore is deliberately debounced so that answering a question does not
+   stall the UI, and the app's irreversible moments were supposed to call
+   saveStore.flushNow() to force the pending write out. saveStore is wrapped
+   five times over - debounce, reconcile, backup mirror, sync, timing - and
+   flushNow did not survive that chain, so those calls did nothing and the
+   write sat on a timer that closing or reloading the app simply beat. That is
+   a reset that undoes itself.
+   This is the unwrapped write, for the handful of places that must not lose
+   the change they just made. It still goes through saveStore afterwards so the
+   backup mirror and the sync see it. */
+function persistNow() {
+  try { _persistStore(); } catch (e) {
+    try { saveStore(); } catch (e2) {}          // quota handling lives in there
+    return false;
+  }
+  try { saveStore(); } catch (e) {}             // mirror + sync notice the change
+  return true;
+}
+window.__persistNow = persistNow;
 function _freeStorageSpace() {
   try { if (Array.isArray(store.quizHistory) && store.quizHistory.length > 1500) store.quizHistory = store.quizHistory.slice(-1500); } catch (e) {}
   try { if (Array.isArray(store.sessions) && store.sessions.length > 300) store.sessions = store.sessions.slice(-300); } catch (e) {}
@@ -31673,7 +31693,9 @@ function setCourseState(courseId, newState) {
   // keep the dashboard activation store in perfect sync with the v2 state
   if (!store.courseActivated) store.courseActivated = {};
   store.courseActivated[courseId] = (store.courseState[courseId] === 'active');
-  saveStore();
+  // Choosing her active classes is deliberate too, and the debounce loses it
+  // the same way - write it rather than queue it.
+  try { persistNow(); } catch (e) { try { saveStore(); } catch (e2) {} }
   return true;
 }
 function getActiveCourses() {
@@ -39897,7 +39919,13 @@ function getQuestions(courseId, chId, secId) {
          by the next sync pull, which merges the pre-reset copy back in - which
          is what "it resets, then reverts" was. */
       try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch (e2) {}
-      if (typeof saveStore==='function') saveStore();
+      /* FLUSH, DO NOT QUEUE. saveStore is debounced by 600ms so that answering a
+         question does not stall the UI. A reset is not an autosave: it is a
+         deliberate, destructive thing she asked for, and if the app is closed,
+         reloaded or killed inside that window the write never happens and every
+         class comes back. Force it out now, the way the other irreversible
+         writes in this app do. */
+      try { persistNow(); } catch (e3) { try { if (typeof saveStore==='function') saveStore(); } catch (e4) {} }
     }catch(e){ if(window.console&&console.warn) console.warn('reset failed', e); return {ok:false}; }
     return {ok:true, removed:removed};
   }
@@ -39936,7 +39964,19 @@ function getQuestions(courseId, chId, secId) {
       ov.remove();
       if (r.ok){
         if (typeof toast==='function') toast('Progress reset for '+courseName(cid)+' \u2014 fresh start!');
-        try{ if (typeof render==='function') render(); }catch(e){}
+        /* A render that throws half way through leaves an empty page and the
+           catch used to swallow it, so the screen simply went blank. The reset
+           itself is already on disk by here, so the worst case is a trip home,
+           not lost work. */
+        try{ if (typeof render==='function') render(); }
+        catch(e){
+          try { if (window.console && console.error) console.error('render after reset failed:', e); } catch(e2){}
+          try { go({ name:'home' }); } catch(e3){}
+          try {
+            var app=document.getElementById('app');
+            if (app && app.textContent.trim().length < 40) location.reload();
+          } catch(e4){}
+        }
       } else {
         if (typeof toast==='function') toast('Could not reset \u2014 try again.');
       }
@@ -60814,6 +60854,12 @@ if (typeof saveStore === 'function' && !saveStore.__fortress) {
     mirrorSoon();
     return r;
   };
+  /* Carry across whatever the wrapped function was already holding - above all
+     flushNow, which the debounce installs and which the app's irreversible
+     moments call to force a queued write out before anything can interrupt it.
+     Replacing the function without copying it left flushNow undefined, so those
+     calls quietly did nothing. */
+  try { Object.keys(_save).forEach(function(k){ wrapped[k] = _save[k]; }); } catch (e) {}
   wrapped.__fortress = true;
   saveStore = wrapped;
 }
@@ -61505,6 +61551,17 @@ try {
   if (typeof saveStore === 'function' && !saveStore.__syncWrapped) {
     var _save = saveStore;
     saveStore = function(){ var r = _save.apply(this, arguments); dirty = true; return r; };
+    /* CARRY THE FLUSH THROUGH. saveStore is debounced, and the app's
+       irreversible moments - a class reset, choosing active classes, leaving
+       the page - call saveStore.flushNow() to force the write out before
+       anything can interrupt it. This wrapper replaced the function without
+       copying that across, so flushNow was undefined everywhere and every one
+       of those calls did nothing: the write stayed queued, and if the app was
+       closed or reloaded first it never happened at all. Copy every own
+       property the wrapped function carried. */
+    try {
+      Object.keys(_save).forEach(function(k){ saveStore[k] = _save[k]; });
+    } catch (e) {}
     saveStore.__syncWrapped = true;
   }
 } catch (e) {}
@@ -63940,7 +63997,7 @@ function timed(name, get, set){
   try {
     var fn = get();
     if (typeof fn !== 'function') return false;
-    set(function(){
+    var wrapper = function(){
       inflight[name] = 1;
       var t0 = (performance && performance.now) ? performance.now() : Date.now();
       try { return fn.apply(this, arguments); }
@@ -63949,7 +64006,17 @@ function timed(name, get, set){
         delete inflight[name];
         if (d >= MIN_MS) mark(name, d);
       }
-    });
+    };
+    /* MEASURING SOMETHING MUST NOT CHANGE IT. This timer is the last thing to
+       wrap saveStore, and replacing the function without copying what it was
+       carrying silently removed saveStore.flushNow - the call the app makes at
+       every irreversible moment to force a queued write out before anything can
+       interrupt it. A class reset, choosing active classes and the exit
+       handlers all called it, every one of those calls did nothing, and the
+       write stayed on a 600ms timer that a close or a reload simply beat.
+       Carry every own property across. */
+    try { Object.keys(fn).forEach(function(k){ wrapper[k] = fn[k]; }); } catch (e) {}
+    set(wrapper);
     return true;
   } catch (e) { return false; }
 }
