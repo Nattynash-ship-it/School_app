@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.579">
+<meta name="app-build" content="18.580">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -13543,11 +13543,51 @@ function loadStore() {
 // Track save failures so we can warn the user before data loss happens.
 let _saveErrorCount = 0;
 let _lastQuotaWarning = 0;
+/* THE STORE, WITHOUT THE HANDWRITING.
+   Ink has not lived in the big store since it was split into one slot per
+   page, but store.gannoStrokes is still the in-memory cache those slots are
+   read into - so the object graph JSON.stringify walks is the whole of her
+   handwriting, megabytes of it, even though none of it belongs in the file.
+   Measured with the nineteen pages her device reports: 5573KB with the ink
+   attached, 5KB without.
+   Every place that serializes the store for persistence or for comparison
+   goes through here, so none of them pay for ink they are not saving. */
+function storeJSON() {
+  var ink = store.gannoStrokes;
+  if (ink === undefined) return JSON.stringify(store);
+  /* Set to undefined rather than delete: JSON.stringify skips a key whose
+     value is undefined either way, but delete changes the object's shape, and
+     doing that to the store on every save would make every property read on it
+     slower for the rest of the session. */
+  try { store.gannoStrokes = undefined; return JSON.stringify(store); }
+  finally { store.gannoStrokes = ink; }
+}
+window.__storeJSON = storeJSON;
 function _persistStore() {
-  const serialized = JSON.stringify(store);
+  const serialized = storeJSON();
   const packed = (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized;
   localStorage.setItem(STORE_KEY, packed);
 }
+/* WRITE IT NOW, NOT IN 600ms.
+   saveStore is deliberately debounced so that answering a question does not
+   stall the UI, and the app's irreversible moments were supposed to call
+   saveStore.flushNow() to force the pending write out. saveStore is wrapped
+   five times over - debounce, reconcile, backup mirror, sync, timing - and
+   flushNow did not survive that chain, so those calls did nothing and the
+   write sat on a timer that closing or reloading the app simply beat. That is
+   a reset that undoes itself.
+   This is the unwrapped write, for the handful of places that must not lose
+   the change they just made. It still goes through saveStore afterwards so the
+   backup mirror and the sync see it. */
+function persistNow() {
+  try { _persistStore(); } catch (e) {
+    try { saveStore(); } catch (e2) {}          // quota handling lives in there
+    return false;
+  }
+  try { saveStore(); } catch (e) {}             // mirror + sync notice the change
+  return true;
+}
+window.__persistNow = persistNow;
 function _freeStorageSpace() {
   try { if (Array.isArray(store.quizHistory) && store.quizHistory.length > 1500) store.quizHistory = store.quizHistory.slice(-1500); } catch (e) {}
   try { if (Array.isArray(store.sessions) && store.sessions.length > 300) store.sessions = store.sessions.slice(-300); } catch (e) {}
@@ -27864,7 +27904,9 @@ function exportData() {
  // store does not contain ink: _persistStore deletes store.gannoStrokes before
  // writing, because ink lives in per-page slots. Her handwriting has to be
  // carried into the backup explicitly or it is simply not in the file.
- const payload = JSON.parse(JSON.stringify(store));
+ // storeJSON leaves out store.gannoStrokes, which is only the in-memory cache
+ // of those per-page slots - without that the backup carried every page twice.
+ const payload = JSON.parse(storeJSON());
  try {
    const pad = {};
    for (const k in localStorage) {
@@ -31673,7 +31715,9 @@ function setCourseState(courseId, newState) {
   // keep the dashboard activation store in perfect sync with the v2 state
   if (!store.courseActivated) store.courseActivated = {};
   store.courseActivated[courseId] = (store.courseState[courseId] === 'active');
-  saveStore();
+  // Choosing her active classes is deliberate too, and the debounce loses it
+  // the same way - write it rather than queue it.
+  try { persistNow(); } catch (e) { try { saveStore(); } catch (e2) {} }
   return true;
 }
 function getActiveCourses() {
@@ -39897,7 +39941,13 @@ function getQuestions(courseId, chId, secId) {
          by the next sync pull, which merges the pre-reset copy back in - which
          is what "it resets, then reverts" was. */
       try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch (e2) {}
-      if (typeof saveStore==='function') saveStore();
+      /* FLUSH, DO NOT QUEUE. saveStore is debounced by 600ms so that answering a
+         question does not stall the UI. A reset is not an autosave: it is a
+         deliberate, destructive thing she asked for, and if the app is closed,
+         reloaded or killed inside that window the write never happens and every
+         class comes back. Force it out now, the way the other irreversible
+         writes in this app do. */
+      try { persistNow(); } catch (e3) { try { if (typeof saveStore==='function') saveStore(); } catch (e4) {} }
     }catch(e){ if(window.console&&console.warn) console.warn('reset failed', e); return {ok:false}; }
     return {ok:true, removed:removed};
   }
@@ -39936,7 +39986,19 @@ function getQuestions(courseId, chId, secId) {
       ov.remove();
       if (r.ok){
         if (typeof toast==='function') toast('Progress reset for '+courseName(cid)+' \u2014 fresh start!');
-        try{ if (typeof render==='function') render(); }catch(e){}
+        /* A render that throws half way through leaves an empty page and the
+           catch used to swallow it, so the screen simply went blank. The reset
+           itself is already on disk by here, so the worst case is a trip home,
+           not lost work. */
+        try{ if (typeof render==='function') render(); }
+        catch(e){
+          try { if (window.console && console.error) console.error('render after reset failed:', e); } catch(e2){}
+          try { go({ name:'home' }); } catch(e3){}
+          try {
+            var app=document.getElementById('app');
+            if (app && app.textContent.trim().length < 40) location.reload();
+          } catch(e4){}
+        }
       } else {
         if (typeof toast==='function') toast('Could not reset \u2014 try again.');
       }
@@ -45052,7 +45114,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (!worker) { syncFlush(); return; }
     if (asyncBusy) { runAgain = true; return; }
     var s;
-    try { s = JSON.stringify(store); } catch(e){ syncFlush(); return; }
+    // Ink-free: this is what gets written to STORE_KEY, and the ink cache in
+    // memory does not belong in the file the per-page split took it out of.
+    try { s = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store); } catch(e){ syncFlush(); return; }
     asyncBusy = true;
     var id = ++jobId;
     jobs[id] = function(packed){
@@ -56741,7 +56805,10 @@ if (window.__inkPerPage) return; window.__inkPerPage = true;
 
 var PREFIX = 'gsk:';
 var LOG = 'gsl:';                 // append log - see writeInk below
-var COMPACT_AT = 20;              // rewrite the packed slot every N new strokes
+var COMPACT_AT = 20;              // small pages: repack once the log reaches this
+var LOG_MAX = 400;                // never let the log grow past this many strokes
+var BIG_SLOT = 60000;             // a page past this is expensive to repack
+var compacting = Object.create(null);   // rk -> a repack is already queued
 var cache = Object.create(null);
 var tail = Object.create(null);   // rk -> { n: strokes already written, last: <the nth stroke> }
 
@@ -56758,6 +56825,38 @@ function pack(v){
     var s = json(v);
     return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(s) : s;
   } catch (e) { return null; }
+}
+function slotBytes(rk){ try { return (localStorage.getItem(PREFIX + rk) || '').length; } catch (e) { return 0; } }
+function logBytes(rk){ try { return (localStorage.getItem(LOG + rk) || '').length; } catch (e) { return 0; } }
+/* WHEN IS A REPACK WORTH IT?
+   Her diagnostics: one page had packed to 1.5MB, and repacking it cost between
+   4.4 and 8.2 SECONDS of compression on the main thread. At one repack every
+   20 strokes that is a multi-second freeze every twentieth pen lift, and iOS
+   killed the app during several of them - which is the blank screen, and why
+   anything unsaved came back.
+   A small page is cheap, so keep repacking it often and keep reads fast. A big
+   one is repacked only once the log is actually worth folding in, with a hard
+   cap so reads never degrade without bound. */
+function needsCompaction(rk){
+  var lc = logCount(rk);
+  if (lc >= LOG_MAX) return true;
+  var sb = slotBytes(rk);
+  if (sb < BIG_SLOT) return lc >= COMPACT_AT;
+  return logBytes(rk) > sb * 0.25;
+}
+/* And when it is worth it, it happens while she is not writing. Nothing is
+   risked by waiting: the strokes are already in the append log, which is read
+   back alongside the packed slot, so a repack that never happens costs a
+   slightly slower read and nothing else. */
+function compactSoon(rk){
+  if (compacting[rk]) return;
+  compacting[rk] = 1;
+  var run = function(){
+    compacting[rk] = 0;
+    try { if (cache[rk] && cache[rk].length) rewrite(rk, cache[rk]); } catch (e) {}
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 6000 });
+  else setTimeout(run, 1500);
 }
 function unpack(raw){
   if (raw == null) return null;
@@ -56853,7 +56952,8 @@ function writeInk(rk, strokes){
     var t = tail[rk];
     var appended = t && t.n > 0 && strokes.length > t.n && strokes[t.n - 1] === t.last;
     if (!appended) { rewrite(rk, strokes); return; }
-    if (strokes.length - t.n + logCount(rk) >= COMPACT_AT) { rewrite(rk, strokes); return; }
+    // The stroke goes to the log FIRST and always - that is what makes it safe
+    // to put the repack off until she stops writing.
     var add = '';
     for (var i = t.n; i < strokes.length; i++) add += json(strokes[i]) + '\n';
     var prev = localStorage.getItem(LOG + rk) || '';
@@ -56861,6 +56961,7 @@ function writeInk(rk, strokes){
     cache[rk] = strokes;
     index()[rk] = 1;
     tail[rk] = { n: strokes.length, last: strokes[strokes.length - 1] };
+    if (needsCompaction(rk)) compactSoon(rk);
   } catch (e) {
     // Log write failed (quota). Fall back to a full rewrite so nothing is lost.
     try { rewrite(rk, strokes); } catch (e2) {}
@@ -56896,14 +56997,8 @@ function installPersistOverride(){
     if (typeof _persistStore !== 'function' || window.__inkPersistPatched) return;
     window.__inkPersistPatched = true;
     _persistStore = function(){
-      var ink = store.gannoStrokes;
-      var serialized;
-      try {
-        delete store.gannoStrokes;              // ink is persisted per page, not here
-        serialized = JSON.stringify(store);
-      } finally {
-        if (ink !== undefined) store.gannoStrokes = ink;
-      }
+      // ink is persisted per page, not here - storeJSON leaves it out
+      var serialized = (typeof storeJSON === 'function') ? storeJSON() : JSON.stringify(store);
       // The loader detects the format by whether it starts with '{', so plain
       // JSON is safe to store - and skipping the compressor is ~30x faster.
       var packed = serialized;
@@ -60689,7 +60784,10 @@ function mirrorWrite(){
     }
     try { inkMirrorWrite(); } catch (e) {}   // the handwriting rides every mirror
     if (raw) return put(raw);
-    var serialized = JSON.stringify(store);
+    // inkMirrorWrite() above already carried the handwriting into its own
+    // record, so serializing the ink cache here mirrored all of it a second
+    // time - and compressed megabytes to do it.
+    var serialized = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store);
     var syncPack = function(){ return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized; };
     // Backgrounded: iOS may suspend before a worker round-trip completes, and
     // this mirror is the safety net - pack synchronously (nothing visible to
@@ -60802,7 +60900,13 @@ if (typeof saveStore === 'function' && !saveStore.__fortress) {
     try {
       var prev = localStorage.getItem(STORE_KEY);
       if (prev && prev.length > 5000) {
-        var next = JSON.stringify(store);
+        /* Ink-free, for two reasons. It is what makes the comparison mean
+           anything - what is on disk has no ink in it, so measuring a copy
+           that does was comparing two different things. And it is what takes
+           this off the writing path: with her nineteen pages in memory this
+           line was serializing 5.5MB on every single save, several times a
+           second while she wrote, which is the skipping she reported. */
+        var next = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store);
         // a real store shrinking to under a fifth of its size in one write is
         // the signature of clobbering good data with a fresh default
         if (next && next.length * 3 < prev.length) {
@@ -60814,6 +60918,12 @@ if (typeof saveStore === 'function' && !saveStore.__fortress) {
     mirrorSoon();
     return r;
   };
+  /* Carry across whatever the wrapped function was already holding - above all
+     flushNow, which the debounce installs and which the app's irreversible
+     moments call to force a queued write out before anything can interrupt it.
+     Replacing the function without copying it left flushNow undefined, so those
+     calls quietly did nothing. */
+  try { Object.keys(_save).forEach(function(k){ wrapped[k] = _save[k]; }); } catch (e) {}
   wrapped.__fortress = true;
   saveStore = wrapped;
 }
@@ -61360,7 +61470,18 @@ function inkKeys(){
   return out;
 }
 function snapshot(){
-  var snap = { v: 1, at: Date.now(), store: store, ink: {} };
+  /* The store WITHOUT its ink cache. Handwriting travels in snap.ink below,
+     one entry per page; leaving store.gannoStrokes in as well sent every page
+     twice, doubling the biggest thing this app ever compresses and uploads -
+     and it is what pushed a device over the size the sync can carry. */
+  var lean = store;
+  try {
+    if (store.gannoStrokes) {
+      lean = {};
+      for (var sk in store) if (Object.prototype.hasOwnProperty.call(store, sk) && sk !== 'gannoStrokes') lean[sk] = store[sk];
+    }
+  } catch (e) { lean = store; }
+  var snap = { v: 1, at: Date.now(), store: lean, ink: {} };
   try {
     var ks = inkKeys();
     for (var i = 0; i < ks.length; i++) {
@@ -61505,6 +61626,17 @@ try {
   if (typeof saveStore === 'function' && !saveStore.__syncWrapped) {
     var _save = saveStore;
     saveStore = function(){ var r = _save.apply(this, arguments); dirty = true; return r; };
+    /* CARRY THE FLUSH THROUGH. saveStore is debounced, and the app's
+       irreversible moments - a class reset, choosing active classes, leaving
+       the page - call saveStore.flushNow() to force the write out before
+       anything can interrupt it. This wrapper replaced the function without
+       copying that across, so flushNow was undefined everywhere and every one
+       of those calls did nothing: the write stayed queued, and if the app was
+       closed or reloaded first it never happened at all. Copy every own
+       property the wrapped function carried. */
+    try {
+      Object.keys(_save).forEach(function(k){ saveStore[k] = _save[k]; });
+    } catch (e) {}
     saveStore.__syncWrapped = true;
   }
 } catch (e) {}
@@ -63940,7 +64072,7 @@ function timed(name, get, set){
   try {
     var fn = get();
     if (typeof fn !== 'function') return false;
-    set(function(){
+    var wrapper = function(){
       inflight[name] = 1;
       var t0 = (performance && performance.now) ? performance.now() : Date.now();
       try { return fn.apply(this, arguments); }
@@ -63949,7 +64081,17 @@ function timed(name, get, set){
         delete inflight[name];
         if (d >= MIN_MS) mark(name, d);
       }
-    });
+    };
+    /* MEASURING SOMETHING MUST NOT CHANGE IT. This timer is the last thing to
+       wrap saveStore, and replacing the function without copying what it was
+       carrying silently removed saveStore.flushNow - the call the app makes at
+       every irreversible moment to force a queued write out before anything can
+       interrupt it. A class reset, choosing active classes and the exit
+       handlers all called it, every one of those calls did nothing, and the
+       write stayed on a 600ms timer that a close or a reload simply beat.
+       Carry every own property across. */
+    try { Object.keys(fn).forEach(function(k){ wrapper[k] = fn[k]; }); } catch (e) {}
+    set(wrapper);
     return true;
   } catch (e) { return false; }
 }
@@ -64547,7 +64689,7 @@ var timer = null, dirty = false, busy = false, lastSync = 0, gen = 0;
 
 function heal(){
   _dbg.heals++;
-  try { _dbg.healLen = JSON.stringify(store).length; } catch (e) {}
+  try { _dbg.healLen = (typeof window.__storeJSON === 'function') ? window.__storeJSON().length : JSON.stringify(store).length; } catch (e) {}
   // The original quota machinery, without recursing into the wrapper.
   try { _orig(); dirty = false; return true; } catch (e) {
     try {
@@ -64582,7 +64724,12 @@ function run(){
     return;
   }
   var s;
-  try { s = JSON.stringify(store); } catch (e) { heal(); return; }
+  /* Ink-free. This is the string the worker compresses and then writes to
+     STORE_KEY, so serializing the ink cache here did not just cost the
+     compression of megabytes - it put the handwriting back INTO the big store
+     the per-page split had taken it out of. Measured: the store on disk grew
+     from 1KB to 282KB of re-absorbed ink after one save. */
+  try { s = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store); } catch (e) { heal(); return; }
   dirty = false; busy = true;
   var id = ++jobId, g = gen;
   jobs[id] = function(packed){

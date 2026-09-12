@@ -49,6 +49,7 @@ const URL = 'http://127.0.0.1:8901/index.html';
     return { rk, ys: gannoGetStrokes(rk).map(s=>Math.round(s.points[0].y)),
              ink: document.getElementById('mn-ink').querySelectorAll('path').length,
              hasLog: localStorage.getItem('gsl:'+rk) !== null,
+             logLines: ((localStorage.getItem('gsl:'+rk) || '').match(/\n/g) || []).length,
              hasBase: localStorage.getItem('gsk:'+rk) !== null };
   });
 
@@ -69,7 +70,16 @@ const URL = 'http://127.0.0.1:8901/index.html';
   const same = (a,bb) => JSON.stringify(a) === JSON.stringify(bb);
   ok('four strokes are written and read back', same(R1.ys,[238,558,878,1150]), JSON.stringify(R1.ys));
   ok('a plain relaunch keeps them exactly', same(R2.ys,[238,558,878,1150]) && same(R3.ys,[238,558,878,1150]), JSON.stringify(R2.ys));
-  ok('compaction clears the append log rather than leaving it behind', R2.hasBase && !R2.hasLog);
+  /* This used to assert the log was EMPTY after a relaunch, and it was - but
+     for the wrong reason. The store on disk still had handwriting in it,
+     because two worker save paths serialized the in-memory ink cache and wrote
+     the result back into the big store; so every launch found ink there, ran
+     the one-time migration again, and repacked every page. With that fixed the
+     launch does no such thing, and the log survives a relaunch as designed.
+     What actually has to hold is that the log stays a tail - the strokes since
+     the last pack - and never grows back into a second copy of the page. */
+  ok('the append log stays a tail, never a second copy of the page',
+     R2.hasBase && R2.logLines < R2.ys.length, 'base ' + R2.hasBase + ', log ' + R2.logLines + ' of ' + R2.ys.length + ' strokes');
   ok('two more strokes make six', same(R4.ys,[238,558,878,1150,398,718]), JSON.stringify(R4.ys));
   ok('a refresh during the save window does NOT double the page', same(R5.ys,[238,558,878,1150,398,718]),
      JSON.stringify(R5.ys));

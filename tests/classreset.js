@@ -77,6 +77,34 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
      JSON.stringify([R.filteredPretests, R.filteredCards]));
   ok('a copy taken after the reset is left alone',
      R.newerQuiz.length === 4, JSON.stringify(R.newerQuiz));
+
+  // ---- The write must not be left on a timer ----
+  // saveStore is debounced by 600ms so answering a question does not stall the
+  // UI, and the app's irreversible moments call saveStore.flushNow() to force
+  // the pending write out first. saveStore is wrapped five times over -
+  // debounce, reconcile, backup mirror, sync, timing - and none of those
+  // wrappers carried flushNow across, so it was undefined and every one of
+  // those calls did nothing. The write stayed on a timer that closing or
+  // reloading the app beats.
+  const durability = await page.evaluate(() => ({
+    flushNow: typeof saveStore.flushNow,
+    perfMarker: typeof saveStore.__perfDebounced,
+    fortressMarker: typeof saveStore.__fortress,
+    syncMarker: typeof saveStore.__syncWrapped,
+    persistNow: typeof window.__persistNow,
+    resetUsesIt: String(window.__resetCourseProgress).indexOf('persistNow') !== -1,
+    stateUsesIt: String(setCourseState).indexOf('persistNow') !== -1
+  }));
+  ok('the flush survives every wrapper that rewraps saveStore',
+     durability.flushNow === 'function', 'flushNow is ' + durability.flushNow);
+  ok('and so does every marker those wrappers set',
+     durability.perfMarker === 'boolean' && durability.fortressMarker === 'boolean'
+       && durability.syncMarker === 'boolean', JSON.stringify(durability));
+  ok('there is an unwrapped write for the changes that must not be lost',
+     durability.persistNow === 'function', durability.persistNow);
+  ok('the class reset uses it rather than the debounce', durability.resetUsesIt);
+  ok('choosing active classes uses it too', durability.stateUsesIt);
+
   ok('no page errors', errs.length === 0, errs.join(' | '));
   console.log(`classreset: ${pass}/${pass + fail} passed`);
   await browser.close();
