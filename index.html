@@ -13554,12 +13554,13 @@ let _lastQuotaWarning = 0;
    goes through here, so none of them pay for ink they are not saving. */
 function storeJSON() {
   var ink = store.gannoStrokes;
-  try {
-    if (ink !== undefined) delete store.gannoStrokes;
-    return JSON.stringify(store);
-  } finally {
-    if (ink !== undefined) store.gannoStrokes = ink;
-  }
+  if (ink === undefined) return JSON.stringify(store);
+  /* Set to undefined rather than delete: JSON.stringify skips a key whose
+     value is undefined either way, but delete changes the object's shape, and
+     doing that to the store on every save would make every property read on it
+     slower for the rest of the session. */
+  try { store.gannoStrokes = undefined; return JSON.stringify(store); }
+  finally { store.gannoStrokes = ink; }
 }
 window.__storeJSON = storeJSON;
 function _persistStore() {
