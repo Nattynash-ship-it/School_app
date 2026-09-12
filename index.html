@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.579">
+<meta name="app-build" content="18.580">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -56781,7 +56781,10 @@ if (window.__inkPerPage) return; window.__inkPerPage = true;
 
 var PREFIX = 'gsk:';
 var LOG = 'gsl:';                 // append log - see writeInk below
-var COMPACT_AT = 20;              // rewrite the packed slot every N new strokes
+var COMPACT_AT = 20;              // small pages: repack once the log reaches this
+var LOG_MAX = 400;                // never let the log grow past this many strokes
+var BIG_SLOT = 60000;             // a page past this is expensive to repack
+var compacting = Object.create(null);   // rk -> a repack is already queued
 var cache = Object.create(null);
 var tail = Object.create(null);   // rk -> { n: strokes already written, last: <the nth stroke> }
 
@@ -56798,6 +56801,38 @@ function pack(v){
     var s = json(v);
     return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(s) : s;
   } catch (e) { return null; }
+}
+function slotBytes(rk){ try { return (localStorage.getItem(PREFIX + rk) || '').length; } catch (e) { return 0; } }
+function logBytes(rk){ try { return (localStorage.getItem(LOG + rk) || '').length; } catch (e) { return 0; } }
+/* WHEN IS A REPACK WORTH IT?
+   Her diagnostics: one page had packed to 1.5MB, and repacking it cost between
+   4.4 and 8.2 SECONDS of compression on the main thread. At one repack every
+   20 strokes that is a multi-second freeze every twentieth pen lift, and iOS
+   killed the app during several of them - which is the blank screen, and why
+   anything unsaved came back.
+   A small page is cheap, so keep repacking it often and keep reads fast. A big
+   one is repacked only once the log is actually worth folding in, with a hard
+   cap so reads never degrade without bound. */
+function needsCompaction(rk){
+  var lc = logCount(rk);
+  if (lc >= LOG_MAX) return true;
+  var sb = slotBytes(rk);
+  if (sb < BIG_SLOT) return lc >= COMPACT_AT;
+  return logBytes(rk) > sb * 0.25;
+}
+/* And when it is worth it, it happens while she is not writing. Nothing is
+   risked by waiting: the strokes are already in the append log, which is read
+   back alongside the packed slot, so a repack that never happens costs a
+   slightly slower read and nothing else. */
+function compactSoon(rk){
+  if (compacting[rk]) return;
+  compacting[rk] = 1;
+  var run = function(){
+    compacting[rk] = 0;
+    try { if (cache[rk] && cache[rk].length) rewrite(rk, cache[rk]); } catch (e) {}
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 6000 });
+  else setTimeout(run, 1500);
 }
 function unpack(raw){
   if (raw == null) return null;
@@ -56893,7 +56928,8 @@ function writeInk(rk, strokes){
     var t = tail[rk];
     var appended = t && t.n > 0 && strokes.length > t.n && strokes[t.n - 1] === t.last;
     if (!appended) { rewrite(rk, strokes); return; }
-    if (strokes.length - t.n + logCount(rk) >= COMPACT_AT) { rewrite(rk, strokes); return; }
+    // The stroke goes to the log FIRST and always - that is what makes it safe
+    // to put the repack off until she stops writing.
     var add = '';
     for (var i = t.n; i < strokes.length; i++) add += json(strokes[i]) + '\n';
     var prev = localStorage.getItem(LOG + rk) || '';
@@ -56901,6 +56937,7 @@ function writeInk(rk, strokes){
     cache[rk] = strokes;
     index()[rk] = 1;
     tail[rk] = { n: strokes.length, last: strokes[strokes.length - 1] };
+    if (needsCompaction(rk)) compactSoon(rk);
   } catch (e) {
     // Log write failed (quota). Fall back to a full rewrite so nothing is lost.
     try { rewrite(rk, strokes); } catch (e2) {}

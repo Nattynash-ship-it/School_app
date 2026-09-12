@@ -28,6 +28,7 @@ run penlatency penlatency.js 1
 run penperf penperf.js 1
 run inkdupe inkdupe.js 1
 run inkanchor inkanchor.js 1
+run inkcompact inkcompact.js 1
 run notespages notespages.js 1
 run notesline notesline.js 1
 run classreset classreset.js 1
