@@ -13543,8 +13543,27 @@ function loadStore() {
 // Track save failures so we can warn the user before data loss happens.
 let _saveErrorCount = 0;
 let _lastQuotaWarning = 0;
+/* THE STORE, WITHOUT THE HANDWRITING.
+   Ink has not lived in the big store since it was split into one slot per
+   page, but store.gannoStrokes is still the in-memory cache those slots are
+   read into - so the object graph JSON.stringify walks is the whole of her
+   handwriting, megabytes of it, even though none of it belongs in the file.
+   Measured with the nineteen pages her device reports: 5573KB with the ink
+   attached, 5KB without.
+   Every place that serializes the store for persistence or for comparison
+   goes through here, so none of them pay for ink they are not saving. */
+function storeJSON() {
+  var ink = store.gannoStrokes;
+  try {
+    if (ink !== undefined) delete store.gannoStrokes;
+    return JSON.stringify(store);
+  } finally {
+    if (ink !== undefined) store.gannoStrokes = ink;
+  }
+}
+window.__storeJSON = storeJSON;
 function _persistStore() {
-  const serialized = JSON.stringify(store);
+  const serialized = storeJSON();
   const packed = (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized;
   localStorage.setItem(STORE_KEY, packed);
 }
@@ -27884,7 +27903,9 @@ function exportData() {
  // store does not contain ink: _persistStore deletes store.gannoStrokes before
  // writing, because ink lives in per-page slots. Her handwriting has to be
  // carried into the backup explicitly or it is simply not in the file.
- const payload = JSON.parse(JSON.stringify(store));
+ // storeJSON leaves out store.gannoStrokes, which is only the in-memory cache
+ // of those per-page slots - without that the backup carried every page twice.
+ const payload = JSON.parse(storeJSON());
  try {
    const pad = {};
    for (const k in localStorage) {
@@ -45092,7 +45113,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (!worker) { syncFlush(); return; }
     if (asyncBusy) { runAgain = true; return; }
     var s;
-    try { s = JSON.stringify(store); } catch(e){ syncFlush(); return; }
+    // Ink-free: this is what gets written to STORE_KEY, and the ink cache in
+    // memory does not belong in the file the per-page split took it out of.
+    try { s = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store); } catch(e){ syncFlush(); return; }
     asyncBusy = true;
     var id = ++jobId;
     jobs[id] = function(packed){
@@ -56973,14 +56996,8 @@ function installPersistOverride(){
     if (typeof _persistStore !== 'function' || window.__inkPersistPatched) return;
     window.__inkPersistPatched = true;
     _persistStore = function(){
-      var ink = store.gannoStrokes;
-      var serialized;
-      try {
-        delete store.gannoStrokes;              // ink is persisted per page, not here
-        serialized = JSON.stringify(store);
-      } finally {
-        if (ink !== undefined) store.gannoStrokes = ink;
-      }
+      // ink is persisted per page, not here - storeJSON leaves it out
+      var serialized = (typeof storeJSON === 'function') ? storeJSON() : JSON.stringify(store);
       // The loader detects the format by whether it starts with '{', so plain
       // JSON is safe to store - and skipping the compressor is ~30x faster.
       var packed = serialized;
@@ -60766,7 +60783,10 @@ function mirrorWrite(){
     }
     try { inkMirrorWrite(); } catch (e) {}   // the handwriting rides every mirror
     if (raw) return put(raw);
-    var serialized = JSON.stringify(store);
+    // inkMirrorWrite() above already carried the handwriting into its own
+    // record, so serializing the ink cache here mirrored all of it a second
+    // time - and compressed megabytes to do it.
+    var serialized = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store);
     var syncPack = function(){ return (typeof LZString !== 'undefined' && LZString.compressToUTF16) ? LZString.compressToUTF16(serialized) : serialized; };
     // Backgrounded: iOS may suspend before a worker round-trip completes, and
     // this mirror is the safety net - pack synchronously (nothing visible to
@@ -60879,7 +60899,13 @@ if (typeof saveStore === 'function' && !saveStore.__fortress) {
     try {
       var prev = localStorage.getItem(STORE_KEY);
       if (prev && prev.length > 5000) {
-        var next = JSON.stringify(store);
+        /* Ink-free, for two reasons. It is what makes the comparison mean
+           anything - what is on disk has no ink in it, so measuring a copy
+           that does was comparing two different things. And it is what takes
+           this off the writing path: with her nineteen pages in memory this
+           line was serializing 5.5MB on every single save, several times a
+           second while she wrote, which is the skipping she reported. */
+        var next = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store);
         // a real store shrinking to under a fifth of its size in one write is
         // the signature of clobbering good data with a fresh default
         if (next && next.length * 3 < prev.length) {
@@ -61443,7 +61469,18 @@ function inkKeys(){
   return out;
 }
 function snapshot(){
-  var snap = { v: 1, at: Date.now(), store: store, ink: {} };
+  /* The store WITHOUT its ink cache. Handwriting travels in snap.ink below,
+     one entry per page; leaving store.gannoStrokes in as well sent every page
+     twice, doubling the biggest thing this app ever compresses and uploads -
+     and it is what pushed a device over the size the sync can carry. */
+  var lean = store;
+  try {
+    if (store.gannoStrokes) {
+      lean = {};
+      for (var sk in store) if (Object.prototype.hasOwnProperty.call(store, sk) && sk !== 'gannoStrokes') lean[sk] = store[sk];
+    }
+  } catch (e) { lean = store; }
+  var snap = { v: 1, at: Date.now(), store: lean, ink: {} };
   try {
     var ks = inkKeys();
     for (var i = 0; i < ks.length; i++) {
@@ -64651,7 +64688,7 @@ var timer = null, dirty = false, busy = false, lastSync = 0, gen = 0;
 
 function heal(){
   _dbg.heals++;
-  try { _dbg.healLen = JSON.stringify(store).length; } catch (e) {}
+  try { _dbg.healLen = (typeof window.__storeJSON === 'function') ? window.__storeJSON().length : JSON.stringify(store).length; } catch (e) {}
   // The original quota machinery, without recursing into the wrapper.
   try { _orig(); dirty = false; return true; } catch (e) {
     try {
@@ -64686,7 +64723,12 @@ function run(){
     return;
   }
   var s;
-  try { s = JSON.stringify(store); } catch (e) { heal(); return; }
+  /* Ink-free. This is the string the worker compresses and then writes to
+     STORE_KEY, so serializing the ink cache here did not just cost the
+     compression of megabytes - it put the handwriting back INTO the big store
+     the per-page split had taken it out of. Measured: the store on disk grew
+     from 1KB to 282KB of re-absorbed ink after one save. */
+  try { s = (typeof window.__storeJSON === 'function') ? window.__storeJSON() : JSON.stringify(store); } catch (e) { heal(); return; }
   dirty = false; busy = true;
   var id = ++jobId, g = gen;
   jobs[id] = function(packed){
