@@ -30,6 +30,8 @@ run inkdupe inkdupe.js 1
 run inkanchor inkanchor.js 1
 run inkcompact inkcompact.js 1
 run storelean storelean.js 1
+run notespaper notespaper.js 1
+run notesformulas notesformulas.js 1
 run notespages notespages.js 1
 run notesline notesline.js 1
 run classreset classreset.js 1
