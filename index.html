@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.582">
+<meta name="app-build" content="18.583">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -31417,6 +31417,358 @@ async function downloadAllCoursesPdf() {
  }
 }
 
+
+/* ====================================================================
+ * EXPORT A WHOLE COURSE - "export the entire course with my notes and the
+ * solving of the problems and practice test should also be added".
+ *
+ * WHY THIS IS AN HTML FILE AND NOT A PDF. The app already had a course PDF,
+ * and it was the wrong artifact for this in two ways. It builds through
+ * jsPDF, which is fetched from a CDN, so on the iPad with no signal the
+ * export simply failed. And it puts every lesson through pdfStripHtml, so
+ * the tables, the truth tables, the worked examples and every SVG diagram -
+ * most of what makes a lesson worth keeping - came out as bare text or not
+ * at all.
+ *
+ * One self-contained HTML file has neither problem. It needs no library, so
+ * it works with the aeroplane mode on; it keeps the lessons exactly as they
+ * are drawn on screen; her handwriting rides along as embedded images; and
+ * Safari will print it straight to PDF if that is what she wants, with the
+ * page breaks already set up below.
+ *
+ * WHAT GOES IN
+ *   - every lesson, with its tables and diagrams intact
+ *   - her handwriting, page by page, under the section she wrote it in
+ *   - her typed notes, likewise
+ *   - every question WITH its worked solution: the answer, the explanation,
+ *     and the per-option rationale saying why each wrong one is wrong
+ *   - the practice test at the back, as a paper to sit followed by its own
+ *     answer key - not scattered through the lessons, which is what made it
+ *     useless to revise from
+ * ==================================================================== */
+(function courseExport(){
+if (typeof document === 'undefined') return;
+if (window.__courseExport) return; window.__courseExport = true;
+
+/* The drill chapters build themselves from her history at run time - weak
+   spots, missed questions, fresh questions. There is nothing static behind
+   them, so a section earns its place by actually holding something: a lesson,
+   questions, her handwriting or her typed notes. */
+function secHas(cid, ch, sec, want){
+  var key = cid + '/' + ch.id + '/' + sec.id;
+  var o = { key: key, title: sec.title || sec.id, lesson: null, qs: [], ink: null, typed: [] };
+  if (want.lessons) { try { var L = getLesson(cid, ch.id, sec.id); if (L && L.body) o.lesson = L.body; } catch (e) {} }
+  if (want.questions) { try { o.qs = getQuestions(cid, ch.id, sec.id) || []; } catch (e) {} }
+  if (want.notes) {
+    try { var nk = window.__notesPanel.ink(key); if (nk && nk.pages) o.ink = nk; } catch (e) {}
+    try { o.typed = window.__notesPanel.typed(key) || []; } catch (e) {}
+  }
+  o.empty = !o.lesson && !o.qs.length && !o.ink && !o.typed.length;
+  return o;
+}
+/* The simulation chapters are the practice test. They are pulled out of the
+   body of the document and put at the back as a paper, because 800 questions
+   threaded between the lessons is not something anyone can revise from. */
+function isExam(ch){
+  var id = String(ch.id || ''), t = String(ch.title || ch.name || '');
+  return id === 'pa_sim' || id === 'oa_sim' ||
+         /Practice Assessment|Objective Assessment/i.test(t);
+}
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function letter(i){ return String.fromCharCode(65 + i); }
+function when(ts){ try { return new Date(ts).toLocaleDateString(); } catch (e) { return ''; } }
+
+/* A question and how to solve it. The rationale for each wrong option is the
+   part she cannot get from an answer key, so it is set out per option rather
+   than gathered into a paragraph at the end. */
+function qBlock(q, n, withSolution){
+  var out = [];
+  out.push('<div class="q">');
+  out.push('<div class="q-t"><span class="q-n">' + n + '.</span> ' + (q.text || '') + '</div>');
+  var correct = (typeof q.correct === 'number') ? q.correct : -1;
+  var set = Array.isArray(q.correctSet) ? q.correctSet : null;
+  out.push('<ol class="q-o">');
+  (q.options || []).forEach(function(opt, i){
+    var right = set ? set.indexOf(i) >= 0 : (i === correct);
+    var why = (q.distractors && q.distractors[String(i)]) || '';
+    out.push('<li class="' + (withSolution && right ? 'right' : '') + '">' +
+             '<span class="q-l">' + letter(i) + '</span>' + opt +
+             (withSolution && right ? '<span class="tick"> &check; correct</span>' : '') +
+             (withSolution && !right && why ? '<div class="why">' + why + '</div>' : '') +
+             '</li>');
+  });
+  out.push('</ol>');
+  if (withSolution && q.explain) out.push('<div class="sol"><b>Solution.</b> ' + q.explain + '</div>');
+  out.push('</div>');
+  return out.join('');
+}
+
+/* THE LESSONS MUST STILL LOOK LIKE THE LESSONS. They are written against the
+   app's own classes - callouts, worked examples, the matrix grid, numbered
+   steps, the visual-lesson blocks - so those rules travel with the file,
+   read out of the live stylesheet rather than guessed at. Without them a
+   matrix comes out as a run of loose numbers and a callout as bare text. */
+var LESSON_SEL = /(^|[\s,>+~(])\.(callout|step|step-num|vl|mx|num|key-term|def-glance|bignum|tb-|figure|hl-|ansbox|deftable)/;
+function collectRules(rules, out){
+  for (var i = 0; i < rules.length; i++) {
+    var r = rules[i];
+    if (r.selectorText && LESSON_SEL.test(r.selectorText)) { out.push(r.cssText); continue; }
+    if (r.cssRules && r.cssRules.length) {
+      var inner = [];
+      collectRules(r.cssRules, inner);
+      if (inner.length) {
+        var cond = r.conditionText || (r.media && r.media.mediaText) || '';
+        out.push(cond ? ('@media ' + cond + '{' + inner.join('\n') + '}') : inner.join('\n'));
+      }
+    }
+  }
+}
+function lessonCss(){
+  var out = [];
+  try {
+    var sheets = document.styleSheets;
+    for (var i = 0; i < sheets.length; i++) {
+      var rules = null;
+      try { rules = sheets[i].cssRules; } catch (e) { continue; }   // another origin
+      if (rules) collectRules(rules, out);
+    }
+  } catch (e) {}
+  return out.join('\n');
+}
+/* The app's own palette is dark, and this file is for reading and for
+   printing, so the variables those rules reach for are given light values
+   here. Same hues, put on paper. */
+var LIGHT_VARS = [
+':root{',
+'--bg:#ffffff;--bg-2:#f5f6f9;--surface:#ffffff;--surface-2:#f2f4f8;--surface-3:#e6e9f0;',
+'--surface-glass:#f7f8fb;--border:#dfe3ea;--border-strong:#c7ccd6;',
+'--text:#16181d;--text-2:#3a3f4a;--text-3:#616773;--text-4:#858b97;--text-5:#a3a8b3;',
+'--accent:#0e7c6b;--accent-2:#1668a8;--accent-bg:#e6f5f2;--accent-text:#0b3b34;',
+'--accent-grad:linear-gradient(135deg,#0e7c6b,#1668a8);',
+'--secondary:#b0407a;--secondary-2:#7c4bb0;--secondary-bg:#fbeef5;',
+'--secondary-grad:linear-gradient(135deg,#b0407a,#7c4bb0);',
+'--warning:#9a6700;--warning-bg:#fff6e0;--danger:#b42318;--danger-bg:#fdeceb;',
+'--success:#1d7a45;--success-bg:#e9f8f0;--code-bg:#f6f7f9;--code-text:#8a4b00;',
+'--highlight:#fff3b0;--note-bg:#eef7f5;--note-border:#0e7c6b;',
+'--shadow:none;--shadow-strong:none;--shadow-card:none;--radius:10px;--radius-sm:7px;}'
+].join('');
+
+var CSS = [
+'*{box-sizing:border-box}',
+'body{margin:0;background:#fff;color:#16181d;',
+'  font:16px/1.62 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}',
+'.wrap{max-width:820px;margin:0 auto;padding:40px 26px 90px;}',
+'h1,h2,h3,h4{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;',
+'  line-height:1.24;text-wrap:balance;}',
+'h1{font-size:2.15rem;margin:0 0 6px;letter-spacing:-.02em;}',
+'h2{font-size:1.45rem;margin:0 0 4px;}',
+'h3{font-size:1.1rem;margin:26px 0 6px;}',
+'.sub{color:#5d6470;font-size:.95rem;margin:0 0 30px;}',
+'.cover{border-bottom:3px solid #16181d;padding-bottom:26px;margin-bottom:34px;}',
+'.badges{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 0;}',
+'.badge{font:600 11px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.06em;',
+'  text-transform:uppercase;padding:6px 9px;border:1px solid #c9cfd8;border-radius:999px;color:#41474f;}',
+'.toc{margin:0 0 40px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:.92rem;}',
+'.toc ol{margin:0;padding-left:1.3em;}',
+'.toc li{margin:3px 0;}',
+'.toc a{color:#1e3a8a;text-decoration:none;}',
+'.ch{page-break-before:always;break-before:page;padding-top:12px;',
+'  border-top:2px solid #16181d;margin-top:46px;}',
+'.ch:first-of-type{page-break-before:auto;break-before:auto;}',
+'.sec{margin:30px 0 0;}',
+'.sec-h{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:1.06rem;font-weight:700;',
+'  padding-bottom:5px;border-bottom:1px solid #d8dde4;margin:34px 0 12px;}',
+'.lesson img,.lesson svg{max-width:100%;height:auto;}',
+'.lesson table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.9rem;}',
+'.lesson th,.lesson td{border:1px solid #d3d9e0;padding:6px 9px;text-align:left;vertical-align:top;}',
+'.lesson th{background:#f2f4f7;font-weight:700;}',
+'.lesson pre{background:#f6f7f9;border:1px solid #e2e6ec;border-radius:6px;padding:10px 12px;',
+'  overflow-x:auto;font-size:.85rem;}',
+'.lesson code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;}',
+'.mine{border-left:4px solid #b06fb0;background:#fbf7fd;padding:12px 16px;margin:18px 0;',
+'  border-radius:0 7px 7px 0;}',
+'.mine-h{font:700 11px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.08em;',
+'  text-transform:uppercase;color:#7a4b82;margin-bottom:9px;}',
+'.mine img{width:100%;border:1px solid #d9dee5;border-radius:5px;margin:8px 0;display:block;}',
+'.typed{white-space:pre-wrap;margin:8px 0;padding-left:12px;border-left:2px solid #ddd0e4;}',
+'.typed .st{display:block;font:600 10px/1 -apple-system,Helvetica,Arial,sans-serif;color:#8a8f98;',
+'  letter-spacing:.05em;margin-bottom:3px;}',
+'.q{margin:16px 0 20px;page-break-inside:avoid;break-inside:avoid;}',
+'.q-t{font-weight:600;}',
+'.q-n{color:#8a8f98;margin-right:5px;}',
+'.q-o{list-style:none;margin:8px 0 0;padding:0;}',
+'.q-o li{margin:4px 0;padding:5px 9px;border-radius:5px;border:1px solid transparent;}',
+'.q-o li.right{background:#eef8f0;border-color:#b6ddc0;}',
+'.q-l{display:inline-block;min-width:1.5em;font-weight:700;color:#5d6470;}',
+'.tick{color:#2f7d4a;font-weight:700;font-size:.85em;margin-left:6px;}',
+'.why{font-size:.87rem;color:#6a7078;margin:4px 0 0 1.5em;font-style:italic;}',
+'.sol{background:#f5f7fa;border-left:3px solid #7c8794;padding:9px 13px;margin:9px 0 0;',
+'  font-size:.93rem;border-radius:0 5px 5px 0;}',
+'.exam{page-break-before:always;break-before:page;border-top:3px double #16181d;',
+'  margin-top:50px;padding-top:16px;}',
+'.key{page-break-before:always;break-before:page;}',
+'.note{color:#6a7078;font-size:.9rem;font-style:italic;}',
+'@media print{',
+'  .wrap{max-width:none;padding:0;}',
+'  body{font-size:11.5pt;}',
+'  a{color:inherit;text-decoration:none;}',
+'  .toc{display:none;}',
+'}'
+].join('\n');
+
+/* Built a chapter at a time with a breath in between, so a long course does
+   not lock the screen while it is being put together. */
+function yieldNow(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+
+async function buildHtml(cid, want, onProgress){
+  var course = COURSES[cid];
+  if (!course) throw new Error('No such class: ' + cid);
+  var chapters = (course.chapters || []);
+  var body = [], toc = [], exams = [];
+  var count = { lessons: 0, questions: 0, inkPages: 0, typed: 0, exam: 0 };
+
+  for (var ci = 0; ci < chapters.length; ci++) {
+    var ch = chapters[ci];
+    if (onProgress) onProgress(ci + 1, chapters.length, ch.title || ch.id);
+    await yieldNow();
+    var secs = (ch.sections || []).map(function(sec){ return secHas(cid, ch, sec, want); })
+                                  .filter(function(o){ return !o.empty; });
+    if (!secs.length) continue;
+    if (isExam(ch)) { if (want.exam) exams.push({ ch: ch, secs: secs }); continue; }
+
+    var chId = 'ch-' + esc(ch.id);
+    toc.push('<li><a href="#' + chId + '">' + esc(ch.title || ch.name || ch.id) + '</a></li>');
+    body.push('<section class="ch" id="' + chId + '">');
+    body.push('<h2>' + esc(ch.title || ch.name || ch.id) + '</h2>');
+
+    for (var si = 0; si < secs.length; si++) {
+      var o = secs[si];
+      body.push('<div class="sec"><div class="sec-h">' + esc(o.title) + '</div>');
+      if (o.lesson) { body.push('<div class="lesson">' + o.lesson + '</div>'); count.lessons++; }
+
+      if (o.ink || o.typed.length) {
+        body.push('<div class="mine"><div class="mine-h">My notes</div>');
+        if (o.ink) {
+          for (var pg = 1; pg <= o.ink.pages; pg++) {
+            var img = null;
+            try { img = window.__notesPanel.inkPage(o.key, pg, 1100); } catch (e) { img = null; }
+            if (img && img.dataUrl) {
+              body.push('<img alt="Handwritten page ' + pg + '" src="' + img.dataUrl + '">');
+              count.inkPages++;
+            }
+            await yieldNow();
+          }
+        }
+        o.typed.forEach(function(t){
+          count.typed++;
+          body.push('<div class="typed">' + (t.ts ? '<span class="st">' + esc(when(t.ts)) + '</span>' : '') +
+                    esc(t.text) + '</div>');
+        });
+        body.push('</div>');
+      }
+
+      if (o.qs.length) {
+        body.push('<h3>Questions and worked solutions</h3>');
+        o.qs.forEach(function(q, i){ body.push(qBlock(q, i + 1, true)); count.questions++; });
+      }
+      body.push('</div>');
+    }
+    body.push('</section>');
+  }
+
+  /* The practice test: the paper first, so she can actually sit it, and the
+     worked answers after, so looking one up does not show her the next. */
+  var examHtml = [];
+  if (exams.length) {
+    exams.forEach(function(E){
+      var all = [];
+      E.secs.forEach(function(o){ o.qs.forEach(function(q){ all.push(q); }); });
+      if (!all.length) return;
+      count.exam += all.length;
+      var t = esc(E.ch.title || E.ch.id);
+      examHtml.push('<section class="exam" id="exam-' + esc(E.ch.id) + '">');
+      examHtml.push('<h2>' + t + '</h2>');
+      examHtml.push('<p class="note">' + all.length + ' questions. The worked answers are in the next section.</p>');
+      all.forEach(function(q, i){ examHtml.push(qBlock(q, i + 1, false)); });
+      examHtml.push('</section>');
+      examHtml.push('<section class="key"><h2>' + t + ' &mdash; worked answers</h2>');
+      all.forEach(function(q, i){ examHtml.push(qBlock(q, i + 1, true)); });
+      examHtml.push('</section>');
+      toc.push('<li><a href="#exam-' + esc(E.ch.id) + '">' + t + '</a></li>');
+    });
+  }
+
+  var badges = [];
+  var many = function(n, one, more){ return n + ' ' + (n === 1 ? one : (more || one + 's')); };
+  if (count.lessons) badges.push(many(count.lessons, 'lesson'));
+  if (count.questions) badges.push(many(count.questions, 'question') + ', worked');
+  if (count.inkPages) badges.push(many(count.inkPages, 'handwritten page'));
+  if (count.typed) badges.push(many(count.typed, 'typed note'));
+  if (count.exam) badges.push(many(count.exam, 'practice-test question'));
+
+  var head = [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>' + esc(course.code) + ' — ' + esc(course.name) + '</title>',
+    '<style>' + LIGHT_VARS + '\n' + lessonCss() + '\n' + CSS + '</style></head><body><div class="wrap">',
+    '<header class="cover"><h1>' + esc(course.code) + '</h1>',
+    '<h2>' + esc(course.name) + '</h2>',
+    '<p class="sub">Exported from Natasha&rsquo;s Study Hub on ' + esc(when(Date.now())) + '</p>',
+    '<div class="badges">' + badges.map(function(b){ return '<span class="badge">' + esc(b) + '</span>'; }).join('') + '</div>',
+    '</header>',
+    toc.length ? ('<nav class="toc"><h3>Contents</h3><ol>' + toc.join('') + '</ol></nav>') : ''
+  ].join('\n');
+
+  var html = head + body.join('\n') + examHtml.join('\n') + '\n</div></body></html>';
+  return { html: html, counts: count, course: course };
+}
+
+function save(blob, name){
+  try {
+    if (navigator.share && navigator.canShare && typeof File === 'function') {
+      var f = new File([blob], name, { type: 'text/html' });
+      if (navigator.canShare({ files: [f] })) {
+        navigator.share({ files: [f], title: name }).then(function(){
+          try { toast('Ready to save or share'); } catch (e) {}
+        }, function(err){ if (!err || err.name !== 'AbortError') down(blob, name); });
+        return;
+      }
+    }
+  } catch (e) {}
+  down(blob, name);
+}
+function down(blob, name){
+  try {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 6000);
+    try { toast('Saved ' + name); } catch (e) {}
+  } catch (e) {
+    try { toast('Could not save the file'); } catch (e2) {}
+  }
+}
+
+async function run(cid, want, onProgress){
+  var out = await buildHtml(cid, want, onProgress);
+  var name = (out.course.code || cid).replace(/[^\w\-]+/g, '') + '-complete.html';
+  return { blob: new Blob([out.html], { type: 'text/html;charset=utf-8' }),
+           name: name, counts: out.counts, bytes: out.html.length };
+}
+
+window.__exportCourse = {
+  build: function(cid, want, onProgress){
+    return run(cid, want || { lessons: 1, questions: 1, notes: 1, exam: 1 }, onProgress);
+  },
+  save: save
+};
+})();
+
 function showPdfExportSheet() {
  let sheet = document.querySelector('.pomo-sheet.pdf-sheet');
  if (sheet) { sheet.remove(); return; }
@@ -31425,26 +31777,46 @@ function showPdfExportSheet() {
  sheet.style.alignItems = 'flex-end';
 
  const courseRows = Object.values(COURSES).map(c =>
- `<button class="pomo-btn" data-course="${c.code}" style="width:100%; justify-content:space-between; text-align:left; margin-bottom:6px; display:flex; align-items:center; padding: 10px 12px;">
+ `<button class="pomo-btn" data-course="${c.id}" style="width:100%; justify-content:space-between; text-align:left; margin-bottom:6px; display:flex; align-items:center; padding: 10px 12px;">
  <span style="display:flex; flex-direction:column; gap:2px;">
  <span style="font-weight:600; color:var(--text);">${c.code}</span>
  <span style="font-size:11px; color:var(--text-3);">${c.name}</span>
  </span>
- <span style="color:var(--accent); font-size:14px;">↓ PDF</span>
+ <span style="color:var(--accent); font-size:14px;">Export &rarr;</span>
  </button>`
  ).join('');
 
+ const box = (id, label, sub) =>
+ `<label style="display:flex; gap:9px; align-items:flex-start; padding:7px 2px; cursor:pointer;">
+ <input type="checkbox" data-part="${id}" checked style="margin-top:3px; width:17px; height:17px; flex:0 0 auto;">
+ <span style="display:flex; flex-direction:column; gap:1px;">
+ <span style="font-size:13px; font-weight:600; color:var(--text);">${label}</span>
+ <span style="font-size:11px; color:var(--text-3);">${sub}</span>
+ </span></label>`;
+
  sheet.innerHTML = `
- <div class="pomo-card" style="text-align:left; max-width:560px; padding:18px 20px 24px; max-height:80vh; display:flex; flex-direction:column;">
- <button class="pomo-close" data-close>×</button>
- <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Export PDF</div>
- <p style="font-size:12px; color:var(--text-3); line-height:1.5; margin:0 0 14px;">
- PDFs include lessons + practice questions with answer key. Save to Files, then open in GoodNotes to mark up.
+ <div class="pomo-card" style="text-align:left; max-width:560px; padding:18px 20px 24px; max-height:86vh; display:flex; flex-direction:column;">
+ <button class="pomo-close" data-close>&times;</button>
+ <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Export a class</div>
+ <p style="font-size:12px; color:var(--text-3); line-height:1.5; margin:0 0 10px;">
+ One file with the whole class in it. Open it in Safari to read, or use Share &rarr; Print &rarr; Save as PDF for GoodNotes. It works with no signal.
  </p>
- <button class="pomo-btn primary" data-act="all" style="width:100%; margin-bottom:14px;">↓ All courses (single PDF)</button>
- <div style="font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;">Or per course</div>
+ <div style="border:1px solid var(--border); border-radius:10px; padding:6px 10px; margin:0 0 14px;">
+ ${box('lessons', 'Lessons', 'every lesson, with its tables and diagrams')}
+ ${box('notes', 'My notes', 'handwriting and typed notes, under the section I wrote them in')}
+ ${box('questions', 'Questions, worked', 'the answer, the explanation and why each wrong option is wrong')}
+ ${box('exam', 'Practice test', 'at the back as a paper, with its answers after it')}
+ </div>
+ <div data-prog style="display:none; font-size:12px; color:var(--text-2); margin:0 0 12px; padding:9px 11px; background:var(--bg-2); border-radius:8px;"></div>
+ <div style="font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;">Choose the class</div>
  <div style="overflow-y:auto; flex:1;">
  ${courseRows}
+ </div>
+ <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+ <button class="pomo-btn" data-act="pdf" style="width:100%; font-size:12px;">Old text-only PDF of every class</button>
+ <p style="font-size:11px; color:var(--text-4); line-height:1.45; margin:7px 0 0;">
+ That one needs a connection and drops the tables and diagrams. Kept in case you want it.
+ </p>
  </div>
  </div>
  `;
@@ -31453,15 +31825,39 @@ function showPdfExportSheet() {
  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
  sheet.querySelector('[data-close]').addEventListener('click', close);
 
- sheet.querySelector('[data-act="all"]').addEventListener('click', async () => {
+ const prog = sheet.querySelector('[data-prog]');
+ const want = () => {
+ const w = {};
+ sheet.querySelectorAll('[data-part]').forEach(b => { w[b.dataset.part] = b.checked ? 1 : 0; });
+ return w;
+ };
+
+ sheet.querySelector('[data-act="pdf"]').addEventListener('click', async () => {
  close();
  await downloadAllCoursesPdf();
  });
+
  sheet.querySelectorAll('[data-course]').forEach(btn => {
  btn.addEventListener('click', async () => {
- const code = btn.dataset.course;
+ const cid = btn.dataset.course;
+ const w = want();
+ if (!w.lessons && !w.notes && !w.questions && !w.exam) { toast('Tick at least one thing to put in it'); return; }
+ sheet.querySelectorAll('[data-course]').forEach(b => { b.disabled = true; b.style.opacity = '.45'; });
+ prog.style.display = 'block';
+ prog.textContent = 'Starting…';
+ try {
+ const out = await window.__exportCourse.build(cid, w, (i, n, title) => {
+ prog.textContent = 'Building ' + i + ' of ' + n + ' — ' + title;
+ });
+ const mb = (out.bytes / 1048576);
+ prog.textContent = 'Done — ' + (mb < 1 ? Math.round(out.bytes / 1024) + ' KB' : mb.toFixed(1) + ' MB');
  close();
- await downloadCoursePdf(code);
+ window.__exportCourse.save(out.blob, out.name);
+ } catch (e) {
+ console.error('Course export failed:', e);
+ prog.textContent = 'It did not build: ' + (e && e.message ? e.message : e);
+ sheet.querySelectorAll('[data-course]').forEach(b => { b.disabled = false; b.style.opacity = ''; });
+ }
  });
  });
 }
@@ -65998,10 +66394,16 @@ function inkForPaper(c){
 }
 /* Everything is drawn synchronously onto a canvas - no <img> round trip - so
    the share sheet can still be opened inside the tap that asked for it. */
-function renderPagePng(pageNo){
-  var n = Math.max(1, Math.min(pageCount(), pageNo | 0)) - 1;
+/* Draws one page of handwriting. By default the page she has open; given
+   `from` it draws any section's, which is what the course export needs - it
+   reads that section's strokes out of storage and never touches the pad. */
+function renderPagePng(pageNo, from){
+  from = from || null;
+  var src = from ? (from.strokes || []) : strokes;
+  var nPages = from ? Math.max(1, from.pages | 0) : pageCount();
+  var n = Math.max(1, Math.min(nPages, pageNo | 0)) - 1;
   var top = n * PAGE_H;
-  var W = 1700, H = Math.round(PAGE_H / UNITS * W);
+  var W = (from && from.width) || 1700, H = Math.round(PAGE_H / UNITS * W);
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d');
@@ -66034,8 +66436,8 @@ function renderPagePng(pageNo){
   var drawn = 0;
   /* same two passes as the screen: highlighter bands first, writing over them */
   for (var pass = 0; pass < 2; pass++) {
-  for (var i = 0; i < strokes.length; i++) {
-    var s = strokes[i]; if (!s || !s.points || !s.points.length) continue;
+  for (var i = 0; i < src.length; i++) {
+    var s = src[i]; if (!s || !s.points || !s.points.length) continue;
     if ((s.type === 'hl') !== (pass === 0)) continue;
     var y0 = s.points[0].y; if (y0 < top || y0 >= top + PAGE_H) continue;
     var pth = pathFor(s); if (!pth.d) continue;
@@ -66060,9 +66462,11 @@ function renderPagePng(pageNo){
   var dataUrl = cv.toDataURL('image/png');
   var bin = atob(dataUrl.split(',')[1]), bytes = new Uint8Array(bin.length);
   for (var j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
-  var title = (curKey ? secTitle(curKey) : 'Notes').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'Notes';
+  var forKey = from ? from.key : curKey;
+  var title = (forKey ? secTitle(forKey) : 'Notes').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'Notes';
   var name = title + '-page-' + (n + 1) + '.png';
-  return { blob: new Blob([bytes], { type: 'image/png' }), name: name, w: W, h: H, strokes: drawn };
+  return { blob: new Blob([bytes], { type: 'image/png' }), name: name, w: W, h: H,
+           strokes: drawn, dataUrl: dataUrl };
 }
 function exportPage(){
   var out;
@@ -67413,6 +67817,33 @@ window.__notesPanel = {
   limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
   paper: function(){ return paperId(); },
+  /* HER HANDWRITING, FOR ANY SECTION, without opening it. `ink` says how much
+     is there; `inkPage` draws one page of it. Both read the per-page storage
+     slot directly, so nothing about the open notebook changes. */
+  ink: function(key){
+    var ss = [];
+    try { ss = loadStrokes(key); } catch (e) { ss = []; }
+    if (!ss.length) return { pages: 0, strokes: 0 };
+    var lowest = 0;
+    for (var i = 0; i < ss.length; i++) {
+      var pts = ss[i] && ss[i].points; if (!pts) continue;
+      for (var j = 0; j < pts.length; j++) if (pts[j].y > lowest) lowest = pts[j].y;
+    }
+    return { pages: Math.max(1, Math.ceil((lowest + 1) / PAGE_H)), strokes: ss.length };
+  },
+  inkPage: function(key, pageNo, width){
+    var ss = [];
+    try { ss = loadStrokes(key); } catch (e) { ss = []; }
+    if (!ss.length) return null;
+    var info = window.__notesPanel.ink(key);
+    var o = renderPagePng(pageNo, { strokes: ss, pages: info.pages, key: key, width: width || 1100 });
+    return { dataUrl: o.dataUrl, w: o.w, h: o.h, strokes: o.strokes, name: o.name };
+  },
+  typed: function(key){
+    try { return notesFor(key).map(function(x){
+      return { text: (x && x.text) || String(x || ''), ts: (x && (x.createdAt || x.ts)) || 0 }; }); }
+    catch (e) { return []; }
+  },
   formulas: function(){
     var sh = formulaSheet();
     return { sheets: Object.keys(FORMULAS || {}).length, has: !!sh,
