@@ -34,6 +34,7 @@ run notespaper notespaper.js 1
 run notesformulas notesformulas.js 1
 run courseexport courseexport.js 1
 run toolsbullets toolsbullets.js 1
+run offlinekeep offlinekeep.js 1
 run notespages notespages.js 1
 run notesline notesline.js 1
 run classreset classreset.js 1

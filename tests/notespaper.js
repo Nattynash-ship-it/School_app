@@ -101,6 +101,58 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
      'other class opened on ' + R.otherClass);
   ok('and once set, each class keeps its own', R.otherAfter === 'college' && R.backToMaths === 'graph',
      'other class ' + R.otherAfter + ', maths class ' + R.backToMaths);
+  /* A CLASS SHE HAS ALREADY WRITTEN IN KEEPS ITS PAPER.
+     Picking a paper used to set the default every other class opened with, so
+     trying one out re-papered pages that were already full - Cornell notes,
+     written in two columns against a cue divider at 2.5in, redrawn on ruled
+     paper whose margin is at 1.25in. The writing never moved; the lines under
+     it did. That is what "the notes have gotten jumbled" meant. */
+  const K = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    // start clean: no per-class choices anywhere
+    store.padPrefs = {};
+    const key = 'C959/ch4/s1';
+    const mk = i => ({ type:'pen', color:'#1b1b1b', width:2, _ts:i,
+      points: Array.from({length:20}, (_,j) => ({ x:120+j*9, y:300+i*60, p:.5 })) });
+    // she has written in this class
+    gannoSaveStrokes('pad_' + key.replace(/[^a-zA-Z0-9_/-]/g,'_'), [mk(0), mk(1)]);
+    store.padNotes = store.padNotes || {};
+    store.padNotes[key] = { n: 2, h: 1294, ts: Date.now() };
+    saveStore(); if (saveStore.flushNow) saveStore.flushNow();
+    await w(300);
+
+    // she tries graph paper on a DIFFERENT class
+    window.__notesPanel.close(); await w(300);
+    go({ name:'section', courseId:'D684', chId:'g1', secId:'x3_1' });
+    await w(2200);
+    window.__notesPanel.open(); await w(900);
+    window.__notesPanel.setPaper('graph');
+    const other = window.__notesPanel.paper();
+
+    // the class she has already filled must be untouched
+    window.__notesPanel.close(); await w(300);
+    go({ name:'section', courseId:'C959', chId:'ch4', secId:'s1' });
+    await w(2200);
+    window.__notesPanel.open(); await w(900);
+    const written = window.__notesPanel.paper();
+
+    // but she can still choose for that class herself, and it sticks
+    window.__notesPanel.setPaper('wide');
+    const chosen = window.__notesPanel.paper();
+    window.__notesPanel.close(); await w(300);
+    go({ name:'section', courseId:'C959', chId:'ch4', secId:'s1' });
+    await w(2000);
+    window.__notesPanel.open(); await w(800);
+    const stillChosen = window.__notesPanel.paper();
+    return { other, written, chosen, stillChosen };
+  });
+
+  ok('trying a paper on one class does not re-paper a class already written in',
+     K.written === 'cornell', 'the written-in class opened on ' + K.written);
+  ok('the class she picked it on keeps it', K.other === 'graph', K.other);
+  ok('and she can still choose for a class she has written in', K.chosen === 'wide', K.chosen);
+  ok('that choice sticks', K.stillChosen === 'wide', K.stillChosen);
+
   ok('no page errors', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`notespaper: ${pass}/${pass + fail} passed`);
   await browser.close();

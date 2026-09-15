@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.584">
+<meta name="app-build" content="18.585">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -31769,6 +31769,145 @@ window.__exportCourse = {
 };
 })();
 
+
+/* ====================================================================
+ * SAVE EVERYTHING FOR THE TRAIN.
+ *
+ * "when I try using the app offline on my phone in the train station I am
+ * unable to view anything."
+ *
+ * Nothing in the app ever DELIBERATELY downloaded her library. A course was
+ * kept only if she happened to open it while she had signal, and until this
+ * build the next deploy threw that away again. On a device she uses less
+ * often - her phone - there was effectively nothing there at all.
+ *
+ * This fetches every course file into the same cache the worker reads, with
+ * a count and a size as it goes, and says plainly what is held afterwards.
+ * It is 64MB against a quota of tens of gigabytes, so the cost is the wait,
+ * not the room.
+ * ==================================================================== */
+(function saveOffline(){
+if (typeof document === 'undefined') return;
+if (window.__saveOffline) return; window.__saveOffline = true;
+try {
+
+var SHELF = 'study-hub-content';
+
+function build(){
+  try { return (document.querySelector('meta[name=app-build]') || {}).content || ''; } catch (e) { return ''; }
+}
+/* Every course the app knows about, asked for exactly the way the app asks
+   for it - same path, same ?v - so what lands in the cache is the entry the
+   worker will look for. */
+function urls(){
+  try { if (typeof window.__contentUrls === 'function') return window.__contentUrls(); } catch (e) {}
+  return ['/content-manifest.json?v=' + build()];
+}
+function held(){
+  if (!window.caches) return Promise.resolve({ files: 0, bytes: 0 });
+  return caches.open(SHELF).then(function(c){
+    return c.keys().then(function(ks){
+      var files = ks.filter(function(r){ return /\/content-[\w-]+\.json/.test(r.url); });
+      return Promise.all(files.map(function(r){
+        return c.match(r).then(function(resp){
+          if (!resp) return 0;
+          var n = +resp.headers.get('content-length');
+          if (n > 0) return n;
+          return resp.clone().blob().then(function(b){ return b.size; }).catch(function(){ return 0; });
+        });
+      })).then(function(sizes){
+        return { files: files.length, bytes: sizes.reduce(function(a, b){ return a + b; }, 0) };
+      });
+    });
+  }).catch(function(){ return { files: 0, bytes: 0 }; });
+}
+function mb(n){ return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB'; }
+
+/* One at a time on purpose. Sixty parallel requests for a megabyte each is
+   how you stall a phone on a weak signal and end up with a half-written
+   cache; this way every file either lands whole or is simply missing. */
+function download(onStep){
+  if (!window.caches) return Promise.reject(new Error('This browser cannot keep an offline copy.'));
+  var list = urls();
+  if (list.length < 2) return Promise.reject(new Error('The class list has not loaded yet — open the app fully, then try again.'));
+  return caches.open(SHELF).then(function(c){
+    var i = 0, okCount = 0, failed = [];
+    function next(){
+      if (i >= list.length) return Promise.resolve({ total: list.length, ok: okCount, failed: failed });
+      var u = list[i++];
+      if (onStep) onStep(i, list.length, u);
+      return fetch(u, { credentials: 'same-origin' }).then(function(resp){
+        if (!resp || !resp.ok) { failed.push(u); return; }
+        return c.put(u, resp.clone()).then(function(){ okCount++; });
+      }).catch(function(){ failed.push(u); }).then(next);
+    }
+    return next();
+  });
+}
+
+window.__offline = { held: held, download: download, urls: urls, shelf: SHELF };
+
+/* ---------- the panel ---------- */
+function open(){
+  var old = document.querySelector('.pomo-sheet.off-sheet');
+  if (old) { old.remove(); return; }
+  var sheet = document.createElement('div');
+  sheet.className = 'pomo-sheet off-sheet';
+  sheet.style.alignItems = 'flex-end';
+  sheet.innerHTML =
+    '<div class="pomo-card" style="text-align:left; max-width:520px; padding:18px 20px 22px;">' +
+      '<button class="pomo-close" data-close>&times;</button>' +
+      '<div style="font-size:11px; color:var(--text-4); letter-spacing:.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Use it without signal</div>' +
+      '<p style="font-size:12.5px; color:var(--text-3); line-height:1.55; margin:0 0 14px;">' +
+        'Save every class onto this device so the app works on the train, on a plane, anywhere. ' +
+        'Do it while you have a good connection.</p>' +
+      '<div data-held style="font-size:12px; color:var(--text-2); background:var(--bg-2); border-radius:9px; padding:10px 12px; margin-bottom:12px;">Checking…</div>' +
+      '<button class="pomo-btn primary" data-go style="width:100%;">Save everything for offline</button>' +
+      '<p data-note style="font-size:11px; color:var(--text-4); line-height:1.5; margin:10px 0 0;">' +
+        'About 64 MB. It stays until you clear the app’s data, and a new version no longer wipes it.</p>' +
+    '</div>';
+  document.body.appendChild(sheet);
+  var close = function(){ sheet.remove(); };
+  sheet.addEventListener('click', function(e){ if (e.target === sheet) close(); });
+  sheet.querySelector('[data-close]').addEventListener('click', close);
+  var heldEl = sheet.querySelector('[data-held]');
+  var goBtn = sheet.querySelector('[data-go]');
+
+  function show(){
+    held().then(function(h){
+      heldEl.textContent = h.files
+        ? ('On this device now: ' + h.files + ' class ' + (h.files === 1 ? 'file' : 'files') + ', ' + mb(h.bytes))
+        : 'Nothing saved on this device yet.';
+    });
+  }
+  show();
+
+  goBtn.addEventListener('click', function(){
+    goBtn.disabled = true; goBtn.style.opacity = '.5';
+    goBtn.textContent = 'Saving…';
+    download(function(i, n){
+      heldEl.textContent = 'Saving ' + i + ' of ' + n + '…';
+    }).then(function(r){
+      goBtn.textContent = 'Save everything for offline';
+      goBtn.disabled = false; goBtn.style.opacity = '';
+      show();
+      try {
+        if (typeof toast === 'function')
+          toast(r.failed.length ? (r.ok + ' saved, ' + r.failed.length + ' could not be fetched — try again on a better connection')
+                                : 'All ' + r.ok + ' saved — the app works with no signal now');
+      } catch (e) {}
+    }).catch(function(e){
+      goBtn.textContent = 'Save everything for offline';
+      goBtn.disabled = false; goBtn.style.opacity = '';
+      heldEl.textContent = (e && e.message) ? e.message : 'It did not save.';
+    });
+  });
+}
+window.__offlineSheet = open;
+
+} catch (e) { if (window.console) console.warn('saveOffline failed:', e); }
+})();
+
 function showPdfExportSheet() {
  let sheet = document.querySelector('.pomo-sheet.pdf-sheet');
  if (sheet) { sheet.remove(); return; }
@@ -31813,6 +31952,10 @@ function showPdfExportSheet() {
  ${courseRows}
  </div>
  <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+ <button class="pomo-btn primary" data-act="offline" style="width:100%; font-size:12.5px; margin-bottom:8px;">↓ Save every class for offline</button>
+ <p style="font-size:11px; color:var(--text-4); line-height:1.45; margin:0 0 12px;">
+ For the train. Do it on a good connection; about 64 MB.
+ </p>
  <button class="pomo-btn" data-act="pdf" style="width:100%; font-size:12px;">Old text-only PDF of every class</button>
  <p style="font-size:11px; color:var(--text-4); line-height:1.45; margin:7px 0 0;">
  That one needs a connection and drops the tables and diagrams. Kept in case you want it.
@@ -31835,6 +31978,10 @@ function showPdfExportSheet() {
  sheet.querySelector('[data-act="pdf"]').addEventListener('click', async () => {
  close();
  await downloadAllCoursesPdf();
+ });
+ sheet.querySelector('[data-act="offline"]').addEventListener('click', () => {
+ close();
+ try { window.__offlineSheet(); } catch (e) { toast('Could not open the offline panel'); }
  });
 
  sheet.querySelectorAll('[data-course]').forEach(btn => {
@@ -58674,6 +58821,15 @@ var MANIFEST_URL = '/content-manifest.json?v=' + BUILD_V;
 var FV = null;
 function fvOf(cid){ try { return (FV && FV[cid]) || null; } catch (e) { return null; } }
 function courseUrl(cid){ return '/content-' + cid + '.json?v=' + encodeURIComponent(fvOf(cid) || BUILD_V); }
+/* Exactly the addresses the app itself asks for, so what the offline save
+   puts in the cache is the entry the worker will later look for. Rebuilding
+   these by hand somewhere else is how a cache fills up with files that are
+   never read. */
+window.__contentUrls = function(){
+  var out = [MANIFEST_URL];
+  for (var i = 0; i < CONTENT_CIDS.length; i++) out.push(courseUrl(CONTENT_CIDS[i]));
+  return out;
+};
 var SRCC = {};              // cid -> { l: str|null(consumed), q: str|null }
 var packLoaded = false;     // kept name: "manifest absorbed"
 // Display names for courses whose chapters ship only in their content file.
@@ -65338,9 +65494,28 @@ var PAPERS = [
 function paperCourse(){
   try { return String(curKey || '').split('/')[0] || ''; } catch (e) { return ''; }
 }
+/* A CLASS KEEPS THE PAPER IT WAS WRITTEN ON.
+   Picking a paper used to set the default every OTHER class opened with, so
+   trying one out on a single class quietly re-papered every page she had
+   already filled - Cornell notes, written in two columns against a cue
+   divider at 2.5in, redrawn on ruled paper whose margin is at 1.25in. That is
+   what "the notes have gotten jumbled" is: the writing never moved, the lines
+   under it did.
+   So a class she has already written in keeps Cornell, which is what every
+   page in the app was written on before any of this existed, unless she has
+   chosen a paper for that class herself. Only an empty class inherits the
+   last paper she picked. */
+function courseHasInk(cid){
+  try {
+    var m = store.padNotes || {};
+    for (var k in m) if (m.hasOwnProperty(k) && k.indexOf(cid + '/') === 0 && m[k] && m[k].n > 0) return true;
+  } catch (e) {}
+  return false;
+}
 function paperId(){
   var pr = prefs(), c = paperCourse();
   if (c && pr.paperBy && typeof pr.paperBy === 'object' && pr.paperBy[c]) return pr.paperBy[c];
+  if (c && courseHasInk(c)) return 'cornell';
   return pr.paper || 'cornell';
 }
 function paper(){
@@ -66339,7 +66514,7 @@ function setPaper(id){
   refreshRules();
   var P = paper();
   try { if (typeof toast === 'function')
-    toast(P.name + ' paper' + (c ? ' for this class' : '') + ' — your writing has not moved'); } catch (e) {}
+    toast(P.name + ' paper' + (c ? ' for this class only' : '') + ' — your writing has not moved'); } catch (e) {}
 }
 function openEraserPop(anchor){
   openPop(anchor, 'eraser', 'Eraser size', function(pop){
