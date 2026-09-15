@@ -8,21 +8,36 @@
 //  2) The browser can cache sw.js itself for up to 24h. The page now registers with
 //     {updateViaCache:'none'} so the worker script is always revalidated.
 
-const CACHE = 'study-hub-v756';
+const CACHE = 'study-hub-v758';
+
+// HER LIBRARY MUST SURVIVE A DEPLOY.
+//
+// There was one cache, named after the build, and activate deleted every cache
+// that was not it. So shipping anything at all emptied her offline copy down
+// to whatever install had just precached - four courses out of fifty-eight -
+// and everything else she had read went with it. Four builds went out in two
+// days; each one did that again. "Unable to view anything" on a train is
+// exactly what that looks like.
+//
+// The course files are now in their own cache that no deploy touches. Their
+// URLs already carry the build (?v=18.xxx), so a new build is a new key and an
+// old one is superseded rather than served - versioning by URL, which is what
+// the query was for, instead of by throwing the library away. The shell stays
+// versioned and disposable, because that is the file that must never go stale.
+const CONTENT = 'study-hub-content';
 
 self.addEventListener('install', (event) => {
+  // The shell, and only the shell. Precaching a handful of courses here was
+  // what made the library look like it was being kept when it was not.
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
       Promise.all([
         cache.add(new Request('/', { cache: 'reload' })).catch(() => null),
         cache.add(new Request('/index.html', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-manifest.json', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-C959.json', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-D286.json', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-D684.json', { cache: 'reload' })).catch(() => null),
-        cache.add(new Request('/content-D197.json', { cache: 'reload' })).catch(() => null),
       ])
-    )
+    ).then(() => caches.open(CONTENT).then((c) =>
+      c.add(new Request('/content-manifest.json', { cache: 'reload' })).catch(() => null)
+    ))
   );
   self.skipWaiting();
 });
@@ -42,11 +57,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     // an older worker's cache means this device held the site before the gate
-    const hadOld = keys.some((k) => k !== CACHE && k !== GATE_MARK);
-    await Promise.all(keys.filter((k) => k !== CACHE && k !== GATE_MARK).map((k) => caches.delete(k)));
+    const keep = (k) => k === CACHE || k === GATE_MARK || k === CONTENT;
+    const hadOld = keys.some((k) => !keep(k));
+    await Promise.all(keys.filter((k) => !keep(k)).map((k) => caches.delete(k)));
     await self.clients.claim();
     if (!keys.includes(GATE_MARK)) {
       try { await caches.open(GATE_MARK); } catch (e) {}
+      // The switch takes the library too: it exists to remove the whole site
+      // from a device that should not still be holding it.
+      try { await caches.delete(CONTENT); } catch (e) {}
       // A brand-new device has nothing to wipe and is not reloaded.
       if (hadOld) {
         try {
@@ -57,6 +76,19 @@ self.addEventListener('activate', (event) => {
     }
   })());
 });
+
+// One course, one copy. Each build asks for ?v=<build>, so without this every
+// deploy would leave another 60MB of superseded courses behind for ever.
+async function trim(shelf, pathname, keepUrl) {
+  try {
+    const rs = await shelf.keys();
+    for (const r of rs) {
+      if (r.url === keepUrl) continue;
+      let u; try { u = new URL(r.url); } catch (e) { continue; }
+      if (u.pathname === pathname) await shelf.delete(r);
+    }
+  } catch (e) {}
+}
 
 // Let the page force a waiting worker to activate, or clear all caches on demand.
 self.addEventListener('message', (event) => {
@@ -138,16 +170,22 @@ self.addEventListener('fetch', (event) => {
     // Now: this build's exact copy, else the network (stored under the exact
     // versioned URL), and only if BOTH fail, any cached version - stale
     // content still beats no content when she is offline.
-    event.respondWith(
-      caches.match(req).then((exact) => exact || fetch(req).then((resp) => {
+    event.respondWith((async () => {
+      const shelf = await caches.open(CONTENT);
+      const exact = await shelf.match(req);
+      if (exact) return exact;
+      try {
+        const resp = await fetch(req);
         if (resp && resp.ok) {
-          const copy = resp.clone();
-          caches.open(CACHE).then((cache) => cache.put(req, copy).catch(() => {}));
+          shelf.put(req, resp.clone()).then(() => trim(shelf, url.pathname, req.url)).catch(() => {});
         }
         return resp;
-      }).catch(() => caches.match(req, { ignoreSearch: true })
-        .then((any) => any || new Response('Offline', { status: 503 }))))
-    );
+      } catch (e) {
+        // no signal: any version of this course beats nothing at all
+        const any = await shelf.match(req, { ignoreSearch: true });
+        return any || new Response('Offline', { status: 503 });
+      }
+    })());
     return;
   }
 
