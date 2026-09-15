@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.581">
+<meta name="app-build" content="18.584">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -31417,6 +31417,358 @@ async function downloadAllCoursesPdf() {
  }
 }
 
+
+/* ====================================================================
+ * EXPORT A WHOLE COURSE - "export the entire course with my notes and the
+ * solving of the problems and practice test should also be added".
+ *
+ * WHY THIS IS AN HTML FILE AND NOT A PDF. The app already had a course PDF,
+ * and it was the wrong artifact for this in two ways. It builds through
+ * jsPDF, which is fetched from a CDN, so on the iPad with no signal the
+ * export simply failed. And it puts every lesson through pdfStripHtml, so
+ * the tables, the truth tables, the worked examples and every SVG diagram -
+ * most of what makes a lesson worth keeping - came out as bare text or not
+ * at all.
+ *
+ * One self-contained HTML file has neither problem. It needs no library, so
+ * it works with the aeroplane mode on; it keeps the lessons exactly as they
+ * are drawn on screen; her handwriting rides along as embedded images; and
+ * Safari will print it straight to PDF if that is what she wants, with the
+ * page breaks already set up below.
+ *
+ * WHAT GOES IN
+ *   - every lesson, with its tables and diagrams intact
+ *   - her handwriting, page by page, under the section she wrote it in
+ *   - her typed notes, likewise
+ *   - every question WITH its worked solution: the answer, the explanation,
+ *     and the per-option rationale saying why each wrong one is wrong
+ *   - the practice test at the back, as a paper to sit followed by its own
+ *     answer key - not scattered through the lessons, which is what made it
+ *     useless to revise from
+ * ==================================================================== */
+(function courseExport(){
+if (typeof document === 'undefined') return;
+if (window.__courseExport) return; window.__courseExport = true;
+
+/* The drill chapters build themselves from her history at run time - weak
+   spots, missed questions, fresh questions. There is nothing static behind
+   them, so a section earns its place by actually holding something: a lesson,
+   questions, her handwriting or her typed notes. */
+function secHas(cid, ch, sec, want){
+  var key = cid + '/' + ch.id + '/' + sec.id;
+  var o = { key: key, title: sec.title || sec.id, lesson: null, qs: [], ink: null, typed: [] };
+  if (want.lessons) { try { var L = getLesson(cid, ch.id, sec.id); if (L && L.body) o.lesson = L.body; } catch (e) {} }
+  if (want.questions) { try { o.qs = getQuestions(cid, ch.id, sec.id) || []; } catch (e) {} }
+  if (want.notes) {
+    try { var nk = window.__notesPanel.ink(key); if (nk && nk.pages) o.ink = nk; } catch (e) {}
+    try { o.typed = window.__notesPanel.typed(key) || []; } catch (e) {}
+  }
+  o.empty = !o.lesson && !o.qs.length && !o.ink && !o.typed.length;
+  return o;
+}
+/* The simulation chapters are the practice test. They are pulled out of the
+   body of the document and put at the back as a paper, because 800 questions
+   threaded between the lessons is not something anyone can revise from. */
+function isExam(ch){
+  var id = String(ch.id || ''), t = String(ch.title || ch.name || '');
+  return id === 'pa_sim' || id === 'oa_sim' ||
+         /Practice Assessment|Objective Assessment/i.test(t);
+}
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function letter(i){ return String.fromCharCode(65 + i); }
+function when(ts){ try { return new Date(ts).toLocaleDateString(); } catch (e) { return ''; } }
+
+/* A question and how to solve it. The rationale for each wrong option is the
+   part she cannot get from an answer key, so it is set out per option rather
+   than gathered into a paragraph at the end. */
+function qBlock(q, n, withSolution){
+  var out = [];
+  out.push('<div class="q">');
+  out.push('<div class="q-t"><span class="q-n">' + n + '.</span> ' + (q.text || '') + '</div>');
+  var correct = (typeof q.correct === 'number') ? q.correct : -1;
+  var set = Array.isArray(q.correctSet) ? q.correctSet : null;
+  out.push('<ol class="q-o">');
+  (q.options || []).forEach(function(opt, i){
+    var right = set ? set.indexOf(i) >= 0 : (i === correct);
+    var why = (q.distractors && q.distractors[String(i)]) || '';
+    out.push('<li class="' + (withSolution && right ? 'right' : '') + '">' +
+             '<span class="q-l">' + letter(i) + '</span>' + opt +
+             (withSolution && right ? '<span class="tick"> &check; correct</span>' : '') +
+             (withSolution && !right && why ? '<div class="why">' + why + '</div>' : '') +
+             '</li>');
+  });
+  out.push('</ol>');
+  if (withSolution && q.explain) out.push('<div class="sol"><b>Solution.</b> ' + q.explain + '</div>');
+  out.push('</div>');
+  return out.join('');
+}
+
+/* THE LESSONS MUST STILL LOOK LIKE THE LESSONS. They are written against the
+   app's own classes - callouts, worked examples, the matrix grid, numbered
+   steps, the visual-lesson blocks - so those rules travel with the file,
+   read out of the live stylesheet rather than guessed at. Without them a
+   matrix comes out as a run of loose numbers and a callout as bare text. */
+var LESSON_SEL = /(^|[\s,>+~(])\.(callout|step|step-num|vl|mx|num|key-term|def-glance|bignum|tb-|figure|hl-|ansbox|deftable)/;
+function collectRules(rules, out){
+  for (var i = 0; i < rules.length; i++) {
+    var r = rules[i];
+    if (r.selectorText && LESSON_SEL.test(r.selectorText)) { out.push(r.cssText); continue; }
+    if (r.cssRules && r.cssRules.length) {
+      var inner = [];
+      collectRules(r.cssRules, inner);
+      if (inner.length) {
+        var cond = r.conditionText || (r.media && r.media.mediaText) || '';
+        out.push(cond ? ('@media ' + cond + '{' + inner.join('\n') + '}') : inner.join('\n'));
+      }
+    }
+  }
+}
+function lessonCss(){
+  var out = [];
+  try {
+    var sheets = document.styleSheets;
+    for (var i = 0; i < sheets.length; i++) {
+      var rules = null;
+      try { rules = sheets[i].cssRules; } catch (e) { continue; }   // another origin
+      if (rules) collectRules(rules, out);
+    }
+  } catch (e) {}
+  return out.join('\n');
+}
+/* The app's own palette is dark, and this file is for reading and for
+   printing, so the variables those rules reach for are given light values
+   here. Same hues, put on paper. */
+var LIGHT_VARS = [
+':root{',
+'--bg:#ffffff;--bg-2:#f5f6f9;--surface:#ffffff;--surface-2:#f2f4f8;--surface-3:#e6e9f0;',
+'--surface-glass:#f7f8fb;--border:#dfe3ea;--border-strong:#c7ccd6;',
+'--text:#16181d;--text-2:#3a3f4a;--text-3:#616773;--text-4:#858b97;--text-5:#a3a8b3;',
+'--accent:#0e7c6b;--accent-2:#1668a8;--accent-bg:#e6f5f2;--accent-text:#0b3b34;',
+'--accent-grad:linear-gradient(135deg,#0e7c6b,#1668a8);',
+'--secondary:#b0407a;--secondary-2:#7c4bb0;--secondary-bg:#fbeef5;',
+'--secondary-grad:linear-gradient(135deg,#b0407a,#7c4bb0);',
+'--warning:#9a6700;--warning-bg:#fff6e0;--danger:#b42318;--danger-bg:#fdeceb;',
+'--success:#1d7a45;--success-bg:#e9f8f0;--code-bg:#f6f7f9;--code-text:#8a4b00;',
+'--highlight:#fff3b0;--note-bg:#eef7f5;--note-border:#0e7c6b;',
+'--shadow:none;--shadow-strong:none;--shadow-card:none;--radius:10px;--radius-sm:7px;}'
+].join('');
+
+var CSS = [
+'*{box-sizing:border-box}',
+'body{margin:0;background:#fff;color:#16181d;',
+'  font:16px/1.62 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}',
+'.wrap{max-width:820px;margin:0 auto;padding:40px 26px 90px;}',
+'h1,h2,h3,h4{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;',
+'  line-height:1.24;text-wrap:balance;}',
+'h1{font-size:2.15rem;margin:0 0 6px;letter-spacing:-.02em;}',
+'h2{font-size:1.45rem;margin:0 0 4px;}',
+'h3{font-size:1.1rem;margin:26px 0 6px;}',
+'.sub{color:#5d6470;font-size:.95rem;margin:0 0 30px;}',
+'.cover{border-bottom:3px solid #16181d;padding-bottom:26px;margin-bottom:34px;}',
+'.badges{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 0;}',
+'.badge{font:600 11px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.06em;',
+'  text-transform:uppercase;padding:6px 9px;border:1px solid #c9cfd8;border-radius:999px;color:#41474f;}',
+'.toc{margin:0 0 40px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:.92rem;}',
+'.toc ol{margin:0;padding-left:1.3em;}',
+'.toc li{margin:3px 0;}',
+'.toc a{color:#1e3a8a;text-decoration:none;}',
+'.ch{page-break-before:always;break-before:page;padding-top:12px;',
+'  border-top:2px solid #16181d;margin-top:46px;}',
+'.ch:first-of-type{page-break-before:auto;break-before:auto;}',
+'.sec{margin:30px 0 0;}',
+'.sec-h{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:1.06rem;font-weight:700;',
+'  padding-bottom:5px;border-bottom:1px solid #d8dde4;margin:34px 0 12px;}',
+'.lesson img,.lesson svg{max-width:100%;height:auto;}',
+'.lesson table{border-collapse:collapse;width:100%;margin:14px 0;font-size:.9rem;}',
+'.lesson th,.lesson td{border:1px solid #d3d9e0;padding:6px 9px;text-align:left;vertical-align:top;}',
+'.lesson th{background:#f2f4f7;font-weight:700;}',
+'.lesson pre{background:#f6f7f9;border:1px solid #e2e6ec;border-radius:6px;padding:10px 12px;',
+'  overflow-x:auto;font-size:.85rem;}',
+'.lesson code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;}',
+'.mine{border-left:4px solid #b06fb0;background:#fbf7fd;padding:12px 16px;margin:18px 0;',
+'  border-radius:0 7px 7px 0;}',
+'.mine-h{font:700 11px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.08em;',
+'  text-transform:uppercase;color:#7a4b82;margin-bottom:9px;}',
+'.mine img{width:100%;border:1px solid #d9dee5;border-radius:5px;margin:8px 0;display:block;}',
+'.typed{white-space:pre-wrap;margin:8px 0;padding-left:12px;border-left:2px solid #ddd0e4;}',
+'.typed .st{display:block;font:600 10px/1 -apple-system,Helvetica,Arial,sans-serif;color:#8a8f98;',
+'  letter-spacing:.05em;margin-bottom:3px;}',
+'.q{margin:16px 0 20px;page-break-inside:avoid;break-inside:avoid;}',
+'.q-t{font-weight:600;}',
+'.q-n{color:#8a8f98;margin-right:5px;}',
+'.q-o{list-style:none;margin:8px 0 0;padding:0;}',
+'.q-o li{margin:4px 0;padding:5px 9px;border-radius:5px;border:1px solid transparent;}',
+'.q-o li.right{background:#eef8f0;border-color:#b6ddc0;}',
+'.q-l{display:inline-block;min-width:1.5em;font-weight:700;color:#5d6470;}',
+'.tick{color:#2f7d4a;font-weight:700;font-size:.85em;margin-left:6px;}',
+'.why{font-size:.87rem;color:#6a7078;margin:4px 0 0 1.5em;font-style:italic;}',
+'.sol{background:#f5f7fa;border-left:3px solid #7c8794;padding:9px 13px;margin:9px 0 0;',
+'  font-size:.93rem;border-radius:0 5px 5px 0;}',
+'.exam{page-break-before:always;break-before:page;border-top:3px double #16181d;',
+'  margin-top:50px;padding-top:16px;}',
+'.key{page-break-before:always;break-before:page;}',
+'.note{color:#6a7078;font-size:.9rem;font-style:italic;}',
+'@media print{',
+'  .wrap{max-width:none;padding:0;}',
+'  body{font-size:11.5pt;}',
+'  a{color:inherit;text-decoration:none;}',
+'  .toc{display:none;}',
+'}'
+].join('\n');
+
+/* Built a chapter at a time with a breath in between, so a long course does
+   not lock the screen while it is being put together. */
+function yieldNow(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+
+async function buildHtml(cid, want, onProgress){
+  var course = COURSES[cid];
+  if (!course) throw new Error('No such class: ' + cid);
+  var chapters = (course.chapters || []);
+  var body = [], toc = [], exams = [];
+  var count = { lessons: 0, questions: 0, inkPages: 0, typed: 0, exam: 0 };
+
+  for (var ci = 0; ci < chapters.length; ci++) {
+    var ch = chapters[ci];
+    if (onProgress) onProgress(ci + 1, chapters.length, ch.title || ch.id);
+    await yieldNow();
+    var secs = (ch.sections || []).map(function(sec){ return secHas(cid, ch, sec, want); })
+                                  .filter(function(o){ return !o.empty; });
+    if (!secs.length) continue;
+    if (isExam(ch)) { if (want.exam) exams.push({ ch: ch, secs: secs }); continue; }
+
+    var chId = 'ch-' + esc(ch.id);
+    toc.push('<li><a href="#' + chId + '">' + esc(ch.title || ch.name || ch.id) + '</a></li>');
+    body.push('<section class="ch" id="' + chId + '">');
+    body.push('<h2>' + esc(ch.title || ch.name || ch.id) + '</h2>');
+
+    for (var si = 0; si < secs.length; si++) {
+      var o = secs[si];
+      body.push('<div class="sec"><div class="sec-h">' + esc(o.title) + '</div>');
+      if (o.lesson) { body.push('<div class="lesson">' + o.lesson + '</div>'); count.lessons++; }
+
+      if (o.ink || o.typed.length) {
+        body.push('<div class="mine"><div class="mine-h">My notes</div>');
+        if (o.ink) {
+          for (var pg = 1; pg <= o.ink.pages; pg++) {
+            var img = null;
+            try { img = window.__notesPanel.inkPage(o.key, pg, 1100); } catch (e) { img = null; }
+            if (img && img.dataUrl) {
+              body.push('<img alt="Handwritten page ' + pg + '" src="' + img.dataUrl + '">');
+              count.inkPages++;
+            }
+            await yieldNow();
+          }
+        }
+        o.typed.forEach(function(t){
+          count.typed++;
+          body.push('<div class="typed">' + (t.ts ? '<span class="st">' + esc(when(t.ts)) + '</span>' : '') +
+                    esc(t.text) + '</div>');
+        });
+        body.push('</div>');
+      }
+
+      if (o.qs.length) {
+        body.push('<h3>Questions and worked solutions</h3>');
+        o.qs.forEach(function(q, i){ body.push(qBlock(q, i + 1, true)); count.questions++; });
+      }
+      body.push('</div>');
+    }
+    body.push('</section>');
+  }
+
+  /* The practice test: the paper first, so she can actually sit it, and the
+     worked answers after, so looking one up does not show her the next. */
+  var examHtml = [];
+  if (exams.length) {
+    exams.forEach(function(E){
+      var all = [];
+      E.secs.forEach(function(o){ o.qs.forEach(function(q){ all.push(q); }); });
+      if (!all.length) return;
+      count.exam += all.length;
+      var t = esc(E.ch.title || E.ch.id);
+      examHtml.push('<section class="exam" id="exam-' + esc(E.ch.id) + '">');
+      examHtml.push('<h2>' + t + '</h2>');
+      examHtml.push('<p class="note">' + all.length + ' questions. The worked answers are in the next section.</p>');
+      all.forEach(function(q, i){ examHtml.push(qBlock(q, i + 1, false)); });
+      examHtml.push('</section>');
+      examHtml.push('<section class="key"><h2>' + t + ' &mdash; worked answers</h2>');
+      all.forEach(function(q, i){ examHtml.push(qBlock(q, i + 1, true)); });
+      examHtml.push('</section>');
+      toc.push('<li><a href="#exam-' + esc(E.ch.id) + '">' + t + '</a></li>');
+    });
+  }
+
+  var badges = [];
+  var many = function(n, one, more){ return n + ' ' + (n === 1 ? one : (more || one + 's')); };
+  if (count.lessons) badges.push(many(count.lessons, 'lesson'));
+  if (count.questions) badges.push(many(count.questions, 'question') + ', worked');
+  if (count.inkPages) badges.push(many(count.inkPages, 'handwritten page'));
+  if (count.typed) badges.push(many(count.typed, 'typed note'));
+  if (count.exam) badges.push(many(count.exam, 'practice-test question'));
+
+  var head = [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>' + esc(course.code) + ' — ' + esc(course.name) + '</title>',
+    '<style>' + LIGHT_VARS + '\n' + lessonCss() + '\n' + CSS + '</style></head><body><div class="wrap">',
+    '<header class="cover"><h1>' + esc(course.code) + '</h1>',
+    '<h2>' + esc(course.name) + '</h2>',
+    '<p class="sub">Exported from Natasha&rsquo;s Study Hub on ' + esc(when(Date.now())) + '</p>',
+    '<div class="badges">' + badges.map(function(b){ return '<span class="badge">' + esc(b) + '</span>'; }).join('') + '</div>',
+    '</header>',
+    toc.length ? ('<nav class="toc"><h3>Contents</h3><ol>' + toc.join('') + '</ol></nav>') : ''
+  ].join('\n');
+
+  var html = head + body.join('\n') + examHtml.join('\n') + '\n</div></body></html>';
+  return { html: html, counts: count, course: course };
+}
+
+function save(blob, name){
+  try {
+    if (navigator.share && navigator.canShare && typeof File === 'function') {
+      var f = new File([blob], name, { type: 'text/html' });
+      if (navigator.canShare({ files: [f] })) {
+        navigator.share({ files: [f], title: name }).then(function(){
+          try { toast('Ready to save or share'); } catch (e) {}
+        }, function(err){ if (!err || err.name !== 'AbortError') down(blob, name); });
+        return;
+      }
+    }
+  } catch (e) {}
+  down(blob, name);
+}
+function down(blob, name){
+  try {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 6000);
+    try { toast('Saved ' + name); } catch (e) {}
+  } catch (e) {
+    try { toast('Could not save the file'); } catch (e2) {}
+  }
+}
+
+async function run(cid, want, onProgress){
+  var out = await buildHtml(cid, want, onProgress);
+  var name = (out.course.code || cid).replace(/[^\w\-]+/g, '') + '-complete.html';
+  return { blob: new Blob([out.html], { type: 'text/html;charset=utf-8' }),
+           name: name, counts: out.counts, bytes: out.html.length };
+}
+
+window.__exportCourse = {
+  build: function(cid, want, onProgress){
+    return run(cid, want || { lessons: 1, questions: 1, notes: 1, exam: 1 }, onProgress);
+  },
+  save: save
+};
+})();
+
 function showPdfExportSheet() {
  let sheet = document.querySelector('.pomo-sheet.pdf-sheet');
  if (sheet) { sheet.remove(); return; }
@@ -31425,26 +31777,46 @@ function showPdfExportSheet() {
  sheet.style.alignItems = 'flex-end';
 
  const courseRows = Object.values(COURSES).map(c =>
- `<button class="pomo-btn" data-course="${c.code}" style="width:100%; justify-content:space-between; text-align:left; margin-bottom:6px; display:flex; align-items:center; padding: 10px 12px;">
+ `<button class="pomo-btn" data-course="${c.id}" style="width:100%; justify-content:space-between; text-align:left; margin-bottom:6px; display:flex; align-items:center; padding: 10px 12px;">
  <span style="display:flex; flex-direction:column; gap:2px;">
  <span style="font-weight:600; color:var(--text);">${c.code}</span>
  <span style="font-size:11px; color:var(--text-3);">${c.name}</span>
  </span>
- <span style="color:var(--accent); font-size:14px;">↓ PDF</span>
+ <span style="color:var(--accent); font-size:14px;">Export &rarr;</span>
  </button>`
  ).join('');
 
+ const box = (id, label, sub) =>
+ `<label style="display:flex; gap:9px; align-items:flex-start; padding:7px 2px; cursor:pointer;">
+ <input type="checkbox" data-part="${id}" checked style="margin-top:3px; width:17px; height:17px; flex:0 0 auto;">
+ <span style="display:flex; flex-direction:column; gap:1px;">
+ <span style="font-size:13px; font-weight:600; color:var(--text);">${label}</span>
+ <span style="font-size:11px; color:var(--text-3);">${sub}</span>
+ </span></label>`;
+
  sheet.innerHTML = `
- <div class="pomo-card" style="text-align:left; max-width:560px; padding:18px 20px 24px; max-height:80vh; display:flex; flex-direction:column;">
- <button class="pomo-close" data-close>×</button>
- <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Export PDF</div>
- <p style="font-size:12px; color:var(--text-3); line-height:1.5; margin:0 0 14px;">
- PDFs include lessons + practice questions with answer key. Save to Files, then open in GoodNotes to mark up.
+ <div class="pomo-card" style="text-align:left; max-width:560px; padding:18px 20px 24px; max-height:86vh; display:flex; flex-direction:column;">
+ <button class="pomo-close" data-close>&times;</button>
+ <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Export a class</div>
+ <p style="font-size:12px; color:var(--text-3); line-height:1.5; margin:0 0 10px;">
+ One file with the whole class in it. Open it in Safari to read, or use Share &rarr; Print &rarr; Save as PDF for GoodNotes. It works with no signal.
  </p>
- <button class="pomo-btn primary" data-act="all" style="width:100%; margin-bottom:14px;">↓ All courses (single PDF)</button>
- <div style="font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;">Or per course</div>
+ <div style="border:1px solid var(--border); border-radius:10px; padding:6px 10px; margin:0 0 14px;">
+ ${box('lessons', 'Lessons', 'every lesson, with its tables and diagrams')}
+ ${box('notes', 'My notes', 'handwriting and typed notes, under the section I wrote them in')}
+ ${box('questions', 'Questions, worked', 'the answer, the explanation and why each wrong option is wrong')}
+ ${box('exam', 'Practice test', 'at the back as a paper, with its answers after it')}
+ </div>
+ <div data-prog style="display:none; font-size:12px; color:var(--text-2); margin:0 0 12px; padding:9px 11px; background:var(--bg-2); border-radius:8px;"></div>
+ <div style="font-size:11px; color:var(--text-4); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;">Choose the class</div>
  <div style="overflow-y:auto; flex:1;">
  ${courseRows}
+ </div>
+ <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+ <button class="pomo-btn" data-act="pdf" style="width:100%; font-size:12px;">Old text-only PDF of every class</button>
+ <p style="font-size:11px; color:var(--text-4); line-height:1.45; margin:7px 0 0;">
+ That one needs a connection and drops the tables and diagrams. Kept in case you want it.
+ </p>
  </div>
  </div>
  `;
@@ -31453,15 +31825,39 @@ function showPdfExportSheet() {
  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
  sheet.querySelector('[data-close]').addEventListener('click', close);
 
- sheet.querySelector('[data-act="all"]').addEventListener('click', async () => {
+ const prog = sheet.querySelector('[data-prog]');
+ const want = () => {
+ const w = {};
+ sheet.querySelectorAll('[data-part]').forEach(b => { w[b.dataset.part] = b.checked ? 1 : 0; });
+ return w;
+ };
+
+ sheet.querySelector('[data-act="pdf"]').addEventListener('click', async () => {
  close();
  await downloadAllCoursesPdf();
  });
+
  sheet.querySelectorAll('[data-course]').forEach(btn => {
  btn.addEventListener('click', async () => {
- const code = btn.dataset.course;
+ const cid = btn.dataset.course;
+ const w = want();
+ if (!w.lessons && !w.notes && !w.questions && !w.exam) { toast('Tick at least one thing to put in it'); return; }
+ sheet.querySelectorAll('[data-course]').forEach(b => { b.disabled = true; b.style.opacity = '.45'; });
+ prog.style.display = 'block';
+ prog.textContent = 'Starting…';
+ try {
+ const out = await window.__exportCourse.build(cid, w, (i, n, title) => {
+ prog.textContent = 'Building ' + i + ' of ' + n + ' — ' + title;
+ });
+ const mb = (out.bytes / 1048576);
+ prog.textContent = 'Done — ' + (mb < 1 ? Math.round(out.bytes / 1024) + ' KB' : mb.toFixed(1) + ' MB');
  close();
- await downloadCoursePdf(code);
+ window.__exportCourse.save(out.blob, out.name);
+ } catch (e) {
+ console.error('Course export failed:', e);
+ prog.textContent = 'It did not build: ' + (e && e.message ? e.message : e);
+ sheet.querySelectorAll('[data-course]').forEach(b => { b.disabled = false; b.style.opacity = ''; });
+ }
  });
  });
 }
@@ -64898,6 +65294,63 @@ var MAX_PAGES = 60;             // a hard ceiling, so a long scroll cannot run a
 var PAGE0  = 3 * PAGE_H;        // open with three pages, not one - one filled up
                                 // in a single sitting and every further page had
                                 // to be pulled for one at a time.
+/* THE PAPER SHE WRITES ON.
+   Cornell is one ruling among several, not the only one. The gaps are the real
+   stationery specifications: wide (legal) ruled is 11/32 in, college (medium)
+   ruled 9/32, narrow 1/4, and quadrille paper is 1/4 in squares. The margin
+   rule on ruled paper sits 1.25 in from the left, where it does on the pad.
+   Ink is stored in page units and the ruling is only a backdrop, so changing
+   paper never moves a single stroke - the writing stays exactly where it is. */
+/* THE FORMULA SHEETS. One per maths or physics class, shown in the notebook's
+   own Formulas tab so the standard results are beside her writing instead of
+   three taps away in a lesson she has already left.
+   Authored against each course's own chapters, then machine-checked: 227 of
+   the 514 rows are identities sympy can confirm and every one of them was
+   confirmed, with the checker itself proved to bite by injecting a sign slip,
+   a wrong constant and a wrong factorial and watching all three fail. The rest
+   are definitions, named theorems and physical laws, which there is nothing
+   for a computer algebra system to confirm.
+   The markup is checked too - only sub, sup, b and i, all balanced - because
+   the formula is written with innerHTML. */
+var FORMULAS = {"CALC1":{"title":"Calculus I","groups":[{"g":"Limits","rows":[["Squeeze theorem","if g(x) ≤ f(x) ≤ h(x) near a and lim g = lim h = L, then lim f = L"],["sin x ⁄ x","lim<sub>x→0</sub> sin x / x = 1"],["(1 − cos x) ⁄ x","lim<sub>x→0</sub> (1 − cos x) / x = 0"],["e as a limit","lim<sub>x→∞</sub> (1 + 1/x)<sup>x</sup> = e"],["L'Hôpital","if f/g → 0/0 or ∞/∞, then lim f/g = lim f′/g′"],["Continuity at a","f is continuous at a ⟺ lim<sub>x→a</sub> f(x) = f(a)"],["Intermediate value","f continuous on [a,b], N between f(a) and f(b) ⇒ f(c) = N for some c in (a,b)"]]},{"g":"The derivative","rows":[["Definition","f′(x) = lim<sub>h→0</sub> [ f(x+h) − f(x) ] / h"],["Power rule","d/dx x<sup>n</sup> = n x<sup>n−1</sup>"],["Product rule","(fg)′ = f′g + fg′"],["Quotient rule","(f/g)′ = (f′g − fg′) / g<sup>2</sup>"],["Chain rule","d/dx f(g(x)) = f′(g(x))·g′(x)"],["e and ln","d/dx e<sup>x</sup> = e<sup>x</sup> &nbsp;&nbsp; d/dx ln x = 1/x"],["aˣ and logₐ","d/dx a<sup>x</sup> = a<sup>x</sup> ln a &nbsp;&nbsp; d/dx log<sub>a</sub> x = 1/(x ln a)"],["Sine and cosine","d/dx sin x = cos x &nbsp;&nbsp; d/dx cos x = −sin x"],["Tangent family","d/dx tan x = sec<sup>2</sup>x &nbsp;&nbsp; d/dx sec x = sec x tan x"],["Inverse trig","d/dx arcsin x = 1/√(1−x<sup>2</sup>) &nbsp;&nbsp; d/dx arctan x = 1/(1+x<sup>2</sup>)"],["Inverse function","(f<sup>−1</sup>)′(b) = 1 / f′(a) where f(a) = b"]]},{"g":"Using the derivative","rows":[["Tangent line","y = f(a) + f′(a)(x − a)"],["Linear approximation","f(x) ≈ f(a) + f′(a)(x − a) near a"],["Critical point","f′(c) = 0 or f′(c) does not exist"],["First derivative test","f′ changes + to − at c ⇒ local max; − to + ⇒ local min"],["Second derivative test","f′(c) = 0 and f″(c) &gt; 0 ⇒ local min; f″(c) &lt; 0 ⇒ local max"],["Concavity","f″ &gt; 0 ⇒ concave up; f″ &lt; 0 ⇒ concave down; sign change ⇒ inflection"],["Mean value theorem","f′(c) = [ f(b) − f(a) ] / (b − a) for some c in (a,b)"],["Newton's method","x<sub>n+1</sub> = x<sub>n</sub> − f(x<sub>n</sub>) / f′(x<sub>n</sub>)"],["Related rates","differentiate the relation with respect to t, then solve for the rate you want"]]},{"g":"The integral","rows":[["Power rule","∫ x<sup>n</sup> dx = x<sup>n+1</sup>/(n+1) + C &nbsp;(n ≠ −1)"],["Reciprocal","∫ (1/x) dx = ln|x| + C"],["Exponential","∫ e<sup>x</sup> dx = e<sup>x</sup> + C"],["Sine and cosine","∫ sin x dx = −cos x + C &nbsp;&nbsp; ∫ cos x dx = sin x + C"],["Arctangent form","∫ dx/(1+x<sup>2</sup>) = arctan x + C"],["Arcsine form","∫ dx/√(1−x<sup>2</sup>) = arcsin x + C"],["Fundamental theorem I","d/dx ∫<sub>a</sub><sup>x</sup> f(t) dt = f(x)"],["Fundamental theorem II","∫<sub>a</sub><sup>b</sup> f(x) dx = F(b) − F(a), &nbsp;F′ = f"],["Substitution","∫ f(g(x)) g′(x) dx = ∫ f(u) du, &nbsp;u = g(x)"],["Riemann sum","∫<sub>a</sub><sup>b</sup> f = lim<sub>n→∞</sub> Σ<sub>i=1..n</sub> f(x<sub>i</sub>) Δx, &nbsp;Δx = (b−a)/n"],["Average value","f<sub>avg</sub> = 1/(b−a) ∫<sub>a</sub><sup>b</sup> f(x) dx"],["Area between curves","∫<sub>a</sub><sup>b</sup> [ top − bottom ] dx"]]}]},"CALC2":{"title":"Calculus II","groups":[{"g":"Techniques of integration","rows":[["By parts","∫ u dv = uv − ∫ v du"],["Choosing u","LIATE — logarithm, inverse trig, algebraic, trig, exponential"],["Partial fractions","P(x)/Q(x) → Σ A/(x−r) + Σ (Bx+C)/(x<sup>2</sup>+px+q)"],["Trig substitution","√(a<sup>2</sup>−x<sup>2</sup>) → x = a sin θ &nbsp; √(a<sup>2</sup>+x<sup>2</sup>) → x = a tan θ &nbsp; √(x<sup>2</sup>−a<sup>2</sup>) → x = a sec θ"],["Half-angle for powers","sin<sup>2</sup>x = (1 − cos 2x)/2 &nbsp;&nbsp; cos<sup>2</sup>x = (1 + cos 2x)/2"],["Improper integral","∫<sub>a</sub><sup>∞</sup> f = lim<sub>b→∞</sub> ∫<sub>a</sub><sup>b</sup> f, converges only if that limit is finite"],["p-integral at ∞","∫<sub>1</sub><sup>∞</sup> dx/x<sup>p</sup> converges ⟺ p &gt; 1"]]},{"g":"Applications","rows":[["Disks","V = π ∫<sub>a</sub><sup>b</sup> [R(x)]<sup>2</sup> dx"],["Washers","V = π ∫<sub>a</sub><sup>b</sup> ( [R]<sup>2</sup> − [r]<sup>2</sup> ) dx"],["Shells","V = 2π ∫<sub>a</sub><sup>b</sup> x · h(x) dx"],["Arc length","L = ∫<sub>a</sub><sup>b</sup> √(1 + [f′(x)]<sup>2</sup>) dx"],["Surface of revolution","S = 2π ∫<sub>a</sub><sup>b</sup> f(x) √(1 + [f′(x)]<sup>2</sup>) dx"],["Work","W = ∫<sub>a</sub><sup>b</sup> F(x) dx &nbsp; (spring: F = kx)"]]},{"g":"Sequences and series","rows":[["Geometric series","Σ<sub>n=0</sub><sup>∞</sup> a r<sup>n</sup> = a/(1−r) for |r| &lt; 1"],["p-series","Σ 1/n<sup>p</sup> converges ⟺ p &gt; 1"],["Harmonic series","Σ 1/n diverges"],["n-th term test","if a<sub>n</sub> ↛ 0 the series diverges (it never proves convergence)"],["Integral test","a<sub>n</sub> = f(n), f positive decreasing ⇒ Σa<sub>n</sub> and ∫<sub>1</sub><sup>∞</sup> f agree"],["Comparison","0 ≤ a<sub>n</sub> ≤ b<sub>n</sub>: Σb converges ⇒ Σa converges; Σa diverges ⇒ Σb diverges"],["Limit comparison","lim a<sub>n</sub>/b<sub>n</sub> = c with 0 &lt; c &lt; ∞ ⇒ both converge or both diverge"],["Ratio test","L = lim |a<sub>n+1</sub>/a<sub>n</sub>| : L &lt; 1 converges, L &gt; 1 diverges, L = 1 tells nothing"],["Root test","L = lim |a<sub>n</sub>|<sup>1/n</sup>, same verdicts as the ratio test"],["Alternating series","Σ(−1)<sup>n</sup>b<sub>n</sub> converges if b<sub>n</sub> decreases to 0; error &lt; first omitted term"],["Absolute convergence","Σ|a<sub>n</sub>| converges ⇒ Σa<sub>n</sub> converges"]]},{"g":"Power series","rows":[["Taylor series","f(x) = Σ f<sup>(n)</sup>(a) (x−a)<sup>n</sup> / n!"],["eˣ","Σ<sub>n=0</sub><sup>∞</sup> x<sup>n</sup>/n! &nbsp; (all x)"],["sin x","x − x<sup>3</sup>/3! + x<sup>5</sup>/5! − … &nbsp; (all x)"],["cos x","1 − x<sup>2</sup>/2! + x<sup>4</sup>/4! − … &nbsp; (all x)"],["1/(1−x)","Σ x<sup>n</sup> &nbsp; (|x| &lt; 1)"],["ln(1+x)","x − x<sup>2</sup>/2 + x<sup>3</sup>/3 − … &nbsp; (−1 &lt; x ≤ 1)"],["arctan x","x − x<sup>3</sup>/3 + x<sup>5</sup>/5 − … &nbsp; (|x| ≤ 1)"],["Radius of convergence","R = lim |a<sub>n</sub>/a<sub>n+1</sub>| ; test both endpoints separately"],["Binomial series","(1+x)<sup>k</sup> = Σ C(k,n) x<sup>n</sup> &nbsp; (|x| &lt; 1)"]]},{"g":"Parametric and polar","rows":[["Parametric slope","dy/dx = (dy/dt) / (dx/dt)"],["Parametric second derivative","d<sup>2</sup>y/dx<sup>2</sup> = d/dt(dy/dx) / (dx/dt)"],["Parametric arc length","L = ∫ √( (dx/dt)<sup>2</sup> + (dy/dt)<sup>2</sup> ) dt"],["Polar to Cartesian","x = r cos θ, &nbsp;y = r sin θ, &nbsp;r<sup>2</sup> = x<sup>2</sup> + y<sup>2</sup>"],["Polar area","A = ½ ∫<sub>α</sub><sup>β</sup> r<sup>2</sup> dθ"],["Polar arc length","L = ∫<sub>α</sub><sup>β</sup> √( r<sup>2</sup> + (dr/dθ)<sup>2</sup> ) dθ"]]}]},"CALC3":{"title":"Calculus III","groups":[{"g":"Vectors and space","rows":[["Dot product","<b>a</b>·<b>b</b> = a₁b₁ + a₂b₂ + a₃b₃ = |<b>a</b>||<b>b</b>| cos θ"],["Angle between","cos θ = (<b>a</b>·<b>b</b>) / (|<b>a</b>||<b>b</b>|)"],["Perpendicular","<b>a</b> ⊥ <b>b</b> ⟺ <b>a</b>·<b>b</b> = 0"],["Cross product","<b>a</b>×<b>b</b> is perpendicular to both, |<b>a</b>×<b>b</b>| = |<b>a</b>||<b>b</b>| sin θ"],["Cross is anti-commutative","<b>a</b>×<b>b</b> = −(<b>b</b>×<b>a</b>)"],["Scalar projection","comp<sub><b>b</b></sub><b>a</b> = (<b>a</b>·<b>b</b>) / |<b>b</b>|"],["Vector projection","proj<sub><b>b</b></sub><b>a</b> = [ (<b>a</b>·<b>b</b>) / |<b>b</b>|<sup>2</sup> ] <b>b</b>"],["Triple product (volume)","V = | <b>a</b>·(<b>b</b>×<b>c</b>) |"],["Line","<b>r</b>(t) = <b>r</b><sub>0</sub> + t<b>v</b>"],["Plane","a(x−x₀) + b(y−y₀) + c(z−z₀) = 0, normal ⟨a,b,c⟩"],["Point to plane","D = |ax₀+by₀+cz₀+d| / √(a<sup>2</sup>+b<sup>2</sup>+c<sup>2</sup>)"]]},{"g":"Partial derivatives","rows":[["Clairaut","f<sub>xy</sub> = f<sub>yx</sub> where both are continuous"],["Gradient","∇f = ⟨f<sub>x</sub>, f<sub>y</sub>, f<sub>z</sub>⟩"],["Chain rule","dz/dt = (∂z/∂x)(dx/dt) + (∂z/∂y)(dy/dt)"],["Directional derivative","D<sub><b>u</b></sub>f = ∇f · <b>u</b>, &nbsp;<b>u</b> a unit vector"],["Steepest ascent","∇f points the steepest way up; the rate there is |∇f|"],["Tangent plane","z = f(a,b) + f<sub>x</sub>(a,b)(x−a) + f<sub>y</sub>(a,b)(y−b)"],["Second derivative test","D = f<sub>xx</sub>f<sub>yy</sub> − (f<sub>xy</sub>)<sup>2</sup>. D&gt;0 &amp; f<sub>xx</sub>&gt;0 min; D&gt;0 &amp; f<sub>xx</sub>&lt;0 max; D&lt;0 saddle"],["Lagrange multipliers","∇f = λ∇g subject to g = k"]]},{"g":"Multiple integrals","rows":[["Fubini","∬<sub>R</sub> f dA = ∫∫ f dx dy = ∫∫ f dy dx over a rectangle"],["Polar","dA = r dr dθ"],["Cylindrical","dV = r dz dr dθ"],["Spherical","x = ρ sin φ cos θ, y = ρ sin φ sin θ, z = ρ cos φ, &nbsp;dV = ρ<sup>2</sup> sin φ dρ dφ dθ"],["Jacobian","dA = |∂(x,y)/∂(u,v)| du dv"],["Surface area","S = ∬ √( 1 + f<sub>x</sub><sup>2</sup> + f<sub>y</sub><sup>2</sup> ) dA"]]},{"g":"Vector calculus","rows":[["Divergence","div <b>F</b> = ∇·<b>F</b> = P<sub>x</sub> + Q<sub>y</sub> + R<sub>z</sub>"],["Curl","curl <b>F</b> = ∇×<b>F</b>"],["Conservative field","<b>F</b> = ∇f ⟺ curl <b>F</b> = <b>0</b> on a simply connected region"],["Fundamental theorem for line integrals","∫<sub>C</sub> ∇f·d<b>r</b> = f(end) − f(start)"],["Green's theorem","∮<sub>C</sub> P dx + Q dy = ∬<sub>D</sub> ( Q<sub>x</sub> − P<sub>y</sub> ) dA"],["Stokes' theorem","∮<sub>C</sub> <b>F</b>·d<b>r</b> = ∬<sub>S</sub> (∇×<b>F</b>)·d<b>S</b>"],["Divergence theorem","∯<sub>S</sub> <b>F</b>·d<b>S</b> = ∭<sub>E</sub> (∇·<b>F</b>) dV"],["Line integral of scalar","∫<sub>C</sub> f ds = ∫<sub>a</sub><sup>b</sup> f(<b>r</b>(t)) |<b>r</b>′(t)| dt"],["curl of a gradient","∇×(∇f) = <b>0</b>, always"],["div of a curl","∇·(∇×<b>F</b>) = 0, always"]]}]},"LINALG":{"title":"Linear Algebra","groups":[{"g":"Systems","rows":[["Matrix form","A<b>x</b> = <b>b</b>"],["Unique solution","square A: exactly one solution ⟺ det A ≠ 0 ⟺ A is invertible"],["Rank-nullity","rank(A) + nullity(A) = n, the number of columns"],["Consistency","A<b>x</b> = <b>b</b> is solvable ⟺ rank(A) = rank([A|<b>b</b>])"],["Row echelon","leading 1 in each non-zero row, each further right than the one above, zero rows at the bottom"]]},{"g":"Matrices","rows":[["Not commutative","AB ≠ BA in general"],["Transpose of a product","(AB)<sup>T</sup> = B<sup>T</sup>A<sup>T</sup>"],["Inverse of a product","(AB)<sup>−1</sup> = B<sup>−1</sup>A<sup>−1</sup>"],["2×2 inverse","[a b; c d]<sup>−1</sup> = 1/(ad−bc) · [d −b; −c a]"],["Symmetric","A<sup>T</sup> = A"],["Orthogonal matrix","Q<sup>T</sup>Q = I, so Q<sup>−1</sup> = Q<sup>T</sup>"],["Trace","tr(A) = Σ a<sub>ii</sub> = sum of the eigenvalues"]]},{"g":"Determinants","rows":[["2×2","det [a b; c d] = ad − bc"],["Product","det(AB) = det(A)·det(B)"],["Transpose","det(A<sup>T</sup>) = det(A)"],["Inverse","det(A<sup>−1</sup>) = 1 / det(A)"],["Triangular","the determinant is the product of the diagonal entries"],["Row swap","swapping two rows flips the sign of the determinant"],["Scaling a row","multiplying one row by k multiplies the determinant by k"],["Singular","det A = 0 ⟺ the rows are dependent ⟺ A has no inverse"],["Cramer's rule","x<sub>i</sub> = det(A<sub>i</sub>) / det(A), &nbsp;A<sub>i</sub> is A with column i replaced by <b>b</b>"]]},{"g":"Vector spaces","rows":[["Subspace test","contains <b>0</b>, closed under addition, closed under scalar multiplication"],["Span","every linear combination c₁<b>v</b>₁ + … + c<sub>k</sub><b>v</b><sub>k</sub>"],["Independence","c₁<b>v</b>₁ + … + c<sub>k</sub><b>v</b><sub>k</sub> = <b>0</b> only when every c<sub>i</sub> = 0"],["Basis","independent and spanning; dim = how many vectors it has"],["Column space","the span of the columns; its dimension is rank(A)"],["Null space","every <b>x</b> with A<b>x</b> = <b>0</b>"]]},{"g":"Eigenvalues","rows":[["Definition","A<b>v</b> = λ<b>v</b> with <b>v</b> ≠ <b>0</b>"],["Characteristic equation","det(A − λI) = 0"],["Sum of eigenvalues","Σλ = tr(A)"],["Product of eigenvalues","Πλ = det(A)"],["Triangular matrices","the eigenvalues are the diagonal entries"],["Diagonalisation","A = PDP<sup>−1</sup> when there are n independent eigenvectors"],["Powers","A<sup>k</sup> = P D<sup>k</sup> P<sup>−1</sup>"],["Symmetric matrices","real eigenvalues, and eigenvectors for different eigenvalues are orthogonal"]]},{"g":"Orthogonality","rows":[["Orthogonal vectors","<b>u</b>·<b>v</b> = 0"],["Norm","‖<b>v</b>‖ = √(<b>v</b>·<b>v</b>)"],["Unit vector","<b>v</b> / ‖<b>v</b>‖"],["Projection onto a vector","proj<sub><b>u</b></sub><b>v</b> = [ (<b>v</b>·<b>u</b>) / (<b>u</b>·<b>u</b>) ] <b>u</b>"],["Gram–Schmidt","<b>u</b><sub>k</sub> = <b>v</b><sub>k</sub> − Σ<sub>j&lt;k</sub> proj<sub><b>u</b><sub>j</sub></sub><b>v</b><sub>k</sub>, then normalise"],["Least squares","A<sup>T</sup>A<b>x̂</b> = A<sup>T</sup><b>b</b>"],["Pythagoras","<b>u</b> ⊥ <b>v</b> ⇒ ‖<b>u</b>+<b>v</b>‖<sup>2</sup> = ‖<b>u</b>‖<sup>2</sup> + ‖<b>v</b>‖<sup>2</sup>"]]}]},"C959":{"title":"Discrete Mathematics","groups":[{"g":"Logic","rows":[["Implication","p → q ≡ ¬p ∨ q"],["Contrapositive","p → q ≡ ¬q → ¬p"],["Converse and inverse","converse q → p; inverse ¬p → ¬q; neither is equivalent to p → q"],["Biconditional","p ↔ q ≡ (p → q) ∧ (q → p)"],["De Morgan","¬(p ∧ q) ≡ ¬p ∨ ¬q &nbsp;&nbsp; ¬(p ∨ q) ≡ ¬p ∧ ¬q"],["Distributive","p ∧ (q ∨ r) ≡ (p∧q) ∨ (p∧r)"],["Negating a quantifier","¬∀x P(x) ≡ ∃x ¬P(x) &nbsp;&nbsp; ¬∃x P(x) ≡ ∀x ¬P(x)"],["Rows in a truth table","2<sup>n</sup> rows for n variables"]]},{"g":"Proof","rows":[["Direct","assume p, derive q"],["Contrapositive","assume ¬q, derive ¬p"],["Contradiction","assume p ∧ ¬q, derive something false"],["Induction","prove P(1), then P(k) ⇒ P(k+1)"],["Strong induction","assume P(1)…P(k) all hold, then prove P(k+1)"],["Counterexample","one case where it fails disproves a ∀ claim"],["Sum of the first n","1 + 2 + … + n = n(n+1)/2"],["Sum of squares","Σ<sub>k=1..n</sub> k<sup>2</sup> = n(n+1)(2n+1)/6"]]},{"g":"Sets","rows":[["Union and intersection","A ∪ B is in either; A ∩ B is in both"],["Difference","A − B is in A and not in B"],["Complement","A′ is everything in U outside A"],["De Morgan for sets","(A ∪ B)′ = A′ ∩ B′ &nbsp;&nbsp; (A ∩ B)′ = A′ ∪ B′"],["Inclusion–exclusion","|A ∪ B| = |A| + |B| − |A ∩ B|"],["Power set","|P(A)| = 2<sup>|A|</sup>"],["Cartesian product","|A × B| = |A|·|B|"],["Subset","A ⊆ B ⟺ every element of A is in B"]]},{"g":"Boolean algebra","rows":[["Identity","A + 0 = A &nbsp;&nbsp; A · 1 = A"],["Annihilator","A + 1 = 1 &nbsp;&nbsp; A · 0 = 0"],["Idempotent","A + A = A &nbsp;&nbsp; A · A = A"],["Complement","A + A′ = 1 &nbsp;&nbsp; A · A′ = 0"],["Double negation","(A′)′ = A"],["Absorption","A + AB = A &nbsp;&nbsp; A(A + B) = A"],["De Morgan","(AB)′ = A′ + B′ &nbsp;&nbsp; (A + B)′ = A′B′"]]},{"g":"Matrices","rows":[["Addition","add entry by entry; the shapes must match"],["Multiplication","(m×n)(n×p) = m×p, row into column"],["Identity","AI = IA = A"],["Determinant 2×2","ad − bc"],["Inverse 2×2","1/(ad−bc) · [d −b; −c a], only when ad − bc ≠ 0"],["Transpose","rows become columns"]]},{"g":"Sequences and relations","rows":[["Arithmetic sequence","a<sub>n</sub> = a₁ + (n−1)d"],["Arithmetic sum","S<sub>n</sub> = n(a₁ + a<sub>n</sub>)/2"],["Geometric sequence","a<sub>n</sub> = a₁r<sup>n−1</sup>"],["Geometric sum","S<sub>n</sub> = a₁(1 − r<sup>n</sup>)/(1 − r)"],["Infinite geometric","S = a₁/(1 − r) for |r| &lt; 1"],["Reflexive","(a,a) ∈ R for every a"],["Symmetric","(a,b) ∈ R ⇒ (b,a) ∈ R"],["Antisymmetric","(a,b) and (b,a) both in R ⇒ a = b"],["Transitive","(a,b) and (b,c) in R ⇒ (a,c) ∈ R"],["Equivalence relation","reflexive, symmetric and transitive; it partitions the set"],["Partial order","reflexive, antisymmetric and transitive"]]},{"g":"Graphs and trees","rows":[["Handshake","Σ deg(v) = 2|E|"],["Edges in Kₙ","n(n−1)/2"],["Tree","connected and acyclic; a tree on n vertices has exactly n − 1 edges"],["Euler circuit","exists ⟺ connected and every vertex has even degree"],["Euler path","exists ⟺ connected and exactly two vertices have odd degree"],["Hamiltonian","visits every vertex once; there is no easy test for it"],["Bipartite","two-colourable ⟺ no odd cycle"],["Binary tree height","a tree of height h holds at most 2<sup>h+1</sup> − 1 nodes"],["Traversals","pre-order root-left-right; in-order left-root-right; post-order left-right-root"]]}]},"DC-STATS":{"title":"Statistics","groups":[{"g":"Describing data","rows":[["Mean","x̄ = Σx<sub>i</sub> / n"],["Median","the middle value once sorted; the average of the middle two if n is even"],["Sample variance","s<sup>2</sup> = Σ(x<sub>i</sub> − x̄)<sup>2</sup> / (n − 1)"],["Population variance","σ<sup>2</sup> = Σ(x<sub>i</sub> − μ)<sup>2</sup> / N"],["Standard deviation","s = √(s<sup>2</sup>)"],["z-score","z = (x − μ) / σ"],["IQR","IQR = Q₃ − Q₁ ; outliers fall outside Q₁ − 1.5·IQR and Q₃ + 1.5·IQR"],["Empirical rule","normal data: 68% within 1σ, 95% within 2σ, 99.7% within 3σ"]]},{"g":"Probability","rows":[["Complement","P(A′) = 1 − P(A)"],["Addition rule","P(A ∪ B) = P(A) + P(B) − P(A ∩ B)"],["Mutually exclusive","P(A ∩ B) = 0, so P(A ∪ B) = P(A) + P(B)"],["Conditional","P(A | B) = P(A ∩ B) / P(B)"],["Multiplication rule","P(A ∩ B) = P(A)·P(B | A)"],["Independence","P(A ∩ B) = P(A)·P(B)"],["Bayes","P(A | B) = P(B | A)·P(A) / P(B)"],["Permutations","P(n,r) = n! / (n−r)!"],["Combinations","C(n,r) = n! / [ r!(n−r)! ]"]]},{"g":"Distributions","rows":[["Binomial probability","P(X = k) = C(n,k) p<sup>k</sup>(1−p)<sup>n−k</sup>"],["Binomial mean and variance","μ = np, &nbsp;σ<sup>2</sup> = np(1−p)"],["Poisson","P(X = k) = λ<sup>k</sup>e<sup>−λ</sup> / k! , &nbsp;μ = σ<sup>2</sup> = λ"],["Normal density","f(x) = 1/(σ√(2π)) · e<sup>−(x−μ)²/(2σ²)</sup>"],["Standard normal","Z = (X − μ)/σ ~ N(0,1)"],["Central limit theorem","x̄ is approximately normal with mean μ and standard error σ/√n"],["Standard error","SE = σ/√n"]]},{"g":"Confidence intervals","rows":[["Mean, σ known","x̄ ± z<sub>α/2</sub> · σ/√n"],["Mean, σ unknown","x̄ ± t<sub>α/2, n−1</sub> · s/√n"],["Proportion","p̂ ± z<sub>α/2</sub> · √( p̂(1−p̂)/n )"],["Common z values","90% → 1.645, &nbsp;95% → 1.96, &nbsp;99% → 2.576"],["Sample size for a mean","n = ( z<sub>α/2</sub>σ / E )<sup>2</sup>"],["Width","the interval narrows as n grows and widens as confidence grows"]]},{"g":"Hypothesis testing","rows":[["Hypotheses","H₀ is the claim of no effect; H₁ is what you are trying to show"],["z test for a mean","z = (x̄ − μ₀) / (σ/√n)"],["t test for a mean","t = (x̄ − μ₀) / (s/√n), &nbsp;df = n − 1"],["Test for a proportion","z = (p̂ − p₀) / √( p₀(1−p₀)/n )"],["Decision","reject H₀ when p-value ≤ α"],["Type I error","rejecting a true H₀; its probability is α"],["Type II error","failing to reject a false H₀; its probability is β, and power = 1 − β"],["Chi-square","χ<sup>2</sup> = Σ (O − E)<sup>2</sup> / E"]]},{"g":"Correlation and regression","rows":[["Correlation","r measures straight-line association, −1 ≤ r ≤ 1"],["Regression line","ŷ = b₀ + b₁x"],["Slope","b₁ = Σ(x−x̄)(y−ȳ) / Σ(x−x̄)<sup>2</sup> = r·(s<sub>y</sub>/s<sub>x</sub>)"],["Intercept","b₀ = ȳ − b₁x̄"],["Coefficient of determination","r<sup>2</sup> is the share of the variation in y the line explains"],["Residual","e = y − ŷ"],["Correlation is not cause","a strong r says nothing about which variable drives which"]]}]},"DIFFEQ":{"title":"Differential Equations","groups":[{"g":"First-order","rows":[["Separable","dy/dx = g(x)h(y) ⇒ ∫ dy/h(y) = ∫ g(x) dx"],["Linear form","y′ + P(x)y = Q(x)"],["Integrating factor","μ = e<sup>∫P dx</sup>, then (μy)′ = μQ"],["Exact equation","M dx + N dy = 0 is exact ⟺ ∂M/∂y = ∂N/∂x"],["Growth and decay","y′ = ky ⇒ y = y₀e<sup>kt</sup>"],["Logistic","P′ = kP(1 − P/M) ⇒ P = M / (1 + Ae<sup>−kt</sup>)"],["Newton's cooling","T′ = −k(T − T<sub>s</sub>) ⇒ T = T<sub>s</sub> + (T₀ − T<sub>s</sub>)e<sup>−kt</sup>"]]},{"g":"Second-order linear","rows":[["Homogeneous","ay″ + by′ + cy = 0, &nbsp;characteristic ar<sup>2</sup> + br + c = 0"],["Distinct real roots","y = c₁e<sup>r₁x</sup> + c₂e<sup>r₂x</sup>"],["Repeated root","y = (c₁ + c₂x) e<sup>rx</sup>"],["Complex roots α ± βi","y = e<sup>αx</sup>( c₁cos βx + c₂sin βx )"],["General solution","y = y<sub>h</sub> + y<sub>p</sub>"],["Undetermined coefficients","guess y<sub>p</sub> of the same shape as the forcing term; multiply by x if it duplicates y<sub>h</sub>"],["Variation of parameters","y<sub>p</sub> = −y₁∫ y₂g/W dx + y₂∫ y₁g/W dx"],["Wronskian","W = y₁y₂′ − y₂y₁′ ; non-zero ⇒ independent"],["Simple harmonic motion","mx″ + kx = 0, &nbsp;ω = √(k/m)"]]},{"g":"Laplace transforms","rows":[["Definition","ℒ{f} = ∫<sub>0</sub><sup>∞</sup> e<sup>−st</sup>f(t) dt"],["1","ℒ{1} = 1/s"],["tⁿ","ℒ{t<sup>n</sup>} = n! / s<sup>n+1</sup>"],["e^at","ℒ{e<sup>at</sup>} = 1/(s−a)"],["sin and cos","ℒ{sin at} = a/(s<sup>2</sup>+a<sup>2</sup>) &nbsp;&nbsp; ℒ{cos at} = s/(s<sup>2</sup>+a<sup>2</sup>)"],["Derivative","ℒ{f′} = sF(s) − f(0)"],["Second derivative","ℒ{f″} = s<sup>2</sup>F(s) − s f(0) − f′(0)"],["First shift","ℒ{e<sup>at</sup>f(t)} = F(s−a)"],["Second shift","ℒ{u(t−a)f(t−a)} = e<sup>−as</sup>F(s)"],["Convolution","ℒ{f ∗ g} = F(s)G(s)"]]},{"g":"Systems and numerics","rows":[["Linear system","<b>x</b>′ = A<b>x</b>, solutions built from the eigenvalues of A"],["Real eigenvalue","<b>x</b> = <b>v</b>e<sup>λt</sup>"],["Phase plane","λ both &lt; 0 stable node; both &gt; 0 unstable node; opposite signs saddle; complex spiral"],["Euler","y<sub>n+1</sub> = y<sub>n</sub> + h·f(t<sub>n</sub>, y<sub>n</sub>), &nbsp;error O(h)"],["Improved Euler","y<sub>n+1</sub> = y<sub>n</sub> + (h/2)[ f(t<sub>n</sub>,y<sub>n</sub>) + f(t<sub>n+1</sub>, ỹ) ], &nbsp;error O(h<sup>2</sup>)"],["Runge–Kutta 4","y<sub>n+1</sub> = y<sub>n</sub> + (h/6)(k₁ + 2k₂ + 2k₃ + k₄), &nbsp;error O(h<sup>4</sup>)"]]}]},"ALGEBRA":{"title":"Abstract Algebra","groups":[{"g":"Groups","rows":[["Group axioms","closure, associativity, an identity e, and an inverse for every element"],["Abelian","ab = ba for every pair"],["Order of a group","|G| is how many elements it has"],["Order of an element","the least n &gt; 0 with a<sup>n</sup> = e"],["Subgroup test","non-empty, and ab<sup>−1</sup> ∈ H whenever a,b ∈ H"],["Lagrange","|H| divides |G|, and [G:H] = |G|/|H|"],["Element order divides","the order of any element divides |G|"],["Cyclic group","G = ⟨a⟩ ; every cyclic group is abelian"],["Generators of Zₙ","k generates Z<sub>n</sub> ⟺ gcd(k,n) = 1"],["Symmetric group","|S<sub>n</sub>| = n! ; S<sub>n</sub> is non-abelian for n ≥ 3"]]},{"g":"Group structure","rows":[["Homomorphism","φ(ab) = φ(a)φ(b)"],["Isomorphism","a bijective homomorphism; then G ≅ H"],["Kernel","ker φ = { a : φ(a) = e } , always a normal subgroup"],["Normal subgroup","gNg<sup>−1</sup> = N for every g ∈ G"],["Quotient group","G/N, with cosets as its elements and |G/N| = |G|/|N|"],["First isomorphism theorem","G / ker φ ≅ im φ"],["Cauchy","p prime dividing |G| ⇒ G has an element of order p"],["Cosets partition","the left cosets of H split G into blocks of equal size"]]},{"g":"Rings and fields","rows":[["Ring","an abelian group under +, associative under ·, and distributive"],["Commutative ring with unity","multiplication commutes and there is a 1"],["Zero divisor","a ≠ 0 with ab = 0 for some b ≠ 0"],["Integral domain","commutative, has a 1, and no zero divisors"],["Field","an integral domain in which every non-zero element has an inverse"],["Zₙ is a field","⟺ n is prime"],["Ideal","a subring absorbing multiplication: rI ⊆ I"],["Characteristic","the least n with n·1 = 0, or 0 if there is none"],["Finite field size","every finite field has p<sup>n</sup> elements for a prime p"]]}]},"COMPLEX":{"title":"Complex Analysis","groups":[{"g":"Complex numbers","rows":[["Imaginary unit","i<sup>2</sup> = −1"],["Modulus","|z| = √(x<sup>2</sup> + y<sup>2</sup>)"],["Conjugate","z̄ = x − iy, &nbsp;z z̄ = |z|<sup>2</sup>"],["Polar form","z = r(cos θ + i sin θ) = re<sup>iθ</sup>"],["Euler's identity","e<sup>iπ</sup> + 1 = 0"],["De Moivre","(re<sup>iθ</sup>)<sup>n</sup> = r<sup>n</sup>e<sup>inθ</sup>"],["n-th roots","z<sup>1/n</sup> = r<sup>1/n</sup> e<sup>i(θ+2πk)/n</sup>, &nbsp;k = 0…n−1"],["Triangle inequality","|z₁ + z₂| ≤ |z₁| + |z₂|"]]},{"g":"Analytic functions","rows":[["Cauchy–Riemann","u<sub>x</sub> = v<sub>y</sub> and u<sub>y</sub> = −v<sub>x</sub>"],["Analytic","differentiable on a neighbourhood; Cauchy–Riemann plus continuous partials is enough"],["Harmonic","u and v each satisfy u<sub>xx</sub> + u<sub>yy</sub> = 0"],["Cauchy's theorem","f analytic inside and on a closed curve C ⇒ ∮<sub>C</sub> f dz = 0"],["Cauchy integral formula","f(z₀) = 1/(2πi) ∮<sub>C</sub> f(z)/(z − z₀) dz"],["Derivative formula","f<sup>(n)</sup>(z₀) = n!/(2πi) ∮<sub>C</sub> f(z)/(z − z₀)<sup>n+1</sup> dz"],["Residue theorem","∮<sub>C</sub> f dz = 2πi Σ Res(f, z<sub>k</sub>)"],["Simple pole residue","Res = lim<sub>z→z₀</sub> (z − z₀) f(z)"],["Laurent series","Σ<sub>n=−∞</sub><sup>∞</sup> a<sub>n</sub>(z − z₀)<sup>n</sup> ; the a<sub>−1</sub> term is the residue"],["Liouville","bounded and entire ⇒ constant"]]}]},"NUMER":{"title":"Numerical Methods","groups":[{"g":"Error and roots","rows":[["Absolute error","|x̃ − x|"],["Relative error","|x̃ − x| / |x|"],["Bisection","sign change on [a,b] ⇒ a root; the interval halves each step"],["Bisection steps","n ≥ log₂( (b−a)/ε )"],["Newton's method","x<sub>n+1</sub> = x<sub>n</sub> − f(x<sub>n</sub>)/f′(x<sub>n</sub>) ; quadratic near a simple root"],["Secant","x<sub>n+1</sub> = x<sub>n</sub> − f(x<sub>n</sub>)(x<sub>n</sub> − x<sub>n−1</sub>) / [ f(x<sub>n</sub>) − f(x<sub>n−1</sub>) ]"],["Fixed point","x = g(x) converges when |g′(x)| &lt; 1 near the root"],["Order of convergence","|e<sub>n+1</sub>| ≈ C|e<sub>n</sub>|<sup>p</sup> : p = 1 linear, 2 quadratic"]]},{"g":"Interpolation and integration","rows":[["Lagrange form","P(x) = Σ y<sub>i</sub> Π<sub>j≠i</sub> (x − x<sub>j</sub>)/(x<sub>i</sub> − x<sub>j</sub>)"],["Uniqueness","n + 1 points determine exactly one polynomial of degree ≤ n"],["Trapezoid rule","∫ ≈ (h/2)[ f₀ + 2f₁ + … + 2f<sub>n−1</sub> + f<sub>n</sub> ], error O(h<sup>2</sup>)"],["Simpson's rule","∫ ≈ (h/3)[ f₀ + 4f₁ + 2f₂ + … + f<sub>n</sub> ], n even, error O(h<sup>4</sup>)"],["Simpson is exact","exact for any polynomial of degree 3 or less"],["Forward difference","f′(x) ≈ [ f(x+h) − f(x) ] / h, error O(h)"],["Central difference","f′(x) ≈ [ f(x+h) − f(x−h) ] / (2h), error O(h<sup>2</sup>)"]]},{"g":"Linear systems and ODEs","rows":[["LU factorisation","A = LU, then solve Ly = b and Ux = y"],["Pivoting","swap rows to put the largest magnitude on the diagonal and keep the arithmetic stable"],["Condition number","κ(A) = ‖A‖·‖A<sup>−1</sup>‖ ; large κ means an ill-conditioned system"],["Jacobi","x<sub>i</sub><sup>(k+1)</sup> from the previous sweep only"],["Gauss–Seidel","uses each new value as soon as it is available, so it usually converges faster"],["Diagonal dominance","|a<sub>ii</sub>| &gt; Σ<sub>j≠i</sub>|a<sub>ij</sub>| guarantees both iterations converge"],["Euler","y<sub>n+1</sub> = y<sub>n</sub> + h f(t<sub>n</sub>, y<sub>n</sub>), error O(h)"],["Runge–Kutta 4","error O(h<sup>4</sup>) for four function evaluations per step"]]}]},"PDE":{"title":"Partial Differential Equations","groups":[{"g":"Foundations","rows":[["Order","the highest derivative that appears"],["Linear","u and its derivatives appear only to the first power and never multiplied together"],["Second-order form","Au<sub>xx</sub> + Bu<sub>xy</sub> + Cu<sub>yy</sub> + … = 0"],["Classification","B<sup>2</sup> − 4AC &lt; 0 elliptic, = 0 parabolic, &gt; 0 hyperbolic"],["Superposition","linear homogeneous: any sum of solutions is a solution"],["Separation of variables","try u(x,t) = X(x)T(t), then each side equals the same constant"],["Boundary conditions","Dirichlet fixes u; Neumann fixes ∂u/∂n; Robin mixes the two"]]},{"g":"The three equations","rows":[["Heat equation","u<sub>t</sub> = α u<sub>xx</sub> &nbsp;(parabolic)"],["Wave equation","u<sub>tt</sub> = c<sup>2</sup> u<sub>xx</sub> &nbsp;(hyperbolic)"],["Laplace's equation","u<sub>xx</sub> + u<sub>yy</sub> = 0 &nbsp;(elliptic)"],["d'Alembert","u = ½[ f(x−ct) + f(x+ct) ] + 1/(2c) ∫<sub>x−ct</sub><sup>x+ct</sup> g(s) ds"],["Heat, fixed ends","u = Σ b<sub>n</sub> sin(nπx/L) e<sup>−α(nπ/L)²t</sup>"],["Fourier sine coefficients","b<sub>n</sub> = (2/L) ∫<sub>0</sub><sup>L</sup> f(x) sin(nπx/L) dx"],["Harmonic functions","solutions of Laplace obey the maximum principle: extremes sit on the boundary"],["Steady state","letting t → ∞ in the heat equation leaves Laplace"]]}]},"RANALYSIS":{"title":"Real Analysis","groups":[{"g":"Numbers and sequences","rows":[["Completeness","every non-empty set bounded above has a least upper bound"],["Supremum","sup S is the least upper bound; it need not be in S"],["Archimedean property","for any x there is n ∈ ℕ with n &gt; x"],["Density of ℚ","between any two reals there is a rational"],["Convergence","∀ε&gt;0 ∃N : n &gt; N ⇒ |a<sub>n</sub> − L| &lt; ε"],["Limits are unique","a sequence converges to at most one limit"],["Convergent ⇒ bounded","but bounded does not imply convergent"],["Monotone convergence","monotone and bounded ⇒ convergent"],["Bolzano–Weierstrass","every bounded sequence has a convergent subsequence"],["Cauchy sequence","∀ε ∃N : m,n &gt; N ⇒ |a<sub>m</sub> − a<sub>n</sub>| &lt; ε ; in ℝ, Cauchy ⟺ convergent"]]},{"g":"Continuity and differentiation","rows":[["ε–δ continuity","∀ε&gt;0 ∃δ&gt;0 : |x − c| &lt; δ ⇒ |f(x) − f(c)| &lt; ε"],["Sequential criterion","f is continuous at c ⟺ x<sub>n</sub> → c ⇒ f(x<sub>n</sub>) → f(c)"],["Extreme value theorem","continuous on a closed bounded interval ⇒ it attains a max and a min"],["Uniform continuity","δ depends on ε alone; continuous on [a,b] ⇒ uniformly continuous there"],["Differentiable ⇒ continuous","the converse fails: |x| at 0"],["Rolle","f(a) = f(b) ⇒ f′(c) = 0 for some c in (a,b)"],["Mean value theorem","f′(c) = [f(b) − f(a)]/(b − a)"],["Zero derivative","f′ ≡ 0 on an interval ⇒ f is constant there"]]},{"g":"Integration and series","rows":[["Darboux integrable","sup of lower sums equals inf of upper sums"],["Riemann criterion","integrable ⟺ ∀ε ∃ partition with U(f,P) − L(f,P) &lt; ε"],["Continuous ⇒ integrable","on a closed bounded interval"],["Fundamental theorem","F(x) = ∫<sub>a</sub><sup>x</sup> f ⇒ F′ = f wherever f is continuous"],["Pointwise convergence","f<sub>n</sub>(x) → f(x) for each fixed x"],["Uniform convergence","sup<sub>x</sub>|f<sub>n</sub>(x) − f(x)| → 0 ; it preserves continuity"],["Weierstrass M-test","|f<sub>n</sub>| ≤ M<sub>n</sub> and ΣM<sub>n</sub> converges ⇒ Σf<sub>n</sub> converges uniformly"],["Term-by-term","uniform convergence lets you integrate a series term by term"]]}]},"AIM-MATH":{"title":"Mathematics for AI","groups":[{"g":"Linear algebra","rows":[["Matrix product shape","(m×n)(n×p) → m×p"],["Dot product","<b>a</b>·<b>b</b> = Σ a<sub>i</sub>b<sub>i</sub> = ‖a‖‖b‖cos θ"],["Cosine similarity","cos θ = <b>a</b>·<b>b</b> / (‖a‖‖b‖)"],["Norms","‖x‖₁ = Σ|x<sub>i</sub>| , &nbsp;‖x‖₂ = √(Σx<sub>i</sub><sup>2</sup>)"],["Rank","the number of independent columns; a low-rank matrix compresses well"],["Eigen-decomposition","A = PDP<sup>−1</sup>"],["Singular value decomposition","A = UΣV<sup>T</sup> for any matrix at all"],["Positive semi-definite","<b>x</b><sup>T</sup>A<b>x</b> ≥ 0 for all <b>x</b> ⟺ every eigenvalue ≥ 0"]]},{"g":"Calculus for learning","rows":[["Gradient","∇f = [ ∂f/∂x₁ … ∂f/∂x<sub>n</sub> ]<sup>T</sup>, pointing steepest uphill"],["Jacobian","J<sub>ij</sub> = ∂f<sub>i</sub>/∂x<sub>j</sub>"],["Hessian","H<sub>ij</sub> = ∂<sup>2</sup>f/∂x<sub>i</sub>∂x<sub>j</sub>, symmetric where the partials are continuous"],["Chain rule (backprop)","∂L/∂w = (∂L/∂z)(∂z/∂w) — multiply the gradients back along the path"],["Sigmoid derivative","σ′ = σ(1 − σ)"],["tanh derivative","1 − tanh<sup>2</sup>x"],["Softmax","σ(z)<sub>i</sub> = e<sup>z<sub>i</sub></sup> / Σ e<sup>z<sub>j</sub></sup> ; the outputs sum to 1"],["ReLU","max(0, x) ; its derivative is 1 for x &gt; 0 and 0 for x &lt; 0"]]},{"g":"Probability","rows":[["Bayes","P(θ | D) = P(D | θ)P(θ) / P(D)"],["Expectation","E[X] = Σ x P(x) = ∫ x f(x) dx"],["Linearity of expectation","E[aX + bY] = aE[X] + bE[Y], dependent or not"],["Variance","Var(X) = E[X<sup>2</sup>] − (E[X])<sup>2</sup>"],["Covariance","Cov(X,Y) = E[XY] − E[X]E[Y] ; zero if independent"],["Entropy","H(X) = −Σ p log p ; a fair coin carries 1 bit"],["Cross-entropy","H(p,q) = −Σ p log q ; the loss a classifier minimises"],["KL divergence","D(p‖q) = Σ p log(p/q) ≥ 0, and it is not symmetric"]]},{"g":"Optimisation","rows":[["Gradient descent","θ ← θ − η∇L(θ)"],["Learning rate","too large diverges, too small crawls"],["Momentum","v ← βv + ∇L, &nbsp;θ ← θ − ηv"],["Convexity","f is convex ⟺ its Hessian is positive semi-definite; then a local minimum is global"],["Stationary point","∇f = 0 ; the Hessian says which kind"],["L2 regularisation","add λ‖w‖<sup>2</sup> — shrinks the weights smoothly"],["L1 regularisation","add λ‖w‖₁ — drives weights to exactly zero, so it selects features"],["Lagrangian","ℒ = f(x) + λg(x) for an equality constraint"]]}]},"PHYSC":{"title":"Physics (Classical)","groups":[{"g":"Kinematics","rows":[["Velocity","v = Δx/Δt, &nbsp;instantaneous v = dx/dt"],["Acceleration","a = Δv/Δt = dv/dt = d<sup>2</sup>x/dt<sup>2</sup>"],["Velocity from a","v = v₀ + at"],["Position","x = x₀ + v₀t + ½at<sup>2</sup>"],["Timeless equation","v<sup>2</sup> = v₀<sup>2</sup> + 2aΔx"],["Free fall","a = −g, &nbsp;g ≈ 9.81 m/s<sup>2</sup>"],["Projectile","horizontal a = 0; vertical a = −g; the two axes are independent"],["Range on level ground","R = v₀<sup>2</sup> sin(2θ) / g, &nbsp;greatest at θ = 45°"]]},{"g":"Forces","rows":[["Newton's first law","no net force ⇒ constant velocity"],["Newton's second law","Σ<b>F</b> = m<b>a</b>"],["Newton's third law","every force has an equal and opposite partner on the other body"],["Weight","W = mg"],["Friction","f<sub>s</sub> ≤ μ<sub>s</sub>N, &nbsp;f<sub>k</sub> = μ<sub>k</sub>N"],["Incline","along the slope mg sin θ, into it mg cos θ"],["Centripetal force","F = mv<sup>2</sup>/r, pointing at the centre"],["Hooke's law","F = −kx"]]},{"g":"Energy and momentum","rows":[["Work","W = F d cos θ = ∫ <b>F</b>·d<b>r</b>"],["Kinetic energy","KE = ½mv<sup>2</sup>"],["Gravitational PE","PE = mgh near the surface"],["Elastic PE","PE = ½kx<sup>2</sup>"],["Work–energy theorem","W<sub>net</sub> = ΔKE"],["Conservation of energy","KE + PE is constant with no friction"],["Power","P = W/t = <b>F</b>·<b>v</b>"],["Momentum","<b>p</b> = m<b>v</b>"],["Impulse","<b>J</b> = <b>F</b>Δt = Δ<b>p</b>"],["Collisions","momentum is conserved in all of them; kinetic energy only in an elastic one"]]},{"g":"Rotation and gravity","rows":[["Angular kinematics","θ = θ₀ + ω₀t + ½αt<sup>2</sup>, &nbsp;ω = ω₀ + αt"],["Linear and angular","v = rω, &nbsp;a<sub>t</sub> = rα"],["Torque","τ = rF sin θ = Iα"],["Moment of inertia","I = Σ m<sub>i</sub>r<sub>i</sub><sup>2</sup> ; disc ½MR<sup>2</sup>, hoop MR<sup>2</sup>, solid sphere (2/5)MR<sup>2</sup>"],["Rotational KE","KE = ½Iω<sup>2</sup>"],["Angular momentum","L = Iω, conserved with no external torque"],["Universal gravitation","F = Gm₁m₂/r<sup>2</sup>, &nbsp;G = 6.674×10<sup>−11</sup>"],["Orbital speed","v = √(GM/r)"],["Kepler's third law","T<sup>2</sup> ∝ r<sup>3</sup>"]]},{"g":"Oscillation, waves and heat","rows":[["SHM position","x = A cos(ωt + φ)"],["Mass on a spring","ω = √(k/m), &nbsp;T = 2π√(m/k)"],["Simple pendulum","T = 2π√(L/g) for small swings"],["Wave speed","v = fλ"],["Period and frequency","T = 1/f"],["Standing wave on a string","f<sub>n</sub> = nv/(2L)"],["Doppler","f′ = f (v ± v<sub>o</sub>)/(v ∓ v<sub>s</sub>)"],["Ideal gas law","PV = nRT"],["First law of thermodynamics","ΔU = Q − W"],["Heat transfer","Q = mcΔT"],["Carnot efficiency","e = 1 − T<sub>C</sub>/T<sub>H</sub> with temperatures in kelvin"]]},{"g":"Electricity and magnetism","rows":[["Coulomb's law","F = kq₁q₂/r<sup>2</sup>, &nbsp;k = 8.99×10<sup>9</sup>"],["Electric field","E = F/q = kQ/r<sup>2</sup>"],["Potential","V = kQ/r, &nbsp;E = −dV/dx"],["Capacitance","C = Q/V, &nbsp;energy = ½CV<sup>2</sup>"],["Ohm's law","V = IR"],["Electrical power","P = IV = I<sup>2</sup>R = V<sup>2</sup>/R"],["Resistors in series","R = R₁ + R₂ + …"],["Resistors in parallel","1/R = 1/R₁ + 1/R₂ + …"],["Magnetic force on a charge","F = qvB sin θ"],["Faraday's law","ε = −dΦ/dt"]]}]},"PHYSQ":{"title":"Quantum Physics","groups":[{"g":"The quantum revolution","rows":[["Planck","E = hf = ħω, &nbsp;h = 6.626×10<sup>−34</sup> J·s"],["ħ","ħ = h/2π"],["Photoelectric effect","KE<sub>max</sub> = hf − φ ; below the threshold frequency nothing is emitted"],["de Broglie","λ = h/p"],["Compton shift","Δλ = (h/m<sub>e</sub>c)(1 − cos θ)"],["Bohr energy levels","E<sub>n</sub> = −13.6 eV / n<sup>2</sup>"],["Photon from a transition","hf = E<sub>i</sub> − E<sub>f</sub>"]]},{"g":"Wave mechanics","rows":[["Schrödinger equation","iħ ∂Ψ/∂t = ĤΨ"],["Time-independent form","−(ħ<sup>2</sup>/2m) ψ″ + Vψ = Eψ"],["Born rule","|ψ(x)|<sup>2</sup> dx is the probability of finding it in dx"],["Normalisation","∫ |ψ|<sup>2</sup> dx = 1"],["Expectation value","⟨A⟩ = ∫ ψ* Â ψ dx"],["Uncertainty","ΔxΔp ≥ ħ/2"],["Energy–time uncertainty","ΔEΔt ≥ ħ/2"],["Superposition","any sum of solutions is a solution; measurement collapses it"]]},{"g":"Quantum systems","rows":[["Infinite well levels","E<sub>n</sub> = n<sup>2</sup>π<sup>2</sup>ħ<sup>2</sup> / (2mL<sup>2</sup>)"],["Infinite well states","ψ<sub>n</sub> = √(2/L) sin(nπx/L)"],["Orthogonality","∫ ψ<sub>m</sub>*ψ<sub>n</sub> dx = 0 for m ≠ n"],["Harmonic oscillator","E<sub>n</sub> = (n + ½)ħω ; the ground state is not zero"],["Tunnelling","a particle can cross a barrier it has too little energy to climb"],["Hydrogen quantum numbers","n ≥ 1, &nbsp;0 ≤ ℓ ≤ n−1, &nbsp;−ℓ ≤ m<sub>ℓ</sub> ≤ ℓ"],["Degeneracy of level n","n<sup>2</sup> orbital states, 2n<sup>2</sup> with spin"]]},{"g":"Spin and identical particles","rows":[["Electron spin","s = ½, &nbsp;m<sub>s</sub> = ±½"],["Spin magnitude","|S| = √(s(s+1)) ħ"],["Pauli exclusion","no two fermions share all four quantum numbers"],["Fermions and bosons","half-integer spin antisymmetric; integer spin symmetric"],["Pauli matrices","σ<sub>x</sub>, σ<sub>y</sub>, σ<sub>z</sub> ; each squares to the identity"],["Commutator","[Â,B̂] = ÂB̂ − B̂Â ; zero means they can be measured together"]]}]}};
+var MARGIN_X = Math.round(1.25 * IN);   // 147
+var PAPERS = [
+  { id: 'cornell', name: 'Cornell',       kind: 'cornell', gap: Math.round(11 / 32 * IN),
+    note: 'cue column, notes, summary' },
+  { id: 'college', name: 'College ruled', kind: 'ruled',   gap: Math.round(9 / 32 * IN),
+    note: '9/32 in' },
+  { id: 'wide',    name: 'Wide ruled',    kind: 'ruled',   gap: Math.round(11 / 32 * IN),
+    note: '11/32 in' },
+  { id: 'narrow',  name: 'Narrow ruled',  kind: 'ruled',   gap: Math.round(1 / 4 * IN),
+    note: '1/4 in' },
+  { id: 'graph',   name: 'Graph',         kind: 'grid',    gap: Math.round(1 / 4 * IN),
+    note: '1/4 in squares' },
+  { id: 'dots',    name: 'Dot grid',      kind: 'dots',    gap: Math.round(1 / 4 * IN),
+    note: '1/4 in dots' },
+  { id: 'blank',   name: 'Blank',         kind: 'blank',   gap: Math.round(11 / 32 * IN),
+    note: 'no ruling at all' }
+];
+/* Chosen per class, because the paper that suits a maths class is not the one
+   that suits a reading class - graph for calculus, Cornell for theory - and
+   she should not have to set it again in every section of the same course.
+   The last choice also becomes the default a class she has not set yet opens
+   with, so picking graph once carries into the next maths class she opens. */
+function paperCourse(){
+  try { return String(curKey || '').split('/')[0] || ''; } catch (e) { return ''; }
+}
+function paperId(){
+  var pr = prefs(), c = paperCourse();
+  if (c && pr.paperBy && typeof pr.paperBy === 'object' && pr.paperBy[c]) return pr.paperBy[c];
+  return pr.paper || 'cornell';
+}
+function paper(){
+  var id = paperId();
+  for (var i = 0; i < PAPERS.length; i++) if (PAPERS[i].id === id) return PAPERS[i];
+  return PAPERS[0];
+}
+function ruleGap(){ return paper().gap; }
+function isCornell(){ return paper().kind === 'cornell'; }
+
 var MINH = 200, MAXH = 620;     // dock height in CSS px
 var ANIM = 240;
 
@@ -65339,19 +65792,15 @@ css.textContent = [
   /* the highlighter band - flat, even, translucent; it is painted UNDER the
      writing (see redraw) so no blend mode is needed to keep the ink crisp */
   '#mn-ink .mn-hl{fill:none; stroke-linecap:round; stroke-linejoin:round;}',
+  '#mn-ink .mn-grid{stroke:var(--text-4,#94a3b8); stroke-width:1; opacity:.26; fill:none;',
+  '  vector-effect:non-scaling-stroke;}',
+  '#mn-ink .mn-dotgrid{fill:var(--text-4,#94a3b8); opacity:.55;}',
+  /* the picker shows each ruling as a small drawing of itself, not a word */
+  '.mn-paper-sw{width:30px; height:22px; border-radius:3px; flex:0 0 auto;',
+  '  border:1px solid var(--border,#d5dbe4); background:var(--surface,#fff);',
+  '  background-repeat:repeat; background-position:0 0;}',
   /* the straightedge: a real object lying on the paper, with inch ticks and a
      grip at each end to swing it round */
-  '#mn-ink .mn-ruler{cursor:move;}',
-  '#mn-ink .mn-ruler-body{fill:var(--primary,#6366f1); fill-opacity:.12;',
-  '  stroke:var(--primary,#6366f1); stroke-opacity:.5; stroke-width:1.5;',
-  '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-ruler-edge{stroke:var(--primary,#6366f1); stroke-width:2.5;',
-  '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-ruler-tick{stroke:var(--primary,#6366f1); stroke-opacity:.7; stroke-width:1;',
-  '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-ruler-num{fill:var(--primary,#6366f1); opacity:.85; font-size:26px;',
-  '  font-weight:700; font-family:inherit;}',
-  '#mn-ink .mn-ruler-grip{fill:var(--surface); fill-opacity:.92; stroke:var(--primary,#6366f1);',
   '  stroke-width:2; vector-effect:non-scaling-stroke; cursor:grab;}',
   '.mn-dot.mn-dot-rule{width:22px; height:4px; border-radius:2px;',
   '  background:var(--primary,#6366f1);}',
@@ -65359,6 +65808,32 @@ css.textContent = [
   '  border:1.5px dashed var(--border-strong,var(--border));}',
 
   '#mn-typed{flex:1 1 auto; display:none; flex-direction:column; min-height:0;}',
+  /* THE FORMULA SHEET. Maths classes need the standard results to hand while
+     she is writing, not three taps away in a lesson she has already left. It
+     is a tab beside Write and Type, it only exists for classes that have a
+     sheet, and it never leaves the notebook. */
+  '#mn-form{display:none; flex:1 1 auto; flex-direction:column; min-height:0; background:var(--surface);}',
+  '#mn-dock.tab-form #mn-form{display:flex;}',
+  '#mn-dock.tab-form #mn-pages,#mn-dock.tab-form #mn-typed{display:none;}',
+  '#mn-dock:not(.has-form) #mn-tabs button[data-tab="form"]{display:none;}',
+  '#mn-form-find{flex:0 0 auto; padding:8px 10px; border-bottom:1px solid var(--border);}',
+  '#mn-form-q{width:100%; box-sizing:border-box; font:inherit; font-size:13px;',
+  '  padding:7px 10px; border-radius:8px; border:1px solid var(--border);',
+  '  background:var(--bg-2); color:var(--text);}',
+  '#mn-form-body{flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain;',
+  '  -webkit-overflow-scrolling:touch; padding:4px 0 14px;}',
+  '.mn-fg{border-bottom:1px solid var(--border);}',
+  '.mn-fg-h{font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;',
+  '  color:var(--text-3); padding:11px 12px 5px;}',
+  '.mn-fr{display:flex; gap:10px; align-items:baseline; padding:5px 12px 6px;}',
+  '.mn-fr:nth-child(even){background:var(--bg-2);}',
+  '.mn-fr-n{flex:0 0 38%; font-size:12px; color:var(--text-2); line-height:1.35;}',
+  '.mn-fr-f{flex:1 1 auto; font-size:13.5px; color:var(--text); line-height:1.45;',
+  '  font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}',
+  '.mn-fr-note{display:block; font-size:11px; color:var(--text-3); font-family:inherit;',
+  '  margin-top:2px;}',
+  '@media (max-width:520px){ .mn-fr{display:block;} .mn-fr-n{width:auto;} }',
+  '#mn-form-none{padding:22px 14px; text-align:center; color:var(--text-3); font-size:13px;}',
   '#mn-dock.tab-type #mn-pages{display:none;}',
   '#mn-dock.tab-type #mn-typed{display:flex;}',
   '#mn-list{flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; padding:10px 12px;',
@@ -65373,11 +65848,21 @@ css.textContent = [
   '.mn-card .mn-body{font-size:13px; line-height:1.55; color:var(--text-2); outline:none;',
   '  white-space:pre-wrap; word-break:break-word; min-height:18px;}',
   '#mn-compose{flex:0 0 auto; border-top:1px solid var(--border); padding:8px 12px;}',
-  '#mn-ta{width:100%; box-sizing:border-box; resize:none; min-height:52px; max-height:30vh;',
+  /* It grows with what she writes. A list that scrolled inside a three-line
+     box was the whole reason bullets felt cramped. */
+  '#mn-ta{width:100%; box-sizing:border-box; resize:none; min-height:52px; max-height:38vh;',
+  '  overflow-y:auto;',
   '  font-family:inherit; font-size:13px; line-height:1.5; padding:8px 10px; border-radius:9px;',
   '  background:var(--bg-2); color:var(--text); border:1px solid var(--border-strong,var(--border));}',
   '#mn-row{display:flex; align-items:center; gap:8px; margin-top:6px;}',
   '#mn-hint{flex:1; font-size:10px; color:var(--text-4);}',
+  '#mn-bullet{cursor:pointer; padding:7px 9px; border-radius:8px; flex:0 0 auto;',
+  '  border:1px solid var(--border-strong,var(--border));',
+  '  background:var(--bg-2); color:var(--text-2);',
+  '  display:flex; align-items:center; justify-content:center;}',
+  '#mn-bullet svg{width:16px; height:12px; display:block; fill:currentColor;}',
+  '#mn-bullet.on{background:var(--accent-bg,var(--surface-3)); color:var(--accent);',
+  '  border-color:var(--accent);}',
   '#mn-save{font-family:inherit; font-size:12px; font-weight:700; cursor:pointer; padding:7px 14px;',
   '  border-radius:8px; border:none; background:var(--accent); color:var(--accent-text,#042f2e);}',
 
@@ -65457,64 +65942,6 @@ var HL_ALPHA = 0.42;
 function hlColor(){ return prefs().hlColor || HL_SWATCHES[0]; }
 function hlWidth(){ var w = +prefs().hlW; return (w > 0) ? w : DEFAULT_HL_W; }
 
-/* THE RULER. A straightedge that lies on the paper: drag the body to move it,
-   drag either end grip to swing it round, and a stroke that starts on or beside
-   it runs dead straight along its edge - what a real ruler does to a real pen.
-   Angles snap to every 15 degrees so flat, upright and 45 are easy to land on.
-   Its place is kept in page units, so the paper scrolls under it and it stays
-   where she put it, exactly like the real thing. It is a tool, not ink: it is
-   never saved into a stroke and never appears in an exported page. */
-var RULER_LEN  = Math.round(6.5 * IN);   // 765 - a 6.5 inch edge, the longest
-var RULER_MIN  = Math.round(2.5 * IN);   // 294 - short enough for a phone dock
-var RULER_BAND = Math.round(0.8 * IN);   //  94 - the body, below the edge
-var RULER_SNAP = Math.round(0.34 * IN);  //  40 - how far above the edge it grabs
-var RULER_GRIP = Math.round(0.26 * IN);  //  31 - the rotate handles
-function rulerPrefs(){
-  var p = prefs();
-  if (!p.ruler || typeof p.ruler !== 'object') p.ruler = {};
-  var r = p.ruler;
-  if (typeof r.x !== 'number' || !isFinite(r.x)) r.x = UNITS / 2;
-  if (typeof r.y !== 'number' || !isFinite(r.y)) r.y = PAGE_H / 2;
-  if (typeof r.a !== 'number' || !isFinite(r.a)) r.a = 0;   // radians
-  if (typeof r.len !== 'number' || !isFinite(r.len)) r.len = RULER_LEN;
-  return r;
-}
-/* A ruler longer than the paper she can see puts its rotate grips off-screen,
-   where she cannot reach them - and on the side panel the page is drawn zoomed,
-   so only part of its width is ever in view. Cut the edge to what fits. */
-function rulerLen(){
-  var r = rulerPrefs();
-  return Math.max(RULER_MIN, Math.min(RULER_LEN, r.len));
-}
-function fitRulerLen(){
-  try {
-    var wpx = svgWidthPx();
-    if (!(wpx > 0) || !pagesEl || !pagesEl.clientWidth) return;
-    var visible = pagesEl.clientWidth * (UNITS / wpx);      // page units on screen
-    rulerPrefs().len = Math.max(RULER_MIN, Math.min(RULER_LEN, Math.round(visible * 0.82)));
-  } catch (e) {}
-}
-function rulerOn(){ return prefs().rulerOn === true; }
-/* The edge: a point on it, and a unit vector along it. */
-function rulerLine(){
-  var r = rulerPrefs();
-  return { ox: r.x, oy: r.y, dx: Math.cos(r.a), dy: Math.sin(r.a) };
-}
-/* Does a stroke starting here run along the ruler? Anywhere on the body, or
-   within RULER_SNAP above the edge - the strip a pen tip actually occupies
-   when it is held against a straightedge. */
-function rulerCatches(p){
-  if (!rulerOn()) return null;
-  var L = rulerLine();
-  var d = (p.x - L.ox) * (-L.dy) + (p.y - L.oy) * L.dx;
-  if (d < -RULER_SNAP || d > RULER_BAND + RULER_SNAP) return null;
-  return L;
-}
-function rulerProject(p, L){
-  var t = (p.x - L.ox) * L.dx + (p.y - L.oy) * L.dy;
-  return { x: L.ox + L.dx * t, y: L.oy + L.dy * t, p: p.p };
-}
-
 /* ---------- build ---------- */
 function build(){
   if (dock) { if (!dock.isConnected) document.body.appendChild(dock); return; }
@@ -65528,6 +65955,7 @@ function build(){
       '<div id="mn-tabs">' +
         '<button data-tab="write" class="on">✍️ Write</button>' +
         '<button data-tab="type">⌨️ Type</button>' +
+        '<button data-tab="form">📐 Formulas</button>' +
       '</div>' +
       '<div id="mn-tools"></div>' +
       '<span id="mn-where"></span>' +
@@ -65535,11 +65963,22 @@ function build(){
     '</div>' +
     '<div id="mn-pages"><svg id="mn-ink" xmlns="http://www.w3.org/2000/svg" ' +
       'preserveAspectRatio="xMidYMin meet"></svg></div>' +
+    '<div id="mn-form"><div id="mn-form-find">' +
+      '<input id="mn-form-q" type="search" placeholder="Find a formula…" ' +
+      'aria-label="Find a formula" autocomplete="off" spellcheck="false">' +
+    '</div><div id="mn-form-body"></div></div>' +
     '<div id="mn-typed">' +
       '<div id="mn-list"></div>' +
       '<div id="mn-compose">' +
         '<textarea id="mn-ta" placeholder="Type a note… it saves to this section."></textarea>' +
-        '<div id="mn-row"><span id="mn-hint">⌘↵ to save</span>' +
+        '<div id="mn-row">' +
+        '<button id="mn-bullet" type="button" aria-label="Bullet list" title="Bullet list">' +
+          '<svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">' +
+            '<circle cx="2" cy="2" r="1.6"/><rect x="6" y="1.1" width="10" height="1.8" rx=".9"/>' +
+            '<circle cx="2" cy="6" r="1.6"/><rect x="6" y="5.1" width="10" height="1.8" rx=".9"/>' +
+            '<circle cx="2" cy="10" r="1.6"/><rect x="6" y="9.1" width="10" height="1.8" rx=".9"/>' +
+          '</svg></button>' +
+        '<span id="mn-hint">⌘↵ to save</span>' +
         '<button id="mn-save">Save note</button></div>' +
       '</div>' +
     '</div>';
@@ -65559,12 +65998,35 @@ function build(){
     var b = ev.target.closest('[data-tab]'); if (!b) return;
     setTab(b.getAttribute('data-tab'));
   });
+  try {
+    dock.querySelector('#mn-form-q').addEventListener('input', function(){ paintFormulas(); });
+  } catch (e) {}
   dock.querySelector('#mn-x').addEventListener('click', doMinimize);
   dock.querySelector('#mn-save').addEventListener('click', commit);
-  taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); });
+  taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); markBullet(taEl); growTa(); });
   taEl.addEventListener('keydown', function(e){
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); commit(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); commit(); return; }
+    // plain Return carries a list on; a Return on an empty bullet ends it
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (bulletEnter(taEl)) { e.preventDefault(); return; }
+    }
+    /* Tab would otherwise walk off to the Save button mid-list. Inside a
+       bullet it indents, which is the only thing it could usefully mean. */
+    if (e.key === 'Tab' && !e.shiftKey) {
+      var L = taLine(taEl);
+      if (isBulleted(L.text.replace(/^\s+/, '')) || isBulleted(L.text)) {
+        e.preventDefault();
+        setLine(taEl, L, '   ' + L.text);
+      }
+    }
   });
+  try { taEl.addEventListener('click', function(){ markBullet(taEl); }); } catch (e) {}
+  try { taEl.addEventListener('keyup', function(){ markBullet(taEl); }); } catch (e) {}
+  try {
+    dock.querySelector('#mn-bullet').addEventListener('click', function(ev){
+      ev.preventDefault(); toggleBullet(taEl);
+    });
+  } catch (e) {}
   listEl.addEventListener('click', function(ev){
     var d = ev.target.closest('[data-del]'); if (!d) return;
     if (!confirm('Delete this note?')) return;
@@ -65615,8 +66077,7 @@ function buildTools(){
   var lnB  = mk('button','mn-tool' + (tool === 'line' ? ' on' : ''),'╱',
                 'Straight line — or draw one with the pen and hold still at the end'); lnB.dataset.t='line';
   var erB  = mk('button','mn-tool','🩹','Eraser — tap again for eraser size'); erB.dataset.t='erase';
-  var ruB  = mk('button','mn-tool' + (rulerOn() ? ' on' : ''),'📏',
-                'Ruler — draw a straight line along its edge'); ruB.dataset.t='ruler';
+  var paB  = mk('button','mn-tool','📄','Paper — Cornell, ruled, graph, dots or blank'); paB.dataset.t='paper';
   var unB  = mk('button','mn-tool','↩︎','Undo'); unB.dataset.t='undo';
   var rdB  = mk('button','mn-tool','↪︎','Redo'); rdB.dataset.t='redo';
   var clB  = mk('button','mn-tool','🗑','Clear this page'); clB.dataset.t='clear';
@@ -65635,7 +66096,7 @@ function buildTools(){
      is otherwise a long scroll to find one thing. Tap opens the page list. */
   var pgN = mk('button','mn-tool mn-pgbtn','1/1','Page — tap to jump to a page'); pgN.dataset.t='pages';
   var exB = mk('button','mn-tool','📷','Save this page as an image'); exB.dataset.t='export';
-  [penB, wB, hlB, lnB, ruB, erB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
+  [penB, wB, hlB, lnB, erB, paB, unB, rdB, clB, cvB, pgB, pgN, plB, mxB, exB].forEach(function(b){ toolsEl.appendChild(b); });
   paintUndo();
   paintPage();
 
@@ -65674,11 +66135,7 @@ function buildTools(){
       return;
     }
     if (t === 'width') { openPenPop(b); return; }
-    /* The ruler is not a drawing tool - it lies on the paper alongside
-       whichever one is in her hand, so it toggles instead of selecting.
-       Once it is out, tapping it again opens its angles and the way to put
-       it away, the same second-tap idiom the pen and eraser already use. */
-    if (t === 'ruler') { if (rulerOn()) { openRulerPop(b); } else { closePop(); setRuler(true); } return; }
+    if (t === 'paper') { openPaperPop(b); return; }
     if (t === 'pages') { openPagePop(b); return; }
     if (t === 'export') { closePop(); exportPage(); return; }
     /* A second tap on the tool that is already selected opens its options -
@@ -65830,61 +66287,59 @@ function openHlPop(anchor){
     });
   });
 }
-/* Turning the ruler by hand is precise enough with the 15-degree snap, but the
-   three angles anyone actually wants are one tap away here - and so is putting
-   it away, which is the only thing a toggle-that-opens-options has to keep
-   obvious. */
-function openRulerPop(anchor){
-  openPop(anchor, 'ruler', 'Ruler', function(pop){
-    var lab = document.createElement('div');
-    lab.className = 'mn-pop-label';
-    lab.textContent = 'Angle';
-    pop.appendChild(lab);
-    var curDeg = rulerPrefs().a * 180 / Math.PI;
-    [{ a: 0, name: 'Across the page' },
-     { a: 90, name: 'Down the page' },
-     { a: 45, name: '45°' },
-     { a: -45, name: '−45°' }].forEach(function(o){
-      var d = document.createElement('span');
-      d.className = 'mn-dot mn-dot-rule';
-      d.style.transform = 'rotate(' + o.a + 'deg)';
-      pop.appendChild(sizeRow(d, o.name, Math.abs(curDeg - o.a) < 0.5, function(){
-        rulerPrefs().a = o.a * Math.PI / 180; save();
-        paintRuler(); closePop();
+/* Each ruling is shown as a picture of itself: a few CSS gradient lines at the
+   ruling's own proportions, so she picks the paper by looking at it rather than
+   by reading the word for it. */
+function paperSwatch(P){
+  var d = document.createElement('span');
+  d.className = 'mn-paper-sw';
+  var g = Math.max(3, Math.round(P.gap * 22 / 200));   // the swatch is ~200 units tall
+  var ln = 'rgba(148,163,184,.85)';
+  if (P.kind === 'blank') {
+    // an empty sheet, drawn as one: nothing inside, and a dashed edge so the
+    // swatch is still visible against a pale panel
+    d.style.background = 'var(--surface,#fff)';
+    d.style.borderStyle = 'dashed';
+    d.style.borderColor = 'rgba(148,163,184,.75)';
+  }
+  else if (P.kind === 'dots')
+    d.style.backgroundImage = 'radial-gradient(' + ln + ' 1px, transparent 1px)',
+    d.style.backgroundSize = g + 'px ' + g + 'px';
+  else if (P.kind === 'grid')
+    d.style.backgroundImage = 'linear-gradient(' + ln + ' 1px, transparent 1px),' +
+                              'linear-gradient(90deg,' + ln + ' 1px, transparent 1px)',
+    d.style.backgroundSize = g + 'px ' + g + 'px';
+  else {
+    d.style.backgroundImage = 'linear-gradient(' + ln + ' 1px, transparent 1px)';
+    d.style.backgroundSize = g + 'px ' + g + 'px';
+    if (P.kind === 'cornell') d.style.borderLeft = '7px solid rgba(244,114,182,.75)';
+    else d.style.borderLeft = '4px solid rgba(244,114,182,.6)';
+  }
+  return d;
+}
+function openPaperPop(anchor){
+  openPop(anchor, 'paper', 'Paper', function(pop){
+    var cur = paperId();
+    PAPERS.forEach(function(P){
+      pop.appendChild(sizeRow(paperSwatch(P), P.name + ' — ' + P.note, P.id === cur, function(){
+        closePop(); setPaper(P.id);
       }));
     });
-    var off = document.createElement('span');
-    off.className = 'mn-dot mn-dot-off';
-    pop.appendChild(sizeRow(off, 'Put the ruler away', false, function(){
-      closePop(); setRuler(false);
-    }));
   });
 }
-function setRuler(on){
-  prefs().rulerOn = !!on;
-  if (on) { fitRulerLen(); centreRuler(); }
+function setPaper(id){
+  var pr = prefs(), c = paperCourse();
+  pr.paper = id;                       // and the one the next class opens with
+  if (c) {
+    if (!pr.paperBy || typeof pr.paperBy !== 'object') pr.paperBy = {};
+    pr.paperBy[c] = id;                // this class keeps it
+  }
   save();
-  var b = toolsEl && toolsEl.querySelector('.mn-tool[data-t="ruler"]');
-  if (b) b.classList.toggle('on', !!on);
-  redraw();
+  sizeSvg();                           // a different ruling wants a different zoom
+  refreshRules();
+  var P = paper();
   try { if (typeof toast === 'function')
-    toast(on ? 'Ruler out — draw along its edge for a straight line, drag the ends to turn it'
-             : 'Ruler put away'); } catch (e) {}
-}
-/* Bring the straightedge to what is on screen, so switching it on never leaves
-   it stranded pages away in a long notebook. */
-function centreRuler(){
-  try {
-    var r = rulerPrefs();
-    var wpx = svgWidthPx();
-    if (!(wpx > 0) || !pagesEl) return;
-    var k = UNITS / wpx;                            // page units per screen pixel
-    var midX = (pagesEl.scrollLeft + pagesEl.clientWidth / 2) * k;
-    var midY = (pagesEl.scrollTop + pagesEl.clientHeight / 2) * k;
-    var half = rulerLen() / 2;
-    r.x = Math.max(half, Math.min(Math.max(half, UNITS - half), midX));
-    r.y = Math.max(RULER_BAND, Math.min(pageH - RULER_BAND, midY));
-  } catch (e) {}
+    toast(P.name + ' paper' + (c ? ' for this class' : '') + ' — your writing has not moved'); } catch (e) {}
 }
 function openEraserPop(anchor){
   openPop(anchor, 'eraser', 'Eraser size', function(pop){
@@ -65976,10 +66431,16 @@ function inkForPaper(c){
 }
 /* Everything is drawn synchronously onto a canvas - no <img> round trip - so
    the share sheet can still be opened inside the tap that asked for it. */
-function renderPagePng(pageNo){
-  var n = Math.max(1, Math.min(pageCount(), pageNo | 0)) - 1;
+/* Draws one page of handwriting. By default the page she has open; given
+   `from` it draws any section's, which is what the course export needs - it
+   reads that section's strokes out of storage and never touches the pad. */
+function renderPagePng(pageNo, from){
+  from = from || null;
+  var src = from ? (from.strokes || []) : strokes;
+  var nPages = from ? Math.max(1, from.pages | 0) : pageCount();
+  var n = Math.max(1, Math.min(nPages, pageNo | 0)) - 1;
   var top = n * PAGE_H;
-  var W = 1700, H = Math.round(PAGE_H / UNITS * W);
+  var W = (from && from.width) || 1700, H = Math.round(PAGE_H / UNITS * W);
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d');
@@ -65988,18 +66449,32 @@ function renderPagePng(pageNo){
   ctx.save(); ctx.scale(k, k); ctx.translate(0, -top);
   var headY = top + HEAD_H, sumY = top + PAGE_H - SUM_H;
   var L = function(x1, y1, x2, y2, st, w){ ctx.strokeStyle = st; ctx.lineWidth = w / k; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
-  for (var y = headY + RULE; y < sumY - 4; y += RULE) L(24, y, UNITS - 20, y, '#d5dbe4', 1);
-  for (var y2 = sumY + RULE; y2 < top + PAGE_H - 6; y2 += RULE) L(24, y2, UNITS - 20, y2, '#d5dbe4', 1);
-  L(20, headY, UNITS - 20, headY, '#f472b6', 1.5); L(CUE_X, headY, CUE_X, sumY, '#f472b6', 1.5); L(20, sumY, UNITS - 20, sumY, '#f472b6', 1.5);
-  ctx.fillStyle = '#94a3b8'; ctx.font = '700 13px Helvetica, Arial, sans-serif';
-  var T = function(x, y, txt, right){ ctx.textAlign = right ? 'right' : 'left'; ctx.fillText(txt.split('').join(String.fromCharCode(8202)), x, y); };
-  T(26, headY - 34, 'TOPIC'); T(UNITS - 20, headY - 34, 'DATE', true);
-  T(26, headY + 24, 'CUE COLUMN'); T(CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN'); T(26, sumY + 24, 'SUMMARY');
+  // the saved image is on the paper she is actually writing on
+  var PP = paper(), gp = PP.gap;
+  if (PP.kind === 'cornell') {
+    for (var y = headY + gp; y < sumY - 4; y += gp) L(24, y, UNITS - 20, y, '#d5dbe4', 1);
+    for (var y2 = sumY + gp; y2 < top + PAGE_H - 6; y2 += gp) L(24, y2, UNITS - 20, y2, '#d5dbe4', 1);
+    L(20, headY, UNITS - 20, headY, '#f472b6', 1.5); L(CUE_X, headY, CUE_X, sumY, '#f472b6', 1.5); L(20, sumY, UNITS - 20, sumY, '#f472b6', 1.5);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '700 13px Helvetica, Arial, sans-serif';
+    var T = function(x, y, txt, right){ ctx.textAlign = right ? 'right' : 'left'; ctx.fillText(txt.split('').join(String.fromCharCode(8202)), x, y); };
+    T(26, headY - 34, 'TOPIC'); T(UNITS - 20, headY - 34, 'DATE', true);
+    T(26, headY + 24, 'CUE COLUMN'); T(CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN'); T(26, sumY + 24, 'SUMMARY');
+  } else if (PP.kind === 'ruled') {
+    for (var y3 = top + gp * 2; y3 < top + PAGE_H - 6; y3 += gp) L(24, y3, UNITS - 20, y3, '#d5dbe4', 1);
+    L(MARGIN_X, top + 10, MARGIN_X, top + PAGE_H - 10, '#f472b6', 1.5);
+  } else if (PP.kind === 'grid') {
+    for (var y4 = top + gp; y4 < top + PAGE_H; y4 += gp) L(0, y4, UNITS, y4, '#dde3ea', 1);
+    for (var x4 = gp; x4 < UNITS; x4 += gp) L(x4, top, x4, top + PAGE_H, '#dde3ea', 1);
+  } else if (PP.kind === 'dots') {
+    ctx.fillStyle = '#c3ccd8';
+    for (var y5 = top + gp; y5 < top + PAGE_H; y5 += gp)
+      for (var x5 = gp; x5 < UNITS; x5 += gp) { ctx.beginPath(); ctx.arc(x5, y5, 2.4, 0, 6.2832); ctx.fill(); }
+  }
   var drawn = 0;
   /* same two passes as the screen: highlighter bands first, writing over them */
   for (var pass = 0; pass < 2; pass++) {
-  for (var i = 0; i < strokes.length; i++) {
-    var s = strokes[i]; if (!s || !s.points || !s.points.length) continue;
+  for (var i = 0; i < src.length; i++) {
+    var s = src[i]; if (!s || !s.points || !s.points.length) continue;
     if ((s.type === 'hl') !== (pass === 0)) continue;
     var y0 = s.points[0].y; if (y0 < top || y0 >= top + PAGE_H) continue;
     var pth = pathFor(s); if (!pth.d) continue;
@@ -66024,9 +66499,11 @@ function renderPagePng(pageNo){
   var dataUrl = cv.toDataURL('image/png');
   var bin = atob(dataUrl.split(',')[1]), bytes = new Uint8Array(bin.length);
   for (var j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
-  var title = (curKey ? secTitle(curKey) : 'Notes').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'Notes';
+  var forKey = from ? from.key : curKey;
+  var title = (forKey ? secTitle(forKey) : 'Notes').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'Notes';
   var name = title + '-page-' + (n + 1) + '.png';
-  return { blob: new Blob([bytes], { type: 'image/png' }), name: name, w: W, h: H, strokes: drawn };
+  return { blob: new Blob([bytes], { type: 'image/png' }), name: name, w: W, h: H,
+           strokes: drawn, dataUrl: dataUrl };
 }
 function exportPage(){
   var out;
@@ -66070,13 +66547,76 @@ function setTool(t){
   }
 }
 function setTab(t){
-  tab = (t === 'type') ? 'type' : 'write';
+  if (t === 'form' && !formulaSheet()) t = 'write';     // no sheet, no tab
+  tab = (t === 'type' || t === 'form') ? t : 'write';
   dock.classList.toggle('tab-type', tab === 'type');
+  dock.classList.toggle('tab-form', tab === 'form');
   var bs = tabsEl.querySelectorAll('[data-tab]');
   for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i].getAttribute('data-tab') === tab);
   toolsEl.style.display = (tab === 'write') ? 'flex' : 'none';
-  if (tab === 'type') { paintList(); }
+  if (tab === 'type') { paintList(); growTa(); markBullet(taEl); }
+  else if (tab === 'form') { paintFormulas(); }
   else { sizeSvg(); redraw(); }
+}
+/* ---------- the formula sheet ---------- */
+function formulaSheet(){
+  try {
+    var c = paperCourse();
+    return (c && typeof FORMULAS === 'object' && FORMULAS[c]) ? FORMULAS[c] : null;
+  } catch (e) { return null; }
+}
+/* The tab only exists where there is something behind it. */
+function syncFormulaTab(){
+  if (!dock) return;
+  var has = !!formulaSheet();
+  dock.classList.toggle('has-form', has);
+  if (!has && tab === 'form') setTab('write');
+}
+function paintFormulas(){
+  var body = dock && dock.querySelector('#mn-form-body');
+  if (!body) return;
+  var sheet = formulaSheet();
+  body.textContent = '';
+  if (!sheet) return;
+  var q = '';
+  try { q = (dock.querySelector('#mn-form-q').value || '').trim().toLowerCase(); } catch (e) {}
+  var shown = 0;
+  (sheet.groups || []).forEach(function(G){
+    var rows = (G.rows || []).filter(function(r){
+      if (!q) return true;
+      return (String(r[0]) + ' ' + String(r[1]) + ' ' + String(r[2] || '')).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!rows.length) return;
+    var sec = document.createElement('section');
+    sec.className = 'mn-fg';
+    var h = document.createElement('div');
+    h.className = 'mn-fg-h'; h.textContent = G.g;
+    sec.appendChild(h);
+    rows.forEach(function(r){
+      shown++;
+      var row = document.createElement('div');
+      row.className = 'mn-fr';
+      var nm = document.createElement('div');
+      nm.className = 'mn-fr-n'; nm.textContent = r[0];
+      var f = document.createElement('div');
+      f.className = 'mn-fr-f';
+      f.innerHTML = r[1];                       // authored markup: sup, sub, i
+      if (r[2]) {
+        var nt = document.createElement('small');
+        nt.className = 'mn-fr-note'; nt.textContent = r[2];
+        f.appendChild(nt);
+      }
+      row.appendChild(nm); row.appendChild(f);
+      sec.appendChild(row);
+    });
+    body.appendChild(sec);
+  });
+  if (!shown) {
+    var none = document.createElement('div');
+    none.id = 'mn-form-none';
+    none.textContent = q ? ('Nothing here matches “' + q + '”') : 'No formulas for this class yet.';
+    body.appendChild(none);
+  }
 }
 
 /* ---------- the writing surface ---------- */
@@ -66096,7 +66636,7 @@ var MIN_GAP = 36;
 function paperScale(){
   var w = (pagesEl && pagesEl.clientWidth) || 0;
   if (!(w > 0)) return 1;
-  var gap = RULE * w / UNITS;
+  var gap = ruleGap() * w / UNITS;   // narrow paper and graph squares zoom further
   var z = Math.max(1, Math.min(3, MIN_GAP / gap));
   return (z < 1.15) ? 1 : z;    // a near-fit page just fits - no 5% overflow
 }
@@ -66129,7 +66669,6 @@ function sizeSvg(){
    values are saved and put back rather than cleared. */
 var penHold = null;
 var strokeAnchor = null;      // scroll offset when the current stroke started
-var rulerDrag = null;         // live move/turn gesture on the straightedge
 var liveD = '';               // the in-flight stroke's path, appended to per point
 /* STRAIGHT LINES, THE GOODNOTES WAY. Draw a roughly straight stroke and keep
    the pen still at the end for a beat: the stroke snaps to the line between
@@ -66137,7 +66676,7 @@ var liveD = '';               // the in-flight stroke's path, appended to per po
    the pen while the line stays straight. A curve held still is left alone. The
    ╱ tool draws the same thing from the first touch. Nothing new is stored - a
    straight line is a two-point stroke - so undo, sync and the eraser are as
-   they were. Strokes locked to the ruler are already straight and are skipped. */
+   they were. */
 var snapped = false;          // the live stroke has become a straight line
 var stillTimer = null;        // fires when the pen has rested at the end of a stroke
 var HOLD_MS = 600;            // how long the rest has to be
@@ -66153,7 +66692,7 @@ function snapAngle(a, b){
 function lineD(a, b){ return 'M ' + a.x.toFixed(1) + ' ' + a.y.toFixed(1) + ' L ' + b.x.toFixed(1) + ' ' + b.y.toFixed(1); }
 function trySnap(){
   stillTimer = null;
-  if (!drawing || !live || snapped || inkLock || live.points.length < 4) return;
+  if (!drawing || !live || snapped || live.points.length < 4) return;
   var pts = live.points, a = pts[0], b = pts[pts.length - 1];
   var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx*dx + dy*dy);
   if (len < 40) return;                       // a dot or a tick, not a line
@@ -66169,7 +66708,6 @@ function trySnap(){
   liveD = lineD(a, live.points[1]);
   if (liveEl) liveEl.setAttribute('d', liveD);
 }
-var inkLock = null;           // the ruler edge the current stroke is running along
 function freezePaper(on){
   if (!pagesEl) return;
   if (on) {
@@ -66317,24 +66855,60 @@ function buildRules(){
   var g = document.createElementNS(NS, 'g');
   g.setAttribute('aria-hidden', 'true');
   g.setAttribute('class', 'mn-rules');
-  var pages = pageCount();
+  var P = paper(), gap = P.gap, pages = pageCount();
+  /* A quarter-inch grid is about 1500 dots per page, and sixty pages of that is
+     ninety thousand nodes - the sort of number that made this pad freeze once
+     already. Squares and dots are therefore ONE tiled pattern and ONE rectangle,
+     whatever the page count; only the ruled papers draw a line per line. */
+  if (P.kind === 'grid' || P.kind === 'dots') {
+    var pid = 'mn-pat-' + P.id + '-' + gap;
+    var defs = document.createElementNS(NS, 'defs');
+    var pat = document.createElementNS(NS, 'pattern');
+    pat.setAttribute('id', pid);
+    pat.setAttribute('width', String(gap)); pat.setAttribute('height', String(gap));
+    pat.setAttribute('patternUnits', 'userSpaceOnUse');
+    if (P.kind === 'grid') {
+      var ph = document.createElementNS(NS, 'path');
+      ph.setAttribute('class', 'mn-grid');
+      ph.setAttribute('d', 'M 0 0 H ' + gap + ' M 0 0 V ' + gap);
+      pat.appendChild(ph);
+    } else {
+      var dt = document.createElementNS(NS, 'circle');
+      dt.setAttribute('class', 'mn-dotgrid');
+      dt.setAttribute('cx', '0'); dt.setAttribute('cy', '0'); dt.setAttribute('r', '2.4');
+      pat.appendChild(dt);
+    }
+    defs.appendChild(pat);
+    g.appendChild(defs);
+    var fill = document.createElementNS(NS, 'rect');
+    fill.setAttribute('x', '0'); fill.setAttribute('y', '0');
+    fill.setAttribute('width', String(UNITS)); fill.setAttribute('height', String(pages * PAGE_H));
+    fill.setAttribute('fill', 'url(#' + pid + ')');
+    g.appendChild(fill);
+  }
   for (var p = 0; p < pages; p++) {
     var top = p * PAGE_H;
-    var headY = top + HEAD_H;                 // under the title strip
-    var sumY  = top + PAGE_H - SUM_H;         // top of the summary band
-    // writing lines, across the whole page above the summary and inside it
-    for (var y = headY + RULE; y < sumY - 4; y += RULE) line(g, 'mn-rule', 24, y, UNITS - 20, y);
-    for (var y2 = sumY + RULE; y2 < top + PAGE_H - 6; y2 += RULE) line(g, 'mn-rule', 24, y2, UNITS - 20, y2);
-    // the three Cornell divisions
-    line(g, 'mn-head', 20, headY, UNITS - 20, headY);
-    line(g, 'mn-margin', CUE_X, headY, CUE_X, sumY);
-    line(g, 'mn-head', 20, sumY, UNITS - 20, sumY);
-    // short labels: anything longer runs across the cue divider into the notes
-    label(g, 26, headY - 34, 'TOPIC');
-    label(g, UNITS - 20, headY - 34, 'DATE', 'end');
-    label(g, 26, headY + 24, 'CUE COLUMN');
-    label(g, CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN');
-    label(g, 26, sumY + 24, 'SUMMARY');
+    if (P.kind === 'cornell') {
+      var headY = top + HEAD_H;                 // under the title strip
+      var sumY  = top + PAGE_H - SUM_H;         // top of the summary band
+      // writing lines, across the whole page above the summary and inside it
+      for (var y = headY + gap; y < sumY - 4; y += gap) line(g, 'mn-rule', 24, y, UNITS - 20, y);
+      for (var y2 = sumY + gap; y2 < top + PAGE_H - 6; y2 += gap) line(g, 'mn-rule', 24, y2, UNITS - 20, y2);
+      // the three Cornell divisions
+      line(g, 'mn-head', 20, headY, UNITS - 20, headY);
+      line(g, 'mn-margin', CUE_X, headY, CUE_X, sumY);
+      line(g, 'mn-head', 20, sumY, UNITS - 20, sumY);
+      // short labels: anything longer runs across the cue divider into the notes
+      label(g, 26, headY - 34, 'TOPIC');
+      label(g, UNITS - 20, headY - 34, 'DATE', 'end');
+      label(g, 26, headY + 24, 'CUE COLUMN');
+      label(g, CUE_X + 14, headY + 24, 'NOTE-TAKING COLUMN');
+      label(g, 26, sumY + 24, 'SUMMARY');
+    } else if (P.kind === 'ruled') {
+      // a line every gap down the whole sheet, and the margin rule down the left
+      for (var y3 = top + gap * 2; y3 < top + PAGE_H - 6; y3 += gap) line(g, 'mn-rule', 24, y3, UNITS - 20, y3);
+      line(g, 'mn-margin', MARGIN_X, top + 10, MARGIN_X, top + PAGE_H - 10);
+    }
     if (p < pages - 1) line(g, 'mn-pagebreak', 0, top + PAGE_H, UNITS, top + PAGE_H);
   }
   return g;
@@ -66346,26 +66920,33 @@ function drawCover(){
   g.setAttribute('class', 'mn-cover-g');
   g.setAttribute('aria-hidden', 'true');
   var pages = pageCount();
+  /* Cornell hides the notes column and leaves the cues showing, which is what
+     the layout is for. Any other paper has no cue column to read from, so the
+     whole sheet goes under and the drill is plain recall. */
+  var corn = isCornell();
   for (var p = 0; p < pages; p++) {
     var top = p * PAGE_H, headY = top + HEAD_H, sumY = top + PAGE_H - SUM_H;
+    var x0 = corn ? CUE_X + 1 : 14;
+    var y0 = corn ? headY + 1 : top + 14;
+    var y1 = corn ? sumY : top + PAGE_H - 14;
     var r = document.createElementNS(NS, 'rect');
     r.setAttribute('class', 'mn-cover');
-    r.setAttribute('x', String(CUE_X + 1)); r.setAttribute('y', String(headY + 1));
-    r.setAttribute('width', String(UNITS - CUE_X - 1));
-    r.setAttribute('height', String(Math.max(0, sumY - headY - 1)));
+    r.setAttribute('x', String(x0)); r.setAttribute('y', String(y0));
+    r.setAttribute('width', String(UNITS - x0 - (corn ? 1 : 14)));
+    r.setAttribute('height', String(Math.max(0, y1 - y0 - 1)));
     g.appendChild(r);
     var t = document.createElementNS(NS, 'text');
     t.setAttribute('class', 'mn-cover-label');
-    t.setAttribute('x', String(CUE_X + (UNITS - CUE_X) / 2));
-    t.setAttribute('y', String(headY + 46));
-    t.textContent = 'notes hidden — answer from the cues';
+    t.setAttribute('x', String(x0 + (UNITS - x0) / 2));
+    t.setAttribute('y', String(y0 + 46));
+    t.textContent = corn ? 'notes hidden — answer from the cues'
+                         : 'notes hidden — say what you remember';
     g.appendChild(t);
   }
   svg.appendChild(g);
 }
 /* Where a new ink node belongs. Highlighter goes UNDER the writing, so a line
-   highlighted after it was written stays perfectly readable; the ruler stays on
-   top of everything, because it is an object lying on the paper. */
+   highlighted after it was written stays perfectly readable. */
 function inkAnchor(s){
   if (!svg) return null;
   if (s && s.type === 'hl') {
@@ -66376,7 +66957,7 @@ function inkAnchor(s){
       if (!k.classList || !k.classList.contains('mn-hl')) return k;
     }
   }
-  return svg.querySelector('g.mn-ruler');
+  return null;                    // writing goes on top of everything else
 }
 function addInk(node, s){
   var at = inkAnchor(s);
@@ -66414,60 +66995,6 @@ function liveNode(s){
   }
   return n;
 }
-function buildRuler(){
-  var r = rulerPrefs();
-  var g = document.createElementNS(NS, 'g');
-  g.setAttribute('class', 'mn-ruler');
-  var LEN = rulerLen(), half = LEN / 2;
-  var body = document.createElementNS(NS, 'rect');
-  body.setAttribute('class', 'mn-ruler-body');
-  body.setAttribute('x', String(-half)); body.setAttribute('y', '0');
-  body.setAttribute('width', String(LEN)); body.setAttribute('height', String(RULER_BAND));
-  body.setAttribute('rx', '7');
-  g.appendChild(body);
-  var edge = document.createElementNS(NS, 'line');
-  edge.setAttribute('class', 'mn-ruler-edge');
-  edge.setAttribute('x1', String(-half)); edge.setAttribute('y1', '0');
-  edge.setAttribute('x2', String(half));  edge.setAttribute('y2', '0');
-  g.appendChild(edge);
-  /* real inch ticks: the page is 8.5in across 1000 units, so these measure */
-  var eighth = IN / 8;
-  for (var i = 0; i * eighth <= LEN + 0.5; i++) {
-    var x = -half + i * eighth;
-    var len = (i % 8 === 0) ? 30 : (i % 4 === 0) ? 20 : 12;
-    var t = document.createElementNS(NS, 'line');
-    t.setAttribute('class', 'mn-ruler-tick');
-    t.setAttribute('x1', x.toFixed(1)); t.setAttribute('y1', '0');
-    t.setAttribute('x2', x.toFixed(1)); t.setAttribute('y2', String(len));
-    g.appendChild(t);
-    if (i && i % 8 === 0) {
-      var num = document.createElementNS(NS, 'text');
-      num.setAttribute('class', 'mn-ruler-num');
-      num.setAttribute('x', x.toFixed(1)); num.setAttribute('y', String(len + 26));
-      num.setAttribute('text-anchor', 'middle');
-      num.textContent = String(i / 8);
-      g.appendChild(num);
-    }
-  }
-  for (var e = 0; e < 2; e++) {
-    var c = document.createElementNS(NS, 'circle');
-    c.setAttribute('class', 'mn-ruler-grip');
-    c.setAttribute('cx', String(e ? half : -half));
-    c.setAttribute('cy', String(RULER_BAND / 2));
-    c.setAttribute('r', String(RULER_GRIP));
-    g.appendChild(c);
-  }
-  paintRuler(g);
-  return g;
-}
-/* Moving the ruler must not rebuild the page - only its transform changes. */
-function paintRuler(node){
-  var g = node || (svg && svg.querySelector('g.mn-ruler'));
-  if (!g) return;
-  var r = rulerPrefs();
-  g.setAttribute('transform', 'translate(' + r.x.toFixed(1) + ',' + r.y.toFixed(1) +
-                 ') rotate(' + (r.a * 180 / Math.PI).toFixed(2) + ')');
-}
 function redraw(){
   if (!svg) return;
   while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -66486,7 +67013,6 @@ function redraw(){
   }
   // LAST, so it actually covers the notes. Painted after the ink, never before.
   if (covered) drawCover();
-  if (rulerOn()) svg.appendChild(buildRuler());
   liveEl = null; liveD = '';
   paintPageSoon();
 }
@@ -66672,20 +67198,6 @@ function eraseAt(p){
 }
 function wireInk(){
   svg.addEventListener('pointerdown', function(e){
-    /* The ruler is an object lying on the paper, so it is dragged the way one
-       is: with a finger OR the Pencil, and grabbing it never starts a stroke.
-       This runs before the touch guard below for exactly that reason. */
-    if (rulerOn() && e.target && e.target.closest && e.target.closest('g.mn-ruler')) {
-      e.preventDefault();
-      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
-      penGesture = true; penRect = null;
-      var rp = rulerPrefs(), q = pt(e);
-      var onGrip = !!(e.target.classList && e.target.classList.contains('mn-ruler-grip'));
-      rulerDrag = { id: e.pointerId, turn: onGrip,
-                    px: q.x, py: q.y, x0: rp.x, y0: rp.y, a0: rp.a,
-                    g0: Math.atan2(q.y - rp.y, q.x - rp.x) };
-      return;
-    }
     if (e.pointerType === 'touch') return;        // a finger scrolls the pad
     if (covered) return;                          // reviewing, not writing
     e.preventDefault();
@@ -66697,11 +67209,6 @@ function wireInk(){
     var p = pt(e);
     if (tool === 'erase') { drawing = true; eraseBatch = { removed: [], added: [] }; eraseAt(p); return; }
     drawing = true;
-    /* Held against the straightedge, the line comes out straight: the edge is
-       locked in at pen-down, so the whole stroke runs along the ruler as it
-       was placed - it cannot slip onto a different line halfway through. */
-    inkLock = rulerCatches(p);
-    if (inkLock) p = rulerProject(p, inkLock);
     var isHl = (tool === 'hl');
     snapped = (tool === 'line');                  // the ╱ tool is straight from the first touch
     clearStill();
@@ -66715,26 +67222,6 @@ function wireInk(){
     addInk(liveEl, live);
   });
   svg.addEventListener('pointermove', function(e){
-    if (rulerDrag && e.pointerId === rulerDrag.id) {
-      e.preventDefault();
-      var q = pt(e), rp = rulerPrefs();
-      if (rulerDrag.turn) {
-        var g = Math.atan2(q.y - rp.y, q.x - rp.x);
-        var a = rulerDrag.a0 + (g - rulerDrag.g0);
-        /* snap to every 15 degrees when she is close, so flat, upright and 45
-           are easy to land on without a steady hand */
-        var step = Math.PI / 12, near = Math.round(a / step) * step;
-        if (Math.abs(a - near) < 0.055) a = near;
-        rp.a = a;
-      } else {
-        rp.x = Math.max(-rulerLen() / 2, Math.min(UNITS + rulerLen() / 2,
-                        rulerDrag.x0 + (q.x - rulerDrag.px)));
-        rp.y = Math.max(-RULER_BAND, Math.min(pageH + RULER_BAND,
-                        rulerDrag.y0 + (q.y - rulerDrag.py)));
-      }
-      paintRuler();
-      return;
-    }
     if (!drawing || e.pointerId !== penId || e.pointerType === 'touch') return;
     e.preventDefault();
     /* getCoalescedEvents can return an EMPTY array - an empty array is truthy,
@@ -66754,7 +67241,6 @@ function wireInk(){
     var added = false;
     for (var k = 0; k < evs.length; k++) {
       var p = pt(evs[k]);
-      if (inkLock) p = rulerProject(p, inkLock);
       var last = live.points[live.points.length - 1];
       var dx = p.x - last.x, dy = p.y - last.y;
       if (dx*dx + dy*dy < 1.2) continue;
@@ -66762,7 +67248,7 @@ function wireInk(){
       liveD += ' L ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
       added = true;
     }
-    if (added && !inkLock) armStill();           // the rest at the end is what straightens it
+    if (added) armStill();                       // the rest at the end is what straightens it
     /* THE INK MUST REACH THE TIP. Between the Pencil touching the glass and
        the line appearing on it there are two or three frames of pipeline that
        no amount of faster code removes - which is why ink trails the nib. The
@@ -66777,7 +67263,6 @@ function wireInk(){
       if (pe && pe.length) {
         for (var q = 0; q < pe.length && q < 4; q++) {
           var pp = pt(pe[q]);
-          if (inkLock) pp = rulerProject(pp, inkLock);
           tail += ' L ' + pp.x.toFixed(1) + ' ' + pp.y.toFixed(1);
         }
       }
@@ -66785,14 +67270,6 @@ function wireInk(){
     if (liveEl && (added || tail)) liveEl.setAttribute('d', liveD + tail);
   });
   function end(e){
-    if (rulerDrag && (!e || e.pointerId == null || e.pointerId === rulerDrag.id)) {
-      try { if (e && e.pointerId != null) svg.releasePointerCapture(e.pointerId); } catch (err) {}
-      rulerDrag = null;
-      penGesture = false; penRect = null;
-      save();                       // where she put it is where it stays
-      return;
-    }
-    inkLock = null;
     if (!drawing) { freezePaper(false); penGesture = false; penRect = null; return; }
     if (e && e.pointerId != null && e.pointerId !== penId) return;
     drawing = false; penId = null;
@@ -66854,11 +67331,6 @@ function wireInk(){
   function guardTouch(e){
     try {
       if (tab !== 'write') return;
-      /* A finger on the ruler is moving the ruler, not scrolling the paper:
-         swallow the gesture here so nothing scrolls under it. */
-      if (rulerOn() && e.target && e.target.closest && e.target.closest('g.mn-ruler')) {
-        e.preventDefault(); e.stopPropagation(); return;
-      }
       var n = (e.touches && e.touches.length) || 0;
       if (!n) return;
       if (drawing) { e.preventDefault(); return; }
@@ -67055,8 +67527,73 @@ function commit(){
   notesFor(curKey).unshift({ id: 'n' + Date.now() + (seq++ ? '_' + seq : ''), text: v, createdAt: Date.now() });
   taEl.value = '';
   draftSet(curKey, '', true);
+  growTa(); markBullet(taEl);          // back to one line, and the mark goes out
   save(); paintList(); paintBadge();
   listEl.scrollTop = 0;
+}
+/* BULLETS IN THE TYPED NOTES.
+   A list is how notes are actually taken, and a textarea gives you nothing:
+   every line has to be typed with its own dot. So the button turns the line
+   the caret is on into a bullet (or takes the bullet off), Return carries the
+   list on to the next line, and a Return on a bullet with nothing after it
+   ends the list - which is what every notes app does and therefore the only
+   behaviour that will not surprise her.
+   It stays plain text. A note is stored, synced, exported and read back as
+   the characters she typed, so a bullet is a bullet character and nothing
+   here needs to understand a document model. */
+var BULLET = '\u2022 ';
+/* The composer is as tall as what is in it, up to the cap the CSS sets. */
+function growTa(){
+  if (!taEl) return;
+  try {
+    taEl.style.height = 'auto';
+    taEl.style.height = Math.max(52, taEl.scrollHeight) + 'px';
+  } catch (e) {}
+}
+function taLine(ta){
+  var v = ta.value, at = ta.selectionStart;
+  var start = v.lastIndexOf('\n', at - 1) + 1;
+  var end = v.indexOf('\n', at);
+  if (end < 0) end = v.length;
+  return { start: start, end: end, text: v.slice(start, end) };
+}
+function isBulleted(t){ return t.indexOf(BULLET) === 0; }
+function setLine(ta, L, text, caret){
+  var v = ta.value;
+  ta.value = v.slice(0, L.start) + text + v.slice(L.end);
+  var c = (caret == null) ? L.start + text.length : caret;
+  try { ta.setSelectionRange(c, c); } catch (e) {}
+  markBullet(ta);
+  try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+}
+function toggleBullet(ta){
+  if (!ta) return;
+  var L = taLine(ta);
+  if (isBulleted(L.text)) setLine(ta, L, L.text.slice(BULLET.length));
+  else setLine(ta, L, BULLET + L.text);
+  try { ta.focus(); } catch (e) {}
+}
+function markBullet(ta){
+  var b = dock && dock.querySelector('#mn-bullet');
+  if (!b || !ta) return;
+  var on = false;
+  try { on = isBulleted(taLine(ta).text); } catch (e) {}
+  b.classList.toggle('on', on);
+}
+/* Return inside a list. Returns true when it has handled the key. */
+function bulletEnter(ta){
+  var L = taLine(ta);
+  if (!isBulleted(L.text)) return false;
+  if (L.text.trim() === BULLET.trim()) {     // an empty bullet: she is done
+    setLine(ta, L, '');
+    return true;
+  }
+  var at = ta.selectionStart, v = ta.value;
+  ta.value = v.slice(0, at) + '\n' + BULLET + v.slice(ta.selectionEnd);
+  var c = at + 1 + BULLET.length;
+  try { ta.setSelectionRange(c, c); } catch (e) {}
+  try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+  return true;
 }
 function paintList(){
   if (!listEl) return;
@@ -67098,7 +67635,8 @@ function loadSection(k){
   if (taEl) taEl.value = draftGet(k);
   var w = dock && dock.querySelector('#mn-where');
   if (w) w.textContent = k ? secTitle(k) : '';
-  if (isOpen) { sizeSvg(); redraw(); paintList(); }
+  syncFormulaTab();                 // a maths class gains the tab, others lose it
+  if (isOpen) { sizeSvg(); redraw(); paintList(); if (tab === 'form') paintFormulas(); }
   paintBadge();
 }
 /* Applying and releasing the shift. The ink is re-anchored explicitly right
@@ -67300,6 +67838,10 @@ function setOpen(next){
     }
     holdPlace(keep);
     if (curKey !== secKey()) loadSection(secKey());
+    /* loadSection is skipped when the section has not changed, and the very
+       first open builds the dock AFTER that call - so the tab has to be
+       settled here too, or a maths class opens without its Formulas tab. */
+    syncFormulaTab();
     setTab(prefs().tab === 'type' ? 'type' : 'write');
     try {
       var sel = pendingSel || String((window.getSelection && window.getSelection().toString()) || '').trim();
@@ -67376,6 +67918,41 @@ window.__notesPanel = {
   livePoints: function(){ return live ? live.points.length : 0; },
   limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
+  paper: function(){ return paperId(); },
+  /* HER HANDWRITING, FOR ANY SECTION, without opening it. `ink` says how much
+     is there; `inkPage` draws one page of it. Both read the per-page storage
+     slot directly, so nothing about the open notebook changes. */
+  ink: function(key){
+    var ss = [];
+    try { ss = loadStrokes(key); } catch (e) { ss = []; }
+    if (!ss.length) return { pages: 0, strokes: 0 };
+    var lowest = 0;
+    for (var i = 0; i < ss.length; i++) {
+      var pts = ss[i] && ss[i].points; if (!pts) continue;
+      for (var j = 0; j < pts.length; j++) if (pts[j].y > lowest) lowest = pts[j].y;
+    }
+    return { pages: Math.max(1, Math.ceil((lowest + 1) / PAGE_H)), strokes: ss.length };
+  },
+  inkPage: function(key, pageNo, width){
+    var ss = [];
+    try { ss = loadStrokes(key); } catch (e) { ss = []; }
+    if (!ss.length) return null;
+    var info = window.__notesPanel.ink(key);
+    var o = renderPagePng(pageNo, { strokes: ss, pages: info.pages, key: key, width: width || 1100 });
+    return { dataUrl: o.dataUrl, w: o.w, h: o.h, strokes: o.strokes, name: o.name };
+  },
+  typed: function(key){
+    try { return notesFor(key).map(function(x){
+      return { text: (x && x.text) || String(x || ''), ts: (x && (x.createdAt || x.ts)) || 0 }; }); }
+    catch (e) { return []; }
+  },
+  formulas: function(){
+    var sh = formulaSheet();
+    return { sheets: Object.keys(FORMULAS || {}).length, has: !!sh,
+             rows: sh ? (sh.groups || []).reduce(function(a, G){ return a + G.rows.length; }, 0) : 0 };
+  },
+  papers: function(){ return PAPERS.map(function(P){ return P.id; }); },
+  setPaper: function(id){ setPaper(id); return paperId(); },
   renderPage: function(n){ var o = renderPagePng(n || curPage()); return { name: o.name, w: o.w, h: o.h, bytes: o.blob.size, strokes: o.strokes, blob: o.blob }; },
   state: function(){
     var r = dock ? dock.getBoundingClientRect() : null;
@@ -67501,6 +68078,168 @@ window.__padDropAll = function(){
 
 place();
 } catch (e) { if (window.console && console.warn) console.warn('notebook failed:', e); }
+})();
+
+/* ====================================================================
+ * ONE TRAY FOR THE LESSON TOOLS.
+ *
+ * Six buttons were pinned separately down the right-hand edge of every
+ * lesson - the notebook, the mind map, the podcast, explain-it-simply, the
+ * study helper and the calculator - each one fixed at its own height, all of
+ * them over the words she is trying to read.
+ *
+ * They are gathered here into a single tray that folds down to one button.
+ * Nothing about what they DO changes, and none of their own show-and-hide
+ * rules are touched: each of those modules still sets its own display for the
+ * screen she is on, so the calculator still appears everywhere and the
+ * podcast still only on a lesson. This module only decides where they sit and
+ * whether the stack is unfolded.
+ *
+ * Folding uses position and opacity rather than `display`, for that reason
+ * exactly - writing display here would fight the module that owns the button
+ * and one of us would win at random.
+ * ==================================================================== */
+(function toolTray(){
+if (typeof document === 'undefined') return;
+if (window.__toolTray) return; window.__toolTray = true;
+try {
+
+/* Bottom of the tray upward, which is the order she reads them in. The
+   calculator sits closest to the thumb because it is the one opened mid-sum. */
+var WANT = ['#calc-fab', '.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab', '#mn-fab'];
+var KEY = 'sh_tools_open_v1';
+var tray = null, toggle = null, hintShown = false;
+
+function isOpen(){
+  try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+}
+function setOpen(on){
+  try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {}
+  paint();
+}
+function shown(el){
+  try { return el && el.isConnected && getComputedStyle(el).display !== 'none'; }
+  catch (e) { return false; }
+}
+function tools(){
+  var out = [];
+  for (var i = 0; i < WANT.length; i++) {
+    var el = document.querySelector(WANT[i]);
+    if (el) out.push(el);
+  }
+  return out;
+}
+
+var CSS = [
+'#tool-tray{position:fixed; right:14px; bottom:88px; z-index:46;',
+'  display:flex; flex-direction:column-reverse; align-items:flex-end; gap:8px;}',
+/* Inside the tray a button is just a button - its own fixed corner is gone.
+   `display` is deliberately absent from this list. */
+'#tool-tray > .tt-item{position:static !important; inset:auto !important;',
+'  right:auto !important; bottom:auto !important; top:auto !important; left:auto !important;',
+'  margin:0 !important; z-index:auto !important;',
+'  transition:opacity .16s ease, transform .16s ease;}',
+/* Folded: they stack up on the toggle and stop taking part. */
+'#tool-tray.tt-shut > .tt-item{position:absolute !important; right:0 !important; bottom:0 !important;',
+'  opacity:0 !important; transform:scale(.55) !important; pointer-events:none !important;}',
+'#tt-toggle{width:46px; height:46px; border-radius:50%; cursor:pointer; flex:0 0 auto;',
+'  background:var(--surface); color:var(--text); font-size:19px; line-height:1;',
+'  border:1.5px solid var(--border-strong,var(--border));',
+'  display:flex; align-items:center; justify-content:center; position:relative;',
+'  box-shadow:var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));',
+'  transition:transform .16s ease;}',
+'#tool-tray:not(.tt-shut) #tt-toggle{transform:rotate(45deg);}',
+'#tt-count{position:absolute; top:-3px; right:-3px; min-width:16px; height:16px; padding:0 3px;',
+'  border-radius:999px; background:var(--secondary,#b0407a); color:#fff;',
+'  font:700 10px/16px -apple-system,Helvetica,Arial,sans-serif; text-align:center;}',
+'#tool-tray.tt-empty{display:none;}',
+'#tool-tray:not(.tt-shut) #tt-count{display:none;}',
+/* The notebook draws its own count badge; inside the tray it needs no corner
+   of its own to hang off. */
+'#tool-tray #mn-fab .mn-badge{z-index:1;}',
+'@media (max-width:520px){ #tool-tray{right:10px; bottom:78px; gap:7px;} }',
+'@media print{ #tool-tray{display:none !important;} }'
+].join('\n');
+
+function styleOnce(){
+  if (document.getElementById('tt-css')) return;
+  var s = document.createElement('style');
+  s.id = 'tt-css'; s.textContent = CSS;
+  document.head.appendChild(s);
+}
+
+function build(){
+  styleOnce();
+  if (tray && tray.isConnected) return;
+  tray = document.createElement('div');
+  tray.id = 'tool-tray';
+  toggle = document.createElement('button');
+  toggle.id = 'tt-toggle';
+  toggle.type = 'button';
+  toggle.innerHTML = '+<span id="tt-count"></span>';
+  toggle.addEventListener('click', function(){
+    var next = !isOpen();
+    setOpen(next);
+    if (next) {
+      try { if (typeof toast === 'function' && !hintShown) { hintShown = true;
+        toast('Your study tools — tap + again to fold them away'); } } catch (e) {}
+    }
+  });
+  tray.appendChild(toggle);
+  document.body.appendChild(tray);
+}
+
+/* Pull in any tool that has appeared since the last pass, drop the tray when
+   the screen has none, and keep the folded count honest. */
+function paint(){
+  try {
+    build();
+    var list = tools(), live = 0;
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (el.parentNode !== tray) {
+        el.classList.add('tt-item');
+        tray.insertBefore(el, toggle);       // column-reverse: toggle ends up lowest
+      }
+      if (shown(el)) live++;
+    }
+    var open = isOpen();
+    tray.classList.toggle('tt-shut', !open);
+    tray.classList.toggle('tt-empty', live === 0);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? 'Fold the study tools away'
+                                           : ('Study tools (' + live + ')'));
+    var c = document.getElementById('tt-count');
+    if (c) c.textContent = live ? String(live) : '';
+  } catch (e) {}
+}
+
+window.__toolTrayPaint = paint;
+window.__toolTrayState = function(){
+  var list = tools();
+  return { open: isOpen(), inTray: list.filter(function(e){ return e.parentNode === tray; }).length,
+           tools: list.length, visible: list.filter(shown).length,
+           empty: !!(tray && tray.classList.contains('tt-empty')) };
+};
+
+/* The tools are created at different moments - some once, some on every
+   render, the calculator on a timer - so the tray is re-checked after a
+   render and on a slow heartbeat, which is what those modules already do. */
+if (typeof render === 'function' && !render.__ttWrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { paint(); setTimeout(paint, 180); } catch (e) {}
+    return out;
+  };
+  render.__ttWrapped = true;
+  try { window.render = render; } catch (e) {}
+}
+setTimeout(paint, 300);
+setTimeout(paint, 1200);
+setInterval(paint, 4000);
+
+} catch (e) { if (window.console) console.warn('toolTray failed:', e); }
 })();
 
 </script>

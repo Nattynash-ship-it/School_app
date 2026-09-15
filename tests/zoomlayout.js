@@ -17,15 +17,29 @@ const { chromium } = require('playwright');
       const r = await page.evaluate(async (arg) => {
         store.lessonTextScale = arg.size === 'md' ? undefined : arg.size;
         applyLessonTextSize();
+        // measure the tools unfolded - folded there is nothing to measure
+        try { localStorage.setItem('sh_tools_open_v1', '1'); } catch (e) {}
+        try { window.__toolTrayPaint && window.__toolTrayPaint(); } catch (e) {}
         go(arg.route);
         await new Promise(res => setTimeout(res, 500));
         const out = { probs: [] };
         // 1. page body must not scroll horizontally
         const de = document.documentElement;
         if (de.scrollWidth > de.clientWidth + 8) out.probs.push('horizontal overflow: ' + de.scrollWidth + '>' + de.clientWidth);
-        // 2. floating FABs must not overlap each other or the bottom tab bar
-        const fabs = ['.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab']
-          .map(s => document.querySelector(s)).filter(el => el && getComputedStyle(el).display !== 'none')
+        /* 2. floating FABs must not overlap each other or the bottom tab bar.
+           Only the ones she can actually TAP count. The tools fold into a
+           single tray now, and folded they are deliberately stacked on the
+           toggle at zero opacity with pointer-events off - nothing there can
+           be hit, so nothing there can be in the way. The sweep opens the
+           tray above, so what is measured is the real unfolded column. */
+        const tappable = el => {
+          if (!el) return false;
+          const c = getComputedStyle(el);
+          return c.display !== 'none' && c.visibility !== 'hidden' &&
+                 c.pointerEvents !== 'none' && +c.opacity > 0.05;
+        };
+        const fabs = ['.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab', '#mn-fab', '#calc-fab']
+          .map(s => document.querySelector(s)).filter(tappable)
           .map(el => el.getBoundingClientRect());
         for (let i = 0; i < fabs.length; i++) for (let j = i + 1; j < fabs.length; j++) {
           const a = fabs[i], b = fabs[j];
