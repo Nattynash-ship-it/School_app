@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.583">
+<meta name="app-build" content="18.584">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -65848,11 +65848,21 @@ css.textContent = [
   '.mn-card .mn-body{font-size:13px; line-height:1.55; color:var(--text-2); outline:none;',
   '  white-space:pre-wrap; word-break:break-word; min-height:18px;}',
   '#mn-compose{flex:0 0 auto; border-top:1px solid var(--border); padding:8px 12px;}',
-  '#mn-ta{width:100%; box-sizing:border-box; resize:none; min-height:52px; max-height:30vh;',
+  /* It grows with what she writes. A list that scrolled inside a three-line
+     box was the whole reason bullets felt cramped. */
+  '#mn-ta{width:100%; box-sizing:border-box; resize:none; min-height:52px; max-height:38vh;',
+  '  overflow-y:auto;',
   '  font-family:inherit; font-size:13px; line-height:1.5; padding:8px 10px; border-radius:9px;',
   '  background:var(--bg-2); color:var(--text); border:1px solid var(--border-strong,var(--border));}',
   '#mn-row{display:flex; align-items:center; gap:8px; margin-top:6px;}',
   '#mn-hint{flex:1; font-size:10px; color:var(--text-4);}',
+  '#mn-bullet{cursor:pointer; padding:7px 9px; border-radius:8px; flex:0 0 auto;',
+  '  border:1px solid var(--border-strong,var(--border));',
+  '  background:var(--bg-2); color:var(--text-2);',
+  '  display:flex; align-items:center; justify-content:center;}',
+  '#mn-bullet svg{width:16px; height:12px; display:block; fill:currentColor;}',
+  '#mn-bullet.on{background:var(--accent-bg,var(--surface-3)); color:var(--accent);',
+  '  border-color:var(--accent);}',
   '#mn-save{font-family:inherit; font-size:12px; font-weight:700; cursor:pointer; padding:7px 14px;',
   '  border-radius:8px; border:none; background:var(--accent); color:var(--accent-text,#042f2e);}',
 
@@ -65961,7 +65971,14 @@ function build(){
       '<div id="mn-list"></div>' +
       '<div id="mn-compose">' +
         '<textarea id="mn-ta" placeholder="Type a note… it saves to this section."></textarea>' +
-        '<div id="mn-row"><span id="mn-hint">⌘↵ to save</span>' +
+        '<div id="mn-row">' +
+        '<button id="mn-bullet" type="button" aria-label="Bullet list" title="Bullet list">' +
+          '<svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">' +
+            '<circle cx="2" cy="2" r="1.6"/><rect x="6" y="1.1" width="10" height="1.8" rx=".9"/>' +
+            '<circle cx="2" cy="6" r="1.6"/><rect x="6" y="5.1" width="10" height="1.8" rx=".9"/>' +
+            '<circle cx="2" cy="10" r="1.6"/><rect x="6" y="9.1" width="10" height="1.8" rx=".9"/>' +
+          '</svg></button>' +
+        '<span id="mn-hint">⌘↵ to save</span>' +
         '<button id="mn-save">Save note</button></div>' +
       '</div>' +
     '</div>';
@@ -65986,10 +66003,30 @@ function build(){
   } catch (e) {}
   dock.querySelector('#mn-x').addEventListener('click', doMinimize);
   dock.querySelector('#mn-save').addEventListener('click', commit);
-  taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); });
+  taEl.addEventListener('input', function(){ if (curKey) draftSet(curKey, taEl.value); markBullet(taEl); growTa(); });
   taEl.addEventListener('keydown', function(e){
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); commit(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); commit(); return; }
+    // plain Return carries a list on; a Return on an empty bullet ends it
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (bulletEnter(taEl)) { e.preventDefault(); return; }
+    }
+    /* Tab would otherwise walk off to the Save button mid-list. Inside a
+       bullet it indents, which is the only thing it could usefully mean. */
+    if (e.key === 'Tab' && !e.shiftKey) {
+      var L = taLine(taEl);
+      if (isBulleted(L.text.replace(/^\s+/, '')) || isBulleted(L.text)) {
+        e.preventDefault();
+        setLine(taEl, L, '   ' + L.text);
+      }
+    }
   });
+  try { taEl.addEventListener('click', function(){ markBullet(taEl); }); } catch (e) {}
+  try { taEl.addEventListener('keyup', function(){ markBullet(taEl); }); } catch (e) {}
+  try {
+    dock.querySelector('#mn-bullet').addEventListener('click', function(ev){
+      ev.preventDefault(); toggleBullet(taEl);
+    });
+  } catch (e) {}
   listEl.addEventListener('click', function(ev){
     var d = ev.target.closest('[data-del]'); if (!d) return;
     if (!confirm('Delete this note?')) return;
@@ -66517,7 +66554,7 @@ function setTab(t){
   var bs = tabsEl.querySelectorAll('[data-tab]');
   for (var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', bs[i].getAttribute('data-tab') === tab);
   toolsEl.style.display = (tab === 'write') ? 'flex' : 'none';
-  if (tab === 'type') { paintList(); }
+  if (tab === 'type') { paintList(); growTa(); markBullet(taEl); }
   else if (tab === 'form') { paintFormulas(); }
   else { sizeSvg(); redraw(); }
 }
@@ -67490,8 +67527,73 @@ function commit(){
   notesFor(curKey).unshift({ id: 'n' + Date.now() + (seq++ ? '_' + seq : ''), text: v, createdAt: Date.now() });
   taEl.value = '';
   draftSet(curKey, '', true);
+  growTa(); markBullet(taEl);          // back to one line, and the mark goes out
   save(); paintList(); paintBadge();
   listEl.scrollTop = 0;
+}
+/* BULLETS IN THE TYPED NOTES.
+   A list is how notes are actually taken, and a textarea gives you nothing:
+   every line has to be typed with its own dot. So the button turns the line
+   the caret is on into a bullet (or takes the bullet off), Return carries the
+   list on to the next line, and a Return on a bullet with nothing after it
+   ends the list - which is what every notes app does and therefore the only
+   behaviour that will not surprise her.
+   It stays plain text. A note is stored, synced, exported and read back as
+   the characters she typed, so a bullet is a bullet character and nothing
+   here needs to understand a document model. */
+var BULLET = '\u2022 ';
+/* The composer is as tall as what is in it, up to the cap the CSS sets. */
+function growTa(){
+  if (!taEl) return;
+  try {
+    taEl.style.height = 'auto';
+    taEl.style.height = Math.max(52, taEl.scrollHeight) + 'px';
+  } catch (e) {}
+}
+function taLine(ta){
+  var v = ta.value, at = ta.selectionStart;
+  var start = v.lastIndexOf('\n', at - 1) + 1;
+  var end = v.indexOf('\n', at);
+  if (end < 0) end = v.length;
+  return { start: start, end: end, text: v.slice(start, end) };
+}
+function isBulleted(t){ return t.indexOf(BULLET) === 0; }
+function setLine(ta, L, text, caret){
+  var v = ta.value;
+  ta.value = v.slice(0, L.start) + text + v.slice(L.end);
+  var c = (caret == null) ? L.start + text.length : caret;
+  try { ta.setSelectionRange(c, c); } catch (e) {}
+  markBullet(ta);
+  try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+}
+function toggleBullet(ta){
+  if (!ta) return;
+  var L = taLine(ta);
+  if (isBulleted(L.text)) setLine(ta, L, L.text.slice(BULLET.length));
+  else setLine(ta, L, BULLET + L.text);
+  try { ta.focus(); } catch (e) {}
+}
+function markBullet(ta){
+  var b = dock && dock.querySelector('#mn-bullet');
+  if (!b || !ta) return;
+  var on = false;
+  try { on = isBulleted(taLine(ta).text); } catch (e) {}
+  b.classList.toggle('on', on);
+}
+/* Return inside a list. Returns true when it has handled the key. */
+function bulletEnter(ta){
+  var L = taLine(ta);
+  if (!isBulleted(L.text)) return false;
+  if (L.text.trim() === BULLET.trim()) {     // an empty bullet: she is done
+    setLine(ta, L, '');
+    return true;
+  }
+  var at = ta.selectionStart, v = ta.value;
+  ta.value = v.slice(0, at) + '\n' + BULLET + v.slice(ta.selectionEnd);
+  var c = at + 1 + BULLET.length;
+  try { ta.setSelectionRange(c, c); } catch (e) {}
+  try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+  return true;
 }
 function paintList(){
   if (!listEl) return;
@@ -67976,6 +68078,168 @@ window.__padDropAll = function(){
 
 place();
 } catch (e) { if (window.console && console.warn) console.warn('notebook failed:', e); }
+})();
+
+/* ====================================================================
+ * ONE TRAY FOR THE LESSON TOOLS.
+ *
+ * Six buttons were pinned separately down the right-hand edge of every
+ * lesson - the notebook, the mind map, the podcast, explain-it-simply, the
+ * study helper and the calculator - each one fixed at its own height, all of
+ * them over the words she is trying to read.
+ *
+ * They are gathered here into a single tray that folds down to one button.
+ * Nothing about what they DO changes, and none of their own show-and-hide
+ * rules are touched: each of those modules still sets its own display for the
+ * screen she is on, so the calculator still appears everywhere and the
+ * podcast still only on a lesson. This module only decides where they sit and
+ * whether the stack is unfolded.
+ *
+ * Folding uses position and opacity rather than `display`, for that reason
+ * exactly - writing display here would fight the module that owns the button
+ * and one of us would win at random.
+ * ==================================================================== */
+(function toolTray(){
+if (typeof document === 'undefined') return;
+if (window.__toolTray) return; window.__toolTray = true;
+try {
+
+/* Bottom of the tray upward, which is the order she reads them in. The
+   calculator sits closest to the thumb because it is the one opened mid-sum. */
+var WANT = ['#calc-fab', '.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab', '#mn-fab'];
+var KEY = 'sh_tools_open_v1';
+var tray = null, toggle = null, hintShown = false;
+
+function isOpen(){
+  try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+}
+function setOpen(on){
+  try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {}
+  paint();
+}
+function shown(el){
+  try { return el && el.isConnected && getComputedStyle(el).display !== 'none'; }
+  catch (e) { return false; }
+}
+function tools(){
+  var out = [];
+  for (var i = 0; i < WANT.length; i++) {
+    var el = document.querySelector(WANT[i]);
+    if (el) out.push(el);
+  }
+  return out;
+}
+
+var CSS = [
+'#tool-tray{position:fixed; right:14px; bottom:88px; z-index:46;',
+'  display:flex; flex-direction:column-reverse; align-items:flex-end; gap:8px;}',
+/* Inside the tray a button is just a button - its own fixed corner is gone.
+   `display` is deliberately absent from this list. */
+'#tool-tray > .tt-item{position:static !important; inset:auto !important;',
+'  right:auto !important; bottom:auto !important; top:auto !important; left:auto !important;',
+'  margin:0 !important; z-index:auto !important;',
+'  transition:opacity .16s ease, transform .16s ease;}',
+/* Folded: they stack up on the toggle and stop taking part. */
+'#tool-tray.tt-shut > .tt-item{position:absolute !important; right:0 !important; bottom:0 !important;',
+'  opacity:0 !important; transform:scale(.55) !important; pointer-events:none !important;}',
+'#tt-toggle{width:46px; height:46px; border-radius:50%; cursor:pointer; flex:0 0 auto;',
+'  background:var(--surface); color:var(--text); font-size:19px; line-height:1;',
+'  border:1.5px solid var(--border-strong,var(--border));',
+'  display:flex; align-items:center; justify-content:center; position:relative;',
+'  box-shadow:var(--shadow-card, 0 2px 10px rgba(0,0,0,0.15));',
+'  transition:transform .16s ease;}',
+'#tool-tray:not(.tt-shut) #tt-toggle{transform:rotate(45deg);}',
+'#tt-count{position:absolute; top:-3px; right:-3px; min-width:16px; height:16px; padding:0 3px;',
+'  border-radius:999px; background:var(--secondary,#b0407a); color:#fff;',
+'  font:700 10px/16px -apple-system,Helvetica,Arial,sans-serif; text-align:center;}',
+'#tool-tray.tt-empty{display:none;}',
+'#tool-tray:not(.tt-shut) #tt-count{display:none;}',
+/* The notebook draws its own count badge; inside the tray it needs no corner
+   of its own to hang off. */
+'#tool-tray #mn-fab .mn-badge{z-index:1;}',
+'@media (max-width:520px){ #tool-tray{right:10px; bottom:78px; gap:7px;} }',
+'@media print{ #tool-tray{display:none !important;} }'
+].join('\n');
+
+function styleOnce(){
+  if (document.getElementById('tt-css')) return;
+  var s = document.createElement('style');
+  s.id = 'tt-css'; s.textContent = CSS;
+  document.head.appendChild(s);
+}
+
+function build(){
+  styleOnce();
+  if (tray && tray.isConnected) return;
+  tray = document.createElement('div');
+  tray.id = 'tool-tray';
+  toggle = document.createElement('button');
+  toggle.id = 'tt-toggle';
+  toggle.type = 'button';
+  toggle.innerHTML = '+<span id="tt-count"></span>';
+  toggle.addEventListener('click', function(){
+    var next = !isOpen();
+    setOpen(next);
+    if (next) {
+      try { if (typeof toast === 'function' && !hintShown) { hintShown = true;
+        toast('Your study tools — tap + again to fold them away'); } } catch (e) {}
+    }
+  });
+  tray.appendChild(toggle);
+  document.body.appendChild(tray);
+}
+
+/* Pull in any tool that has appeared since the last pass, drop the tray when
+   the screen has none, and keep the folded count honest. */
+function paint(){
+  try {
+    build();
+    var list = tools(), live = 0;
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (el.parentNode !== tray) {
+        el.classList.add('tt-item');
+        tray.insertBefore(el, toggle);       // column-reverse: toggle ends up lowest
+      }
+      if (shown(el)) live++;
+    }
+    var open = isOpen();
+    tray.classList.toggle('tt-shut', !open);
+    tray.classList.toggle('tt-empty', live === 0);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? 'Fold the study tools away'
+                                           : ('Study tools (' + live + ')'));
+    var c = document.getElementById('tt-count');
+    if (c) c.textContent = live ? String(live) : '';
+  } catch (e) {}
+}
+
+window.__toolTrayPaint = paint;
+window.__toolTrayState = function(){
+  var list = tools();
+  return { open: isOpen(), inTray: list.filter(function(e){ return e.parentNode === tray; }).length,
+           tools: list.length, visible: list.filter(shown).length,
+           empty: !!(tray && tray.classList.contains('tt-empty')) };
+};
+
+/* The tools are created at different moments - some once, some on every
+   render, the calculator on a timer - so the tray is re-checked after a
+   render and on a slow heartbeat, which is what those modules already do. */
+if (typeof render === 'function' && !render.__ttWrapped) {
+  var _r = render;
+  render = function(){
+    var out = _r.apply(this, arguments);
+    try { paint(); setTimeout(paint, 180); } catch (e) {}
+    return out;
+  };
+  render.__ttWrapped = true;
+  try { window.render = render; } catch (e) {}
+}
+setTimeout(paint, 300);
+setTimeout(paint, 1200);
+setInterval(paint, 4000);
+
+} catch (e) { if (window.console) console.warn('toolTray failed:', e); }
 })();
 
 </script>
