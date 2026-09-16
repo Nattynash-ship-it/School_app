@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.590">
+<meta name="app-build" content="18.591">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -19952,10 +19952,29 @@ function lessonSpeechText(root) {
 }
 window.lessonSpeechText = lessonSpeechText;
 
+/* THE RECORDED-VOICE PLAYER, one per app rather than one per lesson, so that
+   leaving a lesson can always stop it. Navigation already cancels
+   speechSynthesis; an <audio> element needs telling separately. */
+var listenAudio = null;
+window.__listenStop = function () {
+ try { if (listenAudio) { listenAudio.pause(); listenAudio.onended = null; listenAudio.onerror = null; } } catch (e) {}
+ try { if (window.__listenSession) window.__listenSession.dead = true; } catch (e) {}
+ window.__listenSession = null;
+};
+// go() cancels speech on every call; carry the recorded voice with it.
+try {
+ if (typeof window.go === 'function' && !window.go.__listenWrapped) {
+  var _goPrev = window.go;
+  var _goWrapped = function () { try { window.__listenStop(); } catch (e) {} return _goPrev.apply(this, arguments); };
+  _goWrapped.__listenWrapped = 1;
+  window.go = _goWrapped;
+ }
+} catch (e) {}
+
 function wireAudioReadAloud(wrap, courseId, chId, secId) {
  const btn = wrap.querySelector('[data-audio-toggle]');
  if (!btn) return;
- if (!window.speechSynthesis) {
+ if (!window.speechSynthesis && !(window.__neuralVoice)) {
  btn.style.display = 'none';
  return;
  }
@@ -19967,22 +19986,28 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  const setPaused = () => { icon.textContent = '▶'; label.textContent = 'Resume'; btn.style.background = 'var(--accent)'; btn.style.color = 'var(--accent-text)'; };
 
  btn.addEventListener('click', () => {
- // Already speaking and paused → resume
- if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
+ const S = window.__listenSession;
+
+ /* A recorded clip pauses and resumes properly, which speechSynthesis on iOS
+    never reliably did. Same button, same three states. */
+ if (S && !S.dead) {
+ if (S.paused) { S.paused = false; try { listenAudio.play(); } catch (e) {} setPlaying(); }
+ else { S.paused = true; try { listenAudio.pause(); } catch (e) {} setPaused(); }
+ return;
+ }
+ if (window.speechSynthesis && window.speechSynthesis.speaking && window.speechSynthesis.paused) {
  window.speechSynthesis.resume();
  setPlaying();
  return;
  }
- // Already speaking and playing → pause
- if (window.speechSynthesis.speaking) {
+ if (window.speechSynthesis && window.speechSynthesis.speaking) {
  window.speechSynthesis.pause();
  setPaused();
  return;
  }
- // Not speaking → start fresh
+
  const lessonEl = wrap.querySelector('.lesson');
  if (!lessonEl) return;
- // Extract plain text and normalize for natural speech
  let text = lessonSpeechText(lessonEl);
  text = text
  .replace(/→/g, ' becomes ')
@@ -20007,8 +20032,25 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  // Read each run of the lesson in its own language, in the best recording this
  // device has of it. Pause, resume and stop still work: they act on the whole
  // queue, and only the last run hands back to Idle.
+ if (!text) { toast('Nothing to read'); return; }
+ if (text.length > 30000) text = text.slice(0, 30000) + ' ... lesson truncated.';
+
+ /* ---- the device voices, exactly as before ---- */
+ function speakWithDevice() {
+ if (!window.speechSynthesis) { toast('Audio not supported on this device.'); return; }
+ /* If we are on the device voices AND this device only has the small built-in
+    ones, say so once. On an iPad the Enhanced voices are a free download and
+    are the only thing that changes how this sounds when the site is not set up
+    to generate audio itself. Said once, ever, then never again. */
+ try {
+ const pick = window.__ttsPick ? window.__ttsPick(text) : null;
+ if (pick && !pick.hifi && !localStorage.getItem('sh_voice_hint_v1')) {
+ localStorage.setItem('sh_voice_hint_v1', '1');
+ toast('Tip: iPad Settings \u203a Accessibility \u203a Spoken Content \u203a Voices \u2014 download an "Enhanced" English voice and this reads far more naturally.', 9000);
+ }
+ } catch (e) {}
  const segs = (window.__ttsSegments ? window.__ttsSegments(text) : [{ text: text, lang: null }]);
- window.speechSynthesis.cancel(); // clear any previous queue
+ window.speechSynthesis.cancel();
  audioState.utterance = null;
  segs.forEach((seg, i) => {
  const u = new SpeechSynthesisUtterance(seg.text);
@@ -20022,6 +20064,69 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  window.speechSynthesis.speak(u);
  });
  setPlaying();
+ }
+
+ /* ---- the recorded voice ----
+    Read in pieces of roughly a paragraph, split only where a line already
+    ended, so a piece is never cut mid-sentence. Each piece is one clip, the
+    next is fetched while the current one plays, and every clip is kept on the
+    device - so the second time through a lesson, and every train journey
+    after it, needs no network at all. */
+ function chunk(t) {
+ const lines = String(t).split('\n');
+ const out = [];
+ let cur = '';
+ for (const ln of lines) {
+ if (!ln) continue;
+ if (cur && (cur.length + ln.length + 1) > 700) { out.push(cur); cur = ln; }
+ else cur = cur ? (cur + ' ' + ln) : ln;
+ }
+ if (cur) out.push(cur);
+ return out;
+ }
+ function playRecorded() {
+ const parts = chunk(text);
+ if (!parts.length) { speakWithDevice(); return; }
+ const voice = (store && store.listenVoice) || 'nova';
+ const sess = { dead: false, paused: false, i: 0 };
+ window.__listenSession = sess;
+ if (!listenAudio) listenAudio = new Audio();
+ const V = window.__neuralVoice;
+
+ const fail = () => {
+ // Whatever went wrong - offline with nothing cached, the key pulled, the
+ // provider down - fall back in place rather than stopping on an error.
+ if (sess.dead) return;
+ window.__listenSession = null;
+ speakWithDevice();
+ };
+ const step = () => {
+ if (sess.dead) return;
+ if (sess.i >= parts.length) { window.__listenSession = null; setIdle(); return; }
+ const mine = sess.i;
+ V.clip(voice, parts[mine]).then(url => {
+ if (sess.dead || sess.i !== mine) return;
+ listenAudio.onended = () => { if (sess.dead || sess.i !== mine) return; sess.i++; step(); };
+ listenAudio.onerror = fail;
+ listenAudio.src = url;
+ listenAudio.playbackRate = (store.audioRate || 1.0);
+ const pr = listenAudio.play();
+ if (pr && pr.catch) pr.catch(fail);
+ setPlaying();
+ // fetch the next piece while this one plays, so there is no gap
+ if (parts[mine + 1]) { try { V.clip(voice, parts[mine + 1]).catch(() => {}); } catch (e) {} }
+ }).catch(fail);
+ };
+ step();
+ }
+
+ const V = window.__neuralVoice;
+ if (!V) { speakWithDevice(); return; }
+ if (V.on()) { playRecorded(); return; }
+ if (V.state() === 'off') { speakWithDevice(); return; }
+ // First use on this device: ask whether the site can do this at all. The
+ // question generates no audio and costs nothing.
+ V.probe().then(ok => { if (ok) playRecorded(); else speakWithDevice(); }).catch(speakWithDevice);
  });
 
  // Audio is stopped on navigation by go() itself (it cancels speechSynthesis
@@ -63041,6 +63146,118 @@ inject();
 window.__eli5Inject = inject;
 })();
 
+
+(function neuralVoice(){
+/* 🔊 A REAL VOICE FOR "LISTEN".
+ *
+ * "The listen voice also sounds extremely robotic can you fix to make it
+ *  sound smoother? I'd like to listen to it on the train"
+ *
+ * Listen used speechSynthesis, and on an iPad that has a hard ceiling: iPadOS
+ * keeps its good recordings - the Enhanced and Premium voices - for its own
+ * reading and hands a web page only the small built-in ones. No amount of
+ * choosing between them fixes the sound, because the good ones are not on the
+ * list to choose from. The podcast hit exactly this and went around it by
+ * generating the audio on the server and playing it back; that endpoint is
+ * already built and already cached. Listen simply never used it.
+ *
+ * So this is the same road: the lesson is read in a real recorded voice, the
+ * clips are kept in the same database as the rest of her work, and a lesson
+ * she has listened to once needs no network at all - which is the point of the
+ * train.
+ *
+ * It costs nothing until someone sets OPENAI_API_KEY on the site. Without it
+ * the endpoint answers 503, this reports itself off, and Listen behaves exactly
+ * as it did before.
+ */
+try {
+if (typeof document === 'undefined') return;
+if (window.__neuralVoice) return;
+
+var EP = '/.netlify/functions/tts';
+var state = 'unknown';          // unknown | probing | on | off
+var mem = Object.create(null);  // key -> objectURL, this session
+var urls = [];
+var probing = null;
+
+function keyFor(voice, text){
+  var h = 0, s = voice + '|' + text;
+  for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return 'tts:' + voice + ':' + (h >>> 0).toString(36) + ':' + text.length;
+}
+function fromDisk(key){
+  return new Promise(function(res){
+    try {
+      if (typeof window.__fortressIdb !== 'function') return res(null);
+      window.__fortressIdb('readonly', function(os){
+        var out = { __v: null }, g = os.get(key);
+        g.onsuccess = function(){ out.__v = g.result || null; };
+        return out;
+      }).then(function(v){ res(v && v.blob ? v.blob : null); }).catch(function(){ res(null); });
+    } catch (e) { res(null); }
+  });
+}
+function toDisk(key, blob){
+  try {
+    if (typeof window.__fortressIdb !== 'function') return;
+    window.__fortressIdb('readwrite', function(os){ os.put({ blob: blob, at: Date.now() }, key); }).catch(function(){});
+  } catch (e) {}
+}
+/* A POST with no text is the cheapest possible question: a site with the key
+   set answers 400 (no_text), one without answers 503. Neither generates audio,
+   so asking never costs anything. */
+function probe(){
+  if (state === 'on') return Promise.resolve(true);
+  if (state === 'off') return Promise.resolve(false);
+  if (probing) return probing;
+  state = 'probing';
+  probing = fetch(EP, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    .then(function(r){ state = (r.status === 400) ? 'on' : 'off'; return state === 'on'; })
+    .catch(function(){ state = 'off'; return false; })
+    .then(function(v){ probing = null; return v; });
+  return probing;
+}
+// Already on this device? Then it plays with no network at all.
+function cached(voice, text){
+  var key = keyFor(voice, text);
+  if (mem[key]) return Promise.resolve(true);
+  return fromDisk(key).then(function(b){ return !!b; });
+}
+function clip(voice, text){
+  var key = keyFor(voice, text);
+  if (mem[key]) return Promise.resolve(mem[key]);
+  return fromDisk(key).then(function(hit){
+    if (hit) {
+      var u = URL.createObjectURL(hit);
+      mem[key] = u; urls.push(u);
+      return u;
+    }
+    return fetch(EP, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: text, voice: voice })
+    }).then(function(r){
+      if (!r.ok) throw new Error('tts ' + r.status);
+      return r.blob();
+    }).then(function(b){
+      toDisk(key, b);
+      var u = URL.createObjectURL(b);
+      mem[key] = u; urls.push(u);
+      return u;
+    });
+  });
+}
+
+window.__neuralVoice = {
+  probe: probe,
+  on: function(){ return state === 'on'; },
+  state: function(){ return state; },
+  clip: clip,
+  cached: cached,
+  key: keyFor,
+  _reset: function(){ state = 'unknown'; probing = null; }   // tests only
+};
+} catch (e) {}
+})();
 
 (function studyPodcast(){
 /* 🎙 SECTION PODCAST - "for every section is it possible to have a podcast
