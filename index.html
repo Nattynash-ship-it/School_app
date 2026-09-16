@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.589">
+<meta name="app-build" content="18.590">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -13526,6 +13526,7 @@ const defaultStore = {
  knowtProgress: {}, // courseId -> { cardId: { status, misses, hits, starred, lastSeen } } — cross-session weak-card memory
  plannerCards: [], // { id, title, column: 'todo'|'doing'|'done', courseId?, dueDate?, notes?, createdAt, completedAt? }
  pretests: {}, // courseId -> { takenAt, score, total, chapterScores: { chId: { correct, total } }, questions: [qId] }
+ pretestLive: {}, // courseId -> a pretest still being taken: { ts, qids, idx, answers, byChap }
  useNewNav: true, // toggle: show v2 sidebar nav and Today as home
  // anonymous metric cache, recomputed lazily
 };
@@ -13680,6 +13681,15 @@ if (!store._pinDefaultsApplied) {
 
 // ==================== STATE / ROUTING ====================
 let view = { name: 'home' };
+/* Views that are a TASK IN PROGRESS. Re-rendering one out from under her throws
+   away what she is in the middle of: a pretest restarted with fresh questions,
+   a typed code answer wiped, a card flipped back. Background work - a sync
+   landing, an erase learned from the other device - must not redraw these. The
+   next thing she taps renders anyway. */
+window.__midTask = function () {
+  try { return ['quiz', 'pretest', 'flashcards', 'deckstudy', 'knowt', 'examsim'].indexOf(view && view.name) !== -1; }
+  catch (e) { return false; }
+};
 let _readStart = null;
 function _flushReading() {
   try {
@@ -32499,6 +32509,7 @@ function openCoursePreviewModal(courseId) {
  if (Array.isArray(store.activeOrder)) store.activeOrder = store.activeOrder.filter(c => c !== cid);
  if (store.pinnedCourses) delete store.pinnedCourses[cid];
  if (store.pretests) delete store.pretests[cid];
+ if (store.pretestLive) delete store.pretestLive[cid];
  // Also remove any flashcard decks that were auto-built from this course
  if (store.flashDecks) {
  Object.keys(store.flashDecks).forEach(deckId => {
@@ -33470,6 +33481,7 @@ function renderCoursesV2() {
  if (Array.isArray(store.activeOrder)) store.activeOrder = store.activeOrder.filter(c => c !== cid);
  if (store.pinnedCourses) delete store.pinnedCourses[cid];
  if (store.pretests) delete store.pretests[cid];
+ if (store.pretestLive) delete store.pretestLive[cid];
  // Remove from in-memory COURSES so it disappears immediately
  delete COURSES[cid];
  saveStore();
@@ -33546,11 +33558,76 @@ function renderPretest(courseId) {
  wrap.addEventListener('click', e => { if (e.target.dataset.act === 'back') go({ name: 'class', courseId }); });
  return wrap;
  }
+ /* A PRETEST IN PROGRESS IS SAVED, NOT HELD IN A CLOSURE.
+    The 30 questions and every answer used to live only in local variables here,
+    so ANY re-render - a background sync finishing, a recovery, a reload - ran
+    this function again, drew 30 fresh questions at random and put her back on
+    question 1 with nothing answered. "It keeps resetting on me and resetting
+    the questions" is exactly that. It is written down now, so a re-render
+    picks the test back up where she left it. */
+ /* THE QUESTIONS THEMSELVES ARE SAVED, NOT THEIR IDS.
+    Storing (chapter, section, id) and looking them up again does not work for
+    the exam-simulation sections: getQuestions draws a fresh random sample from
+    a 72-question bank on every call, so two of her thirty could not be found
+    on the way back and the whole test was thrown away. Keeping the questions
+    means the test she started is the test she finishes, even if the bank is
+    reshuffled or the course content is updated underneath her. Thirty
+    questions is a few tens of KB and it is deleted the moment she finishes. */
+ function packQ(q) {
+ // a RegExp does not survive JSON; the answer checker already reads this form
+ try {
+ const c = {};
+ for (const k in q) {
+ const v = q[k];
+ if (Array.isArray(v)) c[k] = v.map(x => (x instanceof RegExp) ? { __rx: x.source, __fl: x.flags } : x);
+ else if (v instanceof RegExp) c[k] = { __rx: v.source, __fl: v.flags };
+ else c[k] = v;
+ }
+ return c;
+ } catch (e) { return q; }
+ }
+ function loadLive() {
+ try {
+ const L = (store.pretestLive || {})[courseId];
+ if (!L || !Array.isArray(L.items) || !L.items.length) return null;
+ const sel = L.items.map(r => (r && r.q) ? { q: r.q, chId: r.chId, secId: r.secId } : null);
+ const idx = Math.max(0, Math.min(L.idx | 0, sel.length));
+ // one she has already answered may be missing - the answer is recorded.
+ // One she has not reached yet would leave a hole in the test.
+ for (let i = idx; i < sel.length; i++) if (!sel[i]) return null;
+ const byChap = (L.byChap && typeof L.byChap === 'object') ? L.byChap : {};
+ const answers = Array.isArray(L.answers) ? L.answers.slice() : [];
+ return { selected: sel, session: { idx, answers, total: sel.length, byChap } };
+ } catch (e) { return null; }
+ }
+ function saveLive() {
+ try {
+ if (!store.pretestLive) store.pretestLive = {};
+ store.pretestLive[courseId] = {
+ ts: Date.now(),
+ items: selected.map(s => s ? { q: packQ(s.q), chId: s.chId, secId: s.secId } : null),
+ idx: session.idx,
+ answers: session.answers.map(a => ({ picked: a.picked, correct: !!a.correct })),
+ byChap: session.byChap
+ };
+ saveStore();
+ } catch (e) {}
+ }
+ function clearLive() {
+ try { if (store.pretestLive) delete store.pretestLive[courseId]; saveStore(); } catch (e) {}
+ }
+
+ let selected = [];
+ let session = null;
+ const resumed = loadLive();
+ if (resumed) {
+ selected = resumed.selected;
+ session = resumed.session;
+ } else {
  const byChap = {};
  bank.forEach(item => { (byChap[item.chId] = byChap[item.chId] || []).push(item); });
  const chapIds = Object.keys(byChap);
  const perChap = Math.max(1, Math.floor(30 / chapIds.length));
- let selected = [];
  chapIds.forEach(cid => {
  const pool = shuffle(byChap[cid].slice()).filter(x => x.q.type !== 'code' || Math.random() < 0.3);
  selected = selected.concat(pool.slice(0, perChap));
@@ -33562,11 +33639,13 @@ function renderPretest(courseId) {
  selected = selected.slice(0, 30);
  selected = shuffle(selected);
 
- const session = { idx: 0, answers: [], total: selected.length, byChap: {} };
+ session = { idx: 0, answers: [], total: selected.length, byChap: {} };
  selected.forEach(s => {
  if (!session.byChap[s.chId]) session.byChap[s.chId] = { correct: 0, total: 0 };
  session.byChap[s.chId].total++;
  });
+ saveLive();
+ }
 
  function renderQuestion() {
  wrap.innerHTML = '';
@@ -33607,6 +33686,7 @@ function renderPretest(courseId) {
  session.answers.push({ item: cur, picked, correct });
  if (correct) session.byChap[cur.chId].correct++;
  session.idx++;
+ saveLive();
  renderQuestion();
  return;
  }
@@ -33630,12 +33710,14 @@ function renderPretest(courseId) {
  session.answers.push({ item: cur, picked: text, correct });
  if (correct) session.byChap[cur.chId].correct++;
  session.idx++;
+ saveLive();
  renderQuestion();
  return;
  }
  if (e.target.dataset.skip !== undefined) {
  session.answers.push({ item: cur, picked: null, correct: false });
  session.idx++;
+ saveLive();
  renderQuestion();
  return;
  }
@@ -33654,9 +33736,11 @@ function renderPretest(courseId) {
  store.pretests[courseId] = {
  takenAt: Date.now(),
  score, total,
+ ts: Date.now(),
  chapterScores: session.byChap,
  partial: !!partial,
  };
+ clearLive();
  saveStore();
  go({ name: 'pretestresults', courseId });
  }
@@ -33728,6 +33812,7 @@ function renderPretestResults(courseId) {
  if (a === 'retake') {
  if (confirm('Retake the pretest? Your existing results will be replaced.')) {
  delete store.pretests[courseId];
+ if (store.pretestLive) delete store.pretestLive[courseId];
  saveStore();
  go({ name: 'pretest', courseId });
  }
@@ -40500,6 +40585,7 @@ function getQuestions(courseId, chId, secId) {
       if (store.preOaProgress && store.preOaProgress[cid]) delete store.preOaProgress[cid];
       if (store.knowtProgress && store.knowtProgress[cid]) delete store.knowtProgress[cid];
       if (store.pretests && store.pretests[cid]) delete store.pretests[cid];
+      if (store.pretestLive && store.pretestLive[cid]) delete store.pretestLive[cid];
       // per-lesson user flashcards created from this course's quizzes (keys start "CID/")
       if (store.userFlashcards){ Object.keys(store.userFlashcards).forEach(function(k){ if (k.indexOf(cid+'/')===0) delete store.userFlashcards[k]; }); }
       /* REVIEW AND FLASHCARDS HAVE TO FOLLOW SUIT.
@@ -41930,6 +42016,10 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (store.pretests){
         if (cid){ if (store.pretests[cid]) delete store.pretests[cid]; }
         else { store.pretests = {}; }
+      }
+      if (store.pretestLive){
+        if (cid){ if (store.pretestLive[cid]) delete store.pretestLive[cid]; }
+        else { store.pretestLive = {}; }
       }
       if (store.preOaProgress){
         if (cid){ if (store.preOaProgress[cid]) delete store.preOaProgress[cid]; }
@@ -46728,6 +46818,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (Array.isArray(store.examSessions)) store.examSessions = store.examSessions.filter(function(s){ return !s || s.courseId !== cid; });
       if (Array.isArray(store.sessions)) store.sessions = store.sessions.filter(function(s){ return !s || s.courseId !== cid; });
       if (store.pretests) delete store.pretests[cid];
+      if (store.pretestLive) delete store.pretestLive[cid];
       if (store.preOaProgress) delete store.preOaProgress[cid];
       if (store.knowtProgress) delete store.knowtProgress[cid];
       if (store.examTaken) delete store.examTaken[cid];
@@ -61887,7 +61978,7 @@ function absorb(remote){
   if (changed) write(o);
   if (applied) {
     try { saveStore(); } catch (e) {}
-    try { if (typeof render === 'function') render(); } catch (e) {}
+    try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
     try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
   }
 }
@@ -61930,7 +62021,7 @@ function mark(kind, rk){
    reset itself clears, so an older copy can never re-add what it removed and
    can still carry everything it did not touch. */
 var COURSE_ARRAYS = ['quizHistory', 'examSessions', 'sessions'];
-var COURSE_MAPS = ['pretests', 'knowtProgress', 'preOaProgress'];
+var COURSE_MAPS = ['pretests', 'pretestLive', 'knowtProgress', 'preOaProgress'];
 
 /* Carry out a course erase on THIS device: the same deletions the reset makes,
    for one class. A record made AFTER the erase is genuine new work and stays -
@@ -62285,7 +62376,7 @@ function applyRemote(snap){
   var ink = inkOk ? mergeInk(snap.ink, when) : { added: 0, pages: 0 };
   res.ink = ink.added; res.pages = ink.pages;
   try { saveStore(); } catch (e) {}
-  try { if (typeof render === 'function') render(); } catch (e) {}
+  try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
   try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
   return res;
 }
