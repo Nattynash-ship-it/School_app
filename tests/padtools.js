@@ -3,9 +3,15 @@
 // The highlighter is a wide translucent band that must never bury the writing,
 // must survive a close and reopen, must erase and undo like any other ink, and
 // must keep its own colour in an exported page (inkForPaper would print it as
-// a solid black bar). The ruler is a straightedge that lies ON the paper: it is
-// not ink, it is never saved into a stroke or exported, and a stroke drawn
-// along it comes out dead straight - which is the whole point of it.
+// a solid black bar).
+//
+// THE RULER IS GONE - "Please remove the ruler on the notes" - and its half of
+// this file went with it in 18.591. It had been crashing the whole suite since
+// the ruler was taken out in 18.582: tool('ruler') returned null and .click()
+// threw, which took the highlighter coverage down with it and went unnoticed
+// because the runner only printed the last line and read the wrong exit code.
+// The last assertion here now holds the ruler DOWN, so nothing quietly puts it
+// back.
 const { chromium } = require('playwright');
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 (async () => {
@@ -70,52 +76,6 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     const firstPen = paths.map(n=>n.classList.contains('mn-hl')).indexOf(false);
     o.hlUnderInk = lastHl >= 0 && firstPen >= 0 && lastHl < firstPen;
 
-    // ---------- the ruler ----------
-    tap('ruler'); await w(500);
-    o.rulerNode = !!svg.querySelector('g.mn-ruler');
-    o.rulerTicks = svg.querySelectorAll('.mn-ruler-tick').length;
-    o.rulerGrips = svg.querySelectorAll('.mn-ruler-grip').length;
-    o.rulerBtnOn = tool('ruler').classList.contains('on');
-    o.strokesUnchangedByRuler = S().length === o.n1;
-    // its grips must be reachable: inside the paper that is actually on screen
-    const pages = document.getElementById('mn-pages');
-    const pr = pages.getBoundingClientRect();
-    o.gripsOnScreen = [...svg.querySelectorAll('.mn-ruler-grip')].every(g=>{
-      const r = g.getBoundingClientRect();
-      return r.left >= pr.left - 2 && r.right <= pr.right + 2;
-    });
-    // put it flat, at a known place, then draw a deliberately wobbly line on it
-    const rp = store.padPrefs.ruler;
-    rp.a = 0; rp.x = 500; rp.y = 600; saveStore();
-    window.__notesPanel.tab('write'); await w(60);
-    tap('pen'); await w(150);
-    draw(240,600,760,600, 26); await w(300);      // wobble 26 units across
-    let after = S();
-    o.ruled = after.length === o.n1 + 1;
-    o.ruledBow = after.length ? maxBow(after[after.length-1]) : null;
-    // the same wobble far from the ruler stays a wobble
-    draw(240,300,760,300, 26); await w(300);
-    after = S();
-    o.freeBow = maxBow(after[after.length-1]);
-
-    // dragging the body moves it; dragging a grip turns it and snaps to 15deg
-    const body = svg.querySelector('.mn-ruler-body');
-    fire(body,'pointerdown', cx(500), cy(640));
-    fire(svg,'pointermove', cx(560), cy(700));
-    fire(svg,'pointerup',   cx(560), cy(700));
-    await w(150);
-    o.movedX = Math.round(store.padPrefs.ruler.x);
-    o.movedY = Math.round(store.padPrefs.ruler.y);
-    const grip = svg.querySelector('.mn-ruler-grip');
-    const gr = grip.getBoundingClientRect();
-    fire(grip,'pointerdown', gr.left+gr.width/2, gr.top+gr.height/2);
-    fire(svg,'pointermove', cx(store.padPrefs.ruler.x-200), cy(store.padPrefs.ruler.y-198));
-    fire(svg,'pointerup',   cx(store.padPrefs.ruler.x-200), cy(store.padPrefs.ruler.y-198));
-    await w(150);
-    o.turnedDeg = Math.round(store.padPrefs.ruler.a * 180 / Math.PI * 10)/10;
-    o.snapped15 = Math.abs(o.turnedDeg % 15) < 0.05 || Math.abs(Math.abs(o.turnedDeg % 15) - 15) < 0.05;
-    o.stillNotInk = S().length === after.length;
-
     // ---------- the export ----------
     const png = window.__notesPanel.renderPage(1);
     o.exportStrokes = png.strokes;
@@ -127,9 +87,6 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     const d = c2.getImageData(px, py, 1, 1).data;
     o.hlPixel = [d[0], d[1], d[2]];
     o.hlPixelIsYellowish = d[0] > 200 && d[1] > 190 && d[2] < 200 && (d[0]-d[2]) > 40;
-    // the ruler is a tool, not ink: nothing of it in the picture
-    const rulerBandPx = c2.getImageData(Math.round(500/1000*bm.width), Math.round(660/1294*bm.height), 1, 1).data;
-    o.rulerNotExported = rulerBandPx[0] > 248 && rulerBandPx[1] > 248 && rulerBandPx[2] > 248;
 
     // ---------- erase, undo, and reopening ----------
     tap('erase'); await w(150);
@@ -147,15 +104,11 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     window.__notesPanel.tab('write'); await w(400);
     o.hlAfterReopen = S().filter(s=>s.type==='hl').length;
     o.hlNodeAfterReopen = !!document.getElementById('mn-ink').querySelector('path.mn-hl');
-    o.rulerAfterReopen = !!document.getElementById('mn-ink').querySelector('g.mn-ruler');
-    // and it can be put away again
-    document.querySelector('#mn-tools .mn-tool[data-t="ruler"]').click(); await w(300);
-    const off = [...document.querySelectorAll('.mn-pop .mn-size')].filter(x=>/put the ruler away/i.test(x.textContent))[0];
-    o.popHasPutAway = !!off;
-    if (off) off.click();
-    await w(400);
-    o.rulerGone = !document.getElementById('mn-ink').querySelector('g.mn-ruler');
-    o.inkKeptAfterRulerOff = S().length > 0;
+    // the ruler she asked to have removed must stay removed: no tool button,
+    // nothing drawn on the paper, and no leftover setting being honoured
+    o.rulerToolGone = !document.querySelector('#mn-tools .mn-tool[data-t="ruler"]');
+    o.rulerNodeGone = !document.getElementById('mn-ink').querySelector('g.mn-ruler');
+    o.rulerTicksGone = document.querySelectorAll('.mn-ruler-tick, .mn-ruler-grip, .mn-ruler-body').length === 0;
     return o;
   });
   ok('the highlighter button turns on and takes the pen off', R.hlBtnOn && R.penBtnOff);
@@ -164,24 +117,15 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   ok('it renders translucent, not solid', R.hlRendered && parseFloat(R.hlOpacity)>0.2 && parseFloat(R.hlOpacity)<0.7, R.hlOpacity);
   ok('it is a broad band, not a pen line', parseFloat(R.hlStrokeW)>=10, R.hlStrokeW);
   ok('drawn AFTER the writing, it still sits under it', R.hlUnderInk);
-  ok('the ruler appears with inch ticks and two grips', R.rulerNode && R.rulerTicks>10 && R.rulerGrips===2, R.rulerTicks+' ticks');
-  ok('the ruler button reads as on', R.rulerBtnOn);
-  ok('both grips are reachable on the paper she can see', R.gripsOnScreen);
-  ok('bringing it out adds no ink', R.strokesUnchangedByRuler);
-  ok('a wobbly stroke drawn along it comes out straight', R.ruled && R.ruledBow<=1, 'bow '+R.ruledBow+' units');
-  ok('the same wobble away from it stays a wobble', R.freeBow>=8, 'bow '+R.freeBow+' units');
-  ok('dragging the body moves it', R.movedX===560 && R.movedY===660, R.movedX+','+R.movedY);
-  ok('dragging a grip turns it, snapped to 15 degrees', R.snapped15, R.turnedDeg+'°');
-  ok('moving and turning it never becomes a stroke', R.stillNotInk);
-  ok('the exported page draws the highlight', R.exportStrokes>=3, R.exportStrokes+' strokes');
+  // the writing and the highlight over it - the third stroke this used to
+  // count was drawn by the ruler section, which no longer exists
+  ok('the exported page draws both the writing and the highlight', R.exportStrokes===2, R.exportStrokes+' strokes');
   ok('the highlight keeps its colour in the export (not blackened)', R.hlPixelIsYellowish, 'rgb '+R.hlPixel.join(','));
-  ok('the ruler is not in the exported page', R.rulerNotExported);
   ok('the eraser takes highlighter ink', R.erasedSomething);
   ok('undo brings it back', R.undoRestored);
   ok('highlights survive closing and reopening', R.hlAfterReopen>=1 && R.hlNodeAfterReopen, R.hlAfterReopen);
-  ok('the ruler is still out on reopening', R.rulerAfterReopen);
-  ok('its options offer putting it away', R.popHasPutAway);
-  ok('putting it away removes it and keeps every stroke', R.rulerGone && R.inkKeptAfterRulerOff);
+  ok('the ruler stays removed', R.rulerToolGone && R.rulerNodeGone && R.rulerTicksGone,
+     JSON.stringify([R.rulerToolGone, R.rulerNodeGone, R.rulerTicksGone]));
   ok('no page errors', errs.length===0, errs.slice(0,2).join('|'));
   for (const f of F) console.log((f.pass?'PASS ':'FAIL ')+f.n+(f.x?'  '+f.x:''));
   console.log('padtools: '+F.filter(f=>f.pass).length+'/'+F.length+' passed');
