@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.588">
+<meta name="app-build" content="18.589">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -28051,10 +28051,28 @@ function mergeIntoStore(incoming) {
  if (incoming.bookmarks[k]) store.bookmarks[k] = true;
  }
  }
+ // Flagged questions - newest flag wins, and the RECORD is kept.
+ // This used to store the boolean `true`, throwing away {courseId, chId, secId,
+ // flaggedAt, reason} on every single sync. Without courseId a class reset could
+ // never find the flag again, and the Flagged screen fell back to scanning every
+ // question in every class to work out where each one had come from.
  if (incoming.flaggedQuestions && typeof incoming.flaggedQuestions === 'object') {
  store.flaggedQuestions = store.flaggedQuestions || {};
  for (const k of Object.keys(incoming.flaggedQuestions)) {
- if (incoming.flaggedQuestions[k]) store.flaggedQuestions[k] = true;
+ const inc = incoming.flaggedQuestions[k];
+ if (!inc) continue;
+ const cur = store.flaggedQuestions[k];
+ const incRec = (typeof inc === 'object') ? inc : null;
+ if (!cur) { store.flaggedQuestions[k] = incRec || { flaggedAt: 0 }; continue; }
+ // an older copy that only carried `true` must not overwrite a real record
+ if (!incRec) continue;
+ if (typeof cur !== 'object') { store.flaggedQuestions[k] = incRec; continue; }
+ if ((incRec.flaggedAt || 0) > (cur.flaggedAt || 0)) store.flaggedQuestions[k] = incRec;
+ }
+ // heal flags an older build already flattened, so the screen's own lookup can
+ // put their class back rather than re-deriving it on every render
+ for (const k of Object.keys(store.flaggedQuestions)) {
+ if (store.flaggedQuestions[k] === true) store.flaggedQuestions[k] = { flaggedAt: 0 };
  }
  }
  // Celebrated milestones — earliest-timestamp wins (first time it happened)
@@ -61856,7 +61874,16 @@ function absorb(remote){
   var rp = remote.pages || {};
   for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
   var rc = remote.courses || {};
-  for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) { o.courses[k] = rc[k]; changed = true; }
+  for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) {
+    o.courses[k] = rc[k]; changed = true;
+    /* A COURSE ERASE IS AN OPERATION TOO - THIS IS WHAT "IT REVERTS" WAS.
+       This used to record the mark and stop, so the device that learned of the
+       reset still held every record the reset had deleted. On its next sync it
+       pushed them all back up under a fresh timestamp, past every guard, and
+       the class she had reset came back whole. Learning of a reset means
+       carrying it out here, exactly as the reset itself would have. */
+    if (applyCourseMark(k, rc[k])) applied = true;
+  }
   if (changed) write(o);
   if (applied) {
     try { saveStore(); } catch (e) {}
@@ -61904,21 +61931,99 @@ function mark(kind, rk){
    can still carry everything it did not touch. */
 var COURSE_ARRAYS = ['quizHistory', 'examSessions', 'sessions'];
 var COURSE_MAPS = ['pretests', 'knowtProgress', 'preOaProgress'];
+
+/* Carry out a course erase on THIS device: the same deletions the reset makes,
+   for one class. A record made AFTER the erase is genuine new work and stays -
+   quiz attempts, exam results, study sessions, pretests and flags all carry
+   their own timestamp, so they can be told apart. A review schedule carries no
+   creation time, only a future due date, so there is nothing to tell apart and
+   it goes back to new - which is what a reset does to it anyway. */
+function applyCourseMark(cid, T){
+  var changed = false;
+  try {
+    COURSE_ARRAYS.forEach(function(key){
+      var a = store[key];
+      if (!Array.isArray(a) || !a.length) return;
+      var keep = [], n;
+      for (n = 0; n < a.length; n++) {
+        var r = a[n];
+        if (r && r.courseId === cid && (r.ts || 0) < T) continue;
+        keep.push(r);
+      }
+      if (keep.length !== a.length) { store[key] = keep; changed = true; }
+    });
+  } catch (e) {}
+  try {
+    COURSE_MAPS.forEach(function(key){
+      var m = store[key];
+      if (!m || typeof m !== 'object') return;
+      if (m[cid] && ((m[cid].ts || 0) < T)) { delete m[cid]; changed = true; }
+    });
+  } catch (e) {}
+  try {
+    ['userFlashcards', 'flashcards'].forEach(function(key){
+      var m = store[key];
+      if (!m || typeof m !== 'object') return;
+      for (var fk in m) if (String(fk).split('/')[0] === cid) { delete m[fk]; changed = true; }
+    });
+  } catch (e) {}
+  try {
+    var ds = store.flashDecks || {};
+    for (var did in ds) {
+      var d = ds[did];
+      if (!d || d.courseId !== cid || !Array.isArray(d.cards)) continue;
+      for (var ci = 0; ci < d.cards.length; ci++) {
+        var c = d.cards[ci];
+        if (!c) continue;
+        if (c.ef !== undefined || c.interval !== undefined || c.due !== undefined || c.reps !== undefined) changed = true;
+        delete c.ef; delete c.interval; delete c.due; delete c.reps;
+      }
+    }
+  } catch (e) {}
+  try {
+    var fq = store.flaggedQuestions || {};
+    for (var qk in fq) {
+      var rec = fq[qk];
+      if (rec && rec.courseId === cid && ((rec.flaggedAt || 0) < T)) { delete fq[qk]; changed = true; }
+    }
+  } catch (e) {}
+  return changed;
+}
+
+/* Has the device that sent this copy already carried out our erase? It says so
+   by carrying the erase record itself, with a course mark at least as new as
+   ours. If it has, its copy of that class is post-reset work and is left alone.
+   If it has not, its copy still predates the reset however new the copy itself
+   is - which is the case the old rule missed, because it only ever compared the
+   COPY's timestamp against the mark and a copy pushed a second later passed. */
+function senderApplied(incoming, cid, mark){
+  try {
+    var e = incoming && incoming.__erased;
+    return !!(e && e.courses && (e.courses[cid] || 0) >= mark);
+  } catch (err) { return false; }
+}
 function stripResetCourses(incoming, when){
-  var o = read(), gone = [], cid;
-  for (cid in o.courses) if (when < o.courses[cid]) gone.push(cid);
-  if (!gone.length) return incoming;
-  var hit = function(c){ return !!c && gone.indexOf(c) !== -1; };
+  var o = read(), marks = {}, any = false, cid;
+  for (cid in o.courses) {
+    var m = o.courses[cid];
+    if (!m) continue;
+    if (senderApplied(incoming, cid, m)) continue;
+    marks[cid] = m; any = true;
+  }
+  if (!any) return incoming;
+  var hit = function(c){ return !!c && marks[c] !== undefined; };
+  // a record older than the mark was erased; one newer than it is new work
+  var stale = function(c, ts){ var mk = marks[c]; return mk !== undefined && (ts || 0) < mk; };
   var out = {}, k;
   for (k in incoming) out[k] = incoming[k];
   COURSE_ARRAYS.forEach(function(key){
     if (Array.isArray(out[key]))
-      out[key] = out[key].filter(function(r){ return !(r && hit(r.courseId)); });
+      out[key] = out[key].filter(function(r){ return !(r && stale(r.courseId, r.ts)); });
   });
   COURSE_MAPS.forEach(function(key){
     var src = out[key];
     if (!src || typeof src !== 'object') return;
-    var cp = {}; for (var kk in src) if (!hit(kk)) cp[kk] = src[kk];
+    var cp = {}; for (var kk in src) if (!stale(kk, (src[kk] || {}).ts)) cp[kk] = src[kk];
     out[key] = cp;
   });
   /* Maps keyed "<courseId>/..." rather than by the course id alone. Without
@@ -61953,7 +62058,7 @@ function stripResetCourses(incoming, when){
     var fq = {};
     for (var qk in out.flaggedQuestions) {
       var rec = out.flaggedQuestions[qk];
-      if (!(rec && hit(rec.courseId))) fq[qk] = rec;
+      if (!(rec && stale(rec.courseId, rec.flaggedAt))) fq[qk] = rec;
     }
     out.flaggedQuestions = fq;
   }
@@ -61972,6 +62077,7 @@ function filter(incoming, when){
   return stripResetCourses(out, when);
 }
 window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter,
+                  applyCourse: applyCourseMark,
                   read: read, hydrate: hydrate,
                   courseAt: function(cid){ return (read().courses || {})[cid] || 0; } };
 // Bring the durable record back into the synchronous copy at launch, before the
