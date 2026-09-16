@@ -51,8 +51,32 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
       userFlashcards: { 'C959/ch1/s1': [1], 'D286/ch1/s1': [1] }
     };
     const filtered = window.__erase.filter(older, markedAt - 1000);   // copy predates the reset
-    // A copy taken AFTER the reset keeps everything it holds.
+
+    /* A COPY IS JUDGED BY THE AGE OF ITS RECORDS, NOT ITS OWN AGE.
+       This used to assert that a copy STAMPED after the reset was trusted
+       whole, and that is the bug she reported: the other device pushes back a
+       snapshot a second later, still carrying every record the reset deleted,
+       and the class comes back. These records are all from ts 1000-1003, long
+       before the reset, so the reset class goes and the other class stays. */
     const newer = window.__erase.filter(older, markedAt + 1000);
+
+    // Work genuinely done AFTER the reset is new work and must survive.
+    const withNew = window.__erase.filter({
+      quizHistory: [
+        { id: 'a1', courseId: 'C959', ts: 1000, score: 5 },            // before
+        { id: 'a9', courseId: 'C959', ts: markedAt + 5000, score: 9 }, // after
+        { id: 'b1', courseId: 'D286', ts: 1002, score: 7 }
+      ]
+    }, markedAt + 6000);
+
+    // And a device that has already carried the reset out says so, by carrying
+    // the erase record itself. Its copy is post-reset and is left alone.
+    const applied = { courses: {} };
+    applied.courses.C959 = markedAt;
+    const fromApplied = window.__erase.filter({
+      quizHistory: [{ id: 'a1', courseId: 'C959', ts: 1000, score: 5 }],
+      __erased: applied
+    }, markedAt + 1000);
 
     return {
       ok: res && res.ok, before,
@@ -60,7 +84,9 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
       filteredQuiz: filtered.quizHistory.map(h => h.courseId),
       filteredPretests: Object.keys(filtered.pretests),
       filteredCards: Object.keys(filtered.userFlashcards),
-      newerQuiz: newer.quizHistory.map(h => h.courseId)
+      newerQuiz: newer.quizHistory.map(h => h.courseId),
+      withNewIds: withNew.quizHistory.map(h => h.id),
+      fromAppliedIds: fromApplied.quizHistory.map(h => h.id)
     };
   });
 
@@ -75,8 +101,12 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('its pretest and its cards go too, and only its own',
      R.filteredPretests.join(',') === 'D286' && R.filteredCards.join(',') === 'D286/ch1/s1',
      JSON.stringify([R.filteredPretests, R.filteredCards]));
-  ok('a copy taken after the reset is left alone',
-     R.newerQuiz.length === 4, JSON.stringify(R.newerQuiz));
+  ok('a newer copy still carrying the erased class does not bring it back',
+     R.newerQuiz.join(',') === 'D286,D286', JSON.stringify(R.newerQuiz));
+  ok('work done after the reset survives it',
+     R.withNewIds.join(',') === 'a9,b1', JSON.stringify(R.withNewIds));
+  ok('a device that already carried the reset out is left alone',
+     R.fromAppliedIds.join(',') === 'a1', JSON.stringify(R.fromAppliedIds));
 
   // ---- The write must not be left on a timer ----
   // saveStore is debounced by 600ms so answering a question does not stall the

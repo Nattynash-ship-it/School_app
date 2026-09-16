@@ -22,6 +22,9 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     const w = ms => new Promise(r => setTimeout(r, ms));
     window.__toolTrayPaint(); await w(400);
     const tray = document.getElementById('tool-tray');
+    const openByDefault = window.__toolTrayState().open;
+    // fold it by hand for the checks below
+    if (openByDefault) { document.getElementById('tt-toggle').click(); await w(420); }
     const before = window.__toolTrayState();
     // the buttons all live in the tray, and none is loose on the body any more
     const loose = ['#calc-fab', '.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab', '#mn-fab']
@@ -52,13 +55,16 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     const remembered = localStorage.getItem('sh_tools_open_v1');
     document.getElementById('tt-toggle').click(); await w(300);
     const shutAgain = window.__toolTrayState().open;
-    return { before, open, loose, shutHit, spread, remembered, shutAgain,
+    return { before, open, loose, shutHit, spread, remembered, shutAgain, openByDefault,
              display: getComputedStyle(tray).display };
   });
 
   ok('every tool button is inside the tray', T.loose === 0 && T.before.inTray === T.before.tools,
      T.before.inTray + ' of ' + T.before.tools + ' in the tray, ' + T.loose + ' left loose');
-  ok('it starts folded away', T.before.open === false);
+  /* It must NOT start folded. Starting folded hid the notebook behind a
+     button she had no reason to press - "why can't I find my notes". */
+  ok('nothing is hidden until she folds it herself', T.openByDefault === true,
+     'opened folded: ' + !T.openByDefault);
   ok('folded, the tools cannot be tapped and sit on the toggle',
      T.shutHit && T.shutHit.pe === 'none' && T.shutHit.op === 0 && T.shutHit.onToggle,
      JSON.stringify(T.shutHit));
@@ -117,6 +123,37 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('the button takes a bullet off again', N.removed === 'remove me', JSON.stringify(N.removed));
   ok('the button lights up inside a list and not outside one',
      N.litInList === true && N.litPlain === false, N.litInList + ' / ' + N.litPlain);
+  /* FOLDED, A PAGE WITH WRITING ON IT MUST NOT LOOK LIKE A PAGE WITHOUT.
+     The notebook's own count moves onto the toggle, so folding the tools away
+     never hides the fact that this section already has notes in it. */
+  const C = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    const key = 'C959/ch4/s1';
+    const mk = i => ({ type:'pen', color:'#1b1b1b', width:2, _ts:i,
+      points: Array.from({length:12}, (_,j) => ({ x:120+j*9, y:300+i*50, p:.5 })) });
+    gannoSaveStrokes('pad_' + key.replace(/[^a-zA-Z0-9_/-]/g,'_'), [mk(0), mk(1), mk(2)]);
+    window.__notesPanel.close(); await w(300);
+    /* Away and back, so the notebook re-reads the section. Navigating to the
+       section it is already on is a no-op and leaves the badge on stale state,
+       which is a fact about the test, not about the app. */
+    go({ name:'section', courseId:'C959', chId:'ch1', secId:'s1' });
+    await w(1800);
+    go({ name:'section', courseId:'C959', chId:'ch4', secId:'s1' });
+    await w(2400);
+    window.__toolTrayPaint(); await w(400);
+    const tray = document.getElementById('tool-tray');
+    if (!tray.classList.contains('tt-shut')) { document.getElementById('tt-toggle').click(); await w(420); }
+    window.__toolTrayPaint(); await w(350);
+    const c = document.getElementById('tt-count');
+    return { folded: tray.classList.contains('tt-shut'), text: c.textContent,
+             marked: c.classList.contains('tt-has-notes'),
+             label: document.getElementById('tt-toggle').getAttribute('aria-label') };
+  });
+  ok('folded, the toggle still shows that this section has notes',
+     C.folded && /[1-9]/.test(C.text) && C.marked === true,
+     JSON.stringify(C));
+  ok('and says so to a screen reader', /note/i.test(C.label || ''), C.label);
+
   ok('no page errors', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`toolsbullets: ${pass}/${pass + fail} passed`);
   await browser.close();

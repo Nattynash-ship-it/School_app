@@ -1,7 +1,25 @@
 #!/bin/bash
 S="$(cd "$(dirname "$0")" && pwd)"
 cd "$S" || exit 1
-run() { echo "=== $1 ==="; timeout 900 node "$S/$2" 2>&1 | tail -${3:-2}; }
+# A SUITE THAT SAYS NOTHING HAS NOT PASSED.
+# This piped straight into tail, so $? was tail's status and never the test's,
+# and a suite that died printed a blank line that read exactly like a quiet
+# pass. That is how a run where the server had gone away under the last six
+# suites still ended in BATTERY EXIT 0.
+FAILED=""
+run() {
+  local name="$1" file="$2" lines="${3:-2}" out rc
+  echo "=== $name ==="
+  out="$(timeout 900 node "$S/$file" 2>&1)"; rc=$?
+  printf '%s\n' "$out" | tail -"$lines"
+  if [ "$rc" -ne 0 ]; then
+    echo "SUITE-FAILED $name (exit $rc)"
+    FAILED="$FAILED $name"
+  elif [ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
+    echo "SUITE-SILENT $name (ran, said nothing - treat as failed)"
+    FAILED="$FAILED $name"
+  fi
+}
 run gate gatetest.mjs 1
 run gateparity gateparity.mjs 1
 run bootsmoke bootsmoke.js 1
@@ -38,6 +56,11 @@ run offlinekeep offlinekeep.js 1
 run notespages notespages.js 1
 run notesline notesline.js 1
 run classreset classreset.js 1
+run resetreview resetreview.js 1
+run resetsticks resetsticks.js 1
+run pretestkeep pretestkeep.js 1
+run listenvoice listenvoice.js 1
+run entities entities.js 1
 run answerspread answerspread.js 1
 run helperui helperui.js 1
 run padtools padtools.js 1
@@ -52,4 +75,10 @@ run refreshdistort refreshdistort.js 1
 run codewrap codewrap.js 1
 run fngate fngate.mjs 2
 run newcontent newcontent.js 1
+if [ -n "$FAILED" ]; then
+  echo "BATTERY FAILURES:$FAILED"
+  echo BATTERY_DONE
+  exit 1
+fi
+echo "BATTERY: every suite reported"
 echo BATTERY_DONE
