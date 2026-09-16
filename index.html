@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.587">
+<meta name="app-build" content="18.588">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -21069,7 +21069,11 @@ function buildQuizReviewHTML(questions, answers) {
  <div style="font-size:11px; color:var(--text-4); letter-spacing:0.06em; text-transform:uppercase;">Q${i + 1} · ${esc(q.topic || 'general')}</div>
  <div style="font-size:11px; font-weight:700; color:${barColor};">${verdict}</div>
  </div>
- <div class="quiz-table-host" style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.45;">${q.text}</div>
+ <!-- qTextHtml, not the raw string: it returns markup only for a question that
+      genuinely carries some, and escapes everything else. Inserted raw, a
+      question whose code says "while (i < 5)" loses the rest of the line to
+      the browser, which reads "<5)" as the start of a tag. -->
+ <div class="quiz-table-host" style="font-size:14px; color:var(--text); font-weight:600; margin-bottom:10px; line-height:1.45;">${qTextHtml(q)}</div>
  ${optsHTML}
  ${q.explain ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:13px; color:var(--text-2); line-height:1.55;"><strong style="color:var(--text);">Why:</strong> ${esc(q.explain)}</div>` : ''}
  </div>`;

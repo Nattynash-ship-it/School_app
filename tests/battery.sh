@@ -57,6 +57,7 @@ run notespages notespages.js 1
 run notesline notesline.js 1
 run classreset classreset.js 1
 run resetreview resetreview.js 1
+run entities entities.js 1
 run answerspread answerspread.js 1
 run helperui helperui.js 1
 run padtools padtools.js 1
