@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.585">
+<meta name="app-build" content="18.586">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -68285,8 +68285,13 @@ var WANT = ['#calc-fab', '.aih-fab', '#eli5-fab', '#pod-fab', '#mm-fab', '#mn-fa
 var KEY = 'sh_tools_open_v1';
 var tray = null, toggle = null, hintShown = false;
 
+/* OPEN UNLESS SHE HAS FOLDED IT. Folding was the thing she asked for; being
+   folded was not. Starting shut hid the notebook behind a button she had no
+   reason to press - "why can't I find my notes" - while the badge that would
+   have told her the page HAS notes was hidden with it. Nothing disappears now
+   until she puts it away herself, and then she knows where it went. */
 function isOpen(){
-  try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+  try { return localStorage.getItem(KEY) !== '0'; } catch (e) { return true; }
 }
 function setOpen(on){
   try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {}
@@ -68325,8 +68330,10 @@ var CSS = [
 '  transition:transform .16s ease;}',
 '#tool-tray:not(.tt-shut) #tt-toggle{transform:rotate(45deg);}',
 '#tt-count{position:absolute; top:-3px; right:-3px; min-width:16px; height:16px; padding:0 3px;',
-'  border-radius:999px; background:var(--secondary,#b0407a); color:#fff;',
+'  border-radius:999px; background:var(--text-4,#858b97); color:#fff;',
 '  font:700 10px/16px -apple-system,Helvetica,Arial,sans-serif; text-align:center;}',
+/* writing on the page is worth more than a count of buttons */
+'#tt-count.tt-has-notes{background:var(--secondary,#b0407a);}',
 '#tool-tray.tt-empty{display:none;}',
 '#tool-tray:not(.tt-shut) #tt-count{display:none;}',
 /* The notebook draws its own count badge; inside the tray it needs no corner
@@ -68384,8 +68391,23 @@ function paint(){
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.setAttribute('aria-label', open ? 'Fold the study tools away'
                                            : ('Study tools (' + live + ')'));
+    /* Folded, the toggle carries the notebook's own count when there is one.
+       A page with writing on it must never look like a page without. */
     var c = document.getElementById('tt-count');
-    if (c) c.textContent = live ? String(live) : '';
+    var notes = 0;
+    try {
+      var nb = document.getElementById('mn-fab');
+      var b = nb && nb.querySelector('.mn-badge');
+      if (b && shown(nb)) notes = parseInt(b.textContent, 10) || 0;
+    } catch (e) {}
+    if (c) {
+      c.textContent = notes ? (notes > 99 ? '99+' : String(notes)) : (live ? String(live) : '');
+      c.classList.toggle('tt-has-notes', !!notes);
+    }
+    if (notes && !open) {
+      toggle.setAttribute('aria-label', notes + ' note' + (notes === 1 ? '' : 's') +
+                          ' on this section — open the study tools');
+    }
   } catch (e) {}
 }
 
