@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.586">
+<meta name="app-build" content="18.587">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -40458,7 +40458,7 @@ function getQuestions(courseId, chId, secId) {
   }
   function resetCourseProgress(cid){
     if (typeof store==='undefined' || !cid) return {ok:false};
-    var removed={ quiz:0, exams:0, sessions:0 };
+    var removed={ quiz:0, exams:0, sessions:0, cards:0, deckCards:0, flagged:0 };
     try{
       if (Array.isArray(store.quizHistory)){
         var before=store.quizHistory.length;
@@ -40480,6 +40480,41 @@ function getQuestions(courseId, chId, secId) {
       if (store.pretests && store.pretests[cid]) delete store.pretests[cid];
       // per-lesson user flashcards created from this course's quizzes (keys start "CID/")
       if (store.userFlashcards){ Object.keys(store.userFlashcards).forEach(function(k){ if (k.indexOf(cid+'/')===0) delete store.userFlashcards[k]; }); }
+      /* REVIEW AND FLASHCARDS HAVE TO FOLLOW SUIT.
+         Review is nothing but store.flashcards: one spaced-repetition record
+         per card, keyed "<courseId>/<chId>/<secId>/<cardId>". Deleting the
+         course's cards without deleting their schedule left Review still
+         counting them as due, the sidebar still badging them, and Flashcards
+         still showing the reps she had built up - a class that said it had
+         been reset and plainly had not. It also orphaned those records for
+         good, since the cards they pointed at were gone. */
+      if (store.flashcards){
+        Object.keys(store.flashcards).forEach(function(k){
+          if (k.indexOf(cid+'/')===0){ delete store.flashcards[k]; removed.cards++; }
+        });
+      }
+      /* A DECK IS CONTENT; ITS SCHEDULE IS PROGRESS. Deck cards carry their own
+         ef/interval/due/reps, so the reset takes those back to new and leaves
+         the deck and every card in it exactly where she made them. A card with
+         no due date reads as due, which is what a fresh card is. */
+      if (store.flashDecks){
+        Object.keys(store.flashDecks).forEach(function(did){
+          var d = store.flashDecks[did];
+          if (!d || d.courseId !== cid || !Array.isArray(d.cards)) return;
+          d.cards.forEach(function(c){
+            if (!c) return;
+            if (c.ef !== undefined || c.interval !== undefined || c.due !== undefined || c.reps !== undefined) removed.deckCards++;
+            delete c.ef; delete c.interval; delete c.due; delete c.reps;
+          });
+        });
+      }
+      // questions she flagged for rewriting while working through this class
+      if (store.flaggedQuestions){
+        Object.keys(store.flaggedQuestions).forEach(function(k){
+          var f = store.flaggedQuestions[k];
+          if (f && f.courseId === cid){ delete store.flaggedQuestions[k]; removed.flagged++; }
+        });
+      }
       /* Record the erase before saving. A reset that is not recorded is undone
          by the next sync pull, which merges the pre-reset copy back in - which
          is what "it resets, then reverts" was. */
@@ -40512,7 +40547,7 @@ function getQuestions(courseId, chId, secId) {
     card.style.cssText='background:var(--surface,#fff);color:var(--text,#111);max-width:440px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--border,#ddd);';
     card.innerHTML =
       '<h2 style="margin:0 0 8px;font-size:19px;">Reset progress for '+courseName(cid).replace(/</g,'&lt;')+'?</h2>'+
-      '<p style="margin:0 0 12px;font-size:14px;line-height:1.5;color:var(--text-2,#444);">This clears your <b>quiz history, exam-sim results, and pre-OA checklist</b> for <b>this class only</b>. Your lessons, notes, highlights, and every other class stay exactly as they are.</p>'+
+      '<p style="margin:0 0 12px;font-size:14px;line-height:1.5;color:var(--text-2,#444);">This clears your <b>quiz history, exam-sim results, pre-OA checklist, and your Review and Flashcards progress</b> for <b>this class only</b>. Your lessons, notes, highlights, flashcard decks and every other class stay exactly as they are — the decks just start from new again.</p>'+
       '<label style="display:flex;gap:9px;align-items:flex-start;font-size:13px;margin:0 0 16px;cursor:pointer;line-height:1.4;"><input type="checkbox" id="reset-confirm-chk" style="margin-top:3px;"> <span>Yes, I understand this can\u2019t be undone.</span></label>'+
       '<div style="display:flex;gap:10px;justify-content:flex-end;">'+
         '<button id="reset-cancel" style="border:1px solid var(--border,#ccc);background:var(--surface-2,#f4f4f6);color:var(--text,#111);border-radius:9px;padding:9px 16px;font-size:14px;cursor:pointer;">Cancel</button>'+
@@ -61882,11 +61917,41 @@ function stripResetCourses(incoming, when){
     var cp = {}; for (var kk in src) if (!hit(kk)) cp[kk] = src[kk];
     out[key] = cp;
   });
-  if (out.userFlashcards && typeof out.userFlashcards === 'object') {
-    var uf = {};
-    for (var fk in out.userFlashcards)
-      if (!hit(String(fk).split('/')[0])) uf[fk] = out.userFlashcards[fk];
-    out.userFlashcards = uf;
+  /* Maps keyed "<courseId>/..." rather than by the course id alone. Without
+     flashcards here the next pull merges the old review schedule straight back
+     in, which is the same "it resets, then reverts" the course arrays had. */
+  ['userFlashcards', 'flashcards'].forEach(function(key){
+    var src = out[key];
+    if (!src || typeof src !== 'object') return;
+    var cp = {};
+    for (var fk in src) if (!hit(String(fk).split('/')[0])) cp[fk] = src[fk];
+    out[key] = cp;
+  });
+  // a deck belongs to a course by field, and its cards carry their own schedule
+  if (out.flashDecks && typeof out.flashDecks === 'object') {
+    var dk = {};
+    for (var dId in out.flashDecks) {
+      var d = out.flashDecks[dId];
+      if (!d || !hit(d.courseId)) { dk[dId] = d; continue; }
+      var copy = {}, ck;
+      for (ck in d) copy[ck] = d[ck];
+      if (Array.isArray(d.cards)) copy.cards = d.cards.map(function(c){
+        if (!c) return c;
+        var c2 = {}, kk;
+        for (kk in c) if (kk !== 'ef' && kk !== 'interval' && kk !== 'due' && kk !== 'reps') c2[kk] = c[kk];
+        return c2;
+      });
+      dk[dId] = copy;
+    }
+    out.flashDecks = dk;
+  }
+  if (out.flaggedQuestions && typeof out.flaggedQuestions === 'object') {
+    var fq = {};
+    for (var qk in out.flaggedQuestions) {
+      var rec = out.flaggedQuestions[qk];
+      if (!(rec && hit(rec.courseId))) fq[qk] = rec;
+    }
+    out.flaggedQuestions = fq;
   }
   return out;
 }
