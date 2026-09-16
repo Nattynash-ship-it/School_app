@@ -68315,7 +68315,12 @@ var CSS = [
 '  display:flex; flex-direction:column-reverse; align-items:flex-end; gap:8px;}',
 /* Inside the tray a button is just a button - its own fixed corner is gone.
    `display` is deliberately absent from this list. */
-'#tool-tray > .tt-item{position:static !important; inset:auto !important;',
+/* RELATIVE, not static. The notebook draws its own count as an absolutely
+   positioned badge; static here took away its containing block, so the badge
+   resolved against the tray instead and flew to the tray's corner - landing
+   on the fold toggle, detached from the button it belongs to. Relative still
+   takes part in the flex column exactly the same way. */
+'#tool-tray > .tt-item{position:relative !important; inset:auto !important;',
 '  right:auto !important; bottom:auto !important; top:auto !important; left:auto !important;',
 '  margin:0 !important; z-index:auto !important;',
 '  transition:opacity .16s ease, transform .16s ease;}',
