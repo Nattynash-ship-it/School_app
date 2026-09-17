@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.594">
+<meta name="app-build" content="18.595">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -36510,7 +36510,8 @@ function renderClassNotes(courseId) {
  '<div class="cn-sec-head" data-cn-toggle>' +
  '<div class="cn-sec-title">' + esc(S.sec.title || S.sec.id) + '</div>' +
  '<div class="cn-sec-meta">' + (d.typed.length ? d.typed.length + (d.typed.length === 1 ? ' note' : ' notes') : '') + (d.typed.length && d.pages ? ' · ' : '') + (d.pages ? d.pages + (d.pages === 1 ? ' page' : ' pages') : '') + '</div>' +
- '<button class="cn-open" data-open-lesson title="Open this lesson with the notebook on this page">✎ Open in lesson</button>' +
+ '<button class="cn-open" data-write-here title="Pin this page and write on it here, without leaving this screen">✎ Write here</button>' +
+ '<button class="cn-open" data-open-lesson title="Open this lesson with the notebook on this page">↗ Open in lesson</button>' +
  '</div>' +
  '<div class="cn-body">' +
  d.typed.map(function(x){ return '<div class="cn-note"><div class="cn-note-text">' + esc(x.text).replace(/\n/g, '<br>') + '</div>' + (x.createdAt ? '<div class="cn-note-when">' + cnWhen(x.createdAt) + '</div>' : '') + '</div>'; }).join('') +
@@ -36540,6 +36541,17 @@ function renderClassNotes(courseId) {
  }
  el.querySelectorAll('.cn-section.open').forEach(paintPages);
  el.addEventListener('click', function(ev){
+ var writeBtn = ev.target.closest('[data-write-here]');
+ if (writeBtn) {
+     ev.stopPropagation();
+ var wk = writeBtn.closest('.cn-section').getAttribute('data-key');
+ try {
+ window.__notesPanel.pin(wk);
+ window.__notesPanel.open();
+ if (typeof toast === 'function') toast('Writing on “' + secTitle(wk) + '” — it stays pinned until you write in another lesson.');
+ } catch (e) {}
+ return;
+ }
  var openBtn = ev.target.closest('[data-open-lesson]');
  if (openBtn) {
  ev.stopPropagation();
@@ -66549,12 +66561,43 @@ var past=[], future=[];         // the action journal: what Undo and Redo step t
 var eraseBatch=null;            // strokes removed by the eraser gesture in progress
 
 /* ---------- keys ---------- */
-function secKey(){
+/* WRITING ANYWHERE, NOT JUST IN THE LESSON.
+ *
+ * "I'd like a particular notebook to be accessible anywhere" - 18.593 made a
+ * class notebook READABLE anywhere, and left writing where it had always been:
+ * the pad opened only on a lesson page, because that is the only route that
+ * answers "which page am I writing on".
+ *
+ * So she can PIN a page. "Write here" in a class notebook pins that section,
+ * and the last lesson she wrote in pins itself. Off a lesson the pad opens on
+ * the pinned page and says which one it is, so a thought on the train goes
+ * into the right notebook instead of being lost or landing somewhere random.
+ * On a lesson nothing changes at all: that lesson's own page still wins. */
+function pinnedKey(){
+  try {
+    var k = prefs().pinned;
+    if (!k || typeof k !== 'string') return null;
+    var p = k.split('/');
+    if (p.length !== 3 || !COURSES[p[0]]) return null;   // a class she no longer has
+    return k;
+  } catch (e) { return null; }
+}
+function setPinned(k){
+  try { var pr = prefs(); pr.pinned = k || ''; save(); } catch (e) {}
+  try { if (typeof window.__mnPlace === 'function') window.__mnPlace(); } catch (e) {}
+  return k || null;
+}
+function lessonKey(){
   try {
     if (typeof view === 'object' && view && view.name === 'section' && view.courseId)
       return view.courseId + '/' + view.chId + '/' + view.secId;
   } catch (e) {}
   return null;
+}
+function secKey(){
+  var k = lessonKey();
+  if (k) return k;
+  return pinnedKey();
 }
 function padKey(k){ return 'pad_' + String(k || '').replace(/[^a-zA-Z0-9_/-]/g, '_'); }
 
@@ -66682,6 +66725,9 @@ function wideOn(){
    reversible in More -> Layout. One deliberate consequence: this is also the
    layout her existing marks were drawn in, so they line up again. */
 function wantSide(){
+  // side mode works by MOVING the lesson over; there is no lesson to move on
+  // any other screen, so the notebook simply docks there
+  if (!lessonKey()) return null;
   if (placement() === 'bottom') return null;
   var g = sideGeom();
   if (g) return g;
@@ -66771,6 +66817,9 @@ function loadStrokes(k){
 }
 function persist(){
   if (!curKey) return;
+  // the page she last wrote on is the one she means when she opens the pad
+  // somewhere else - no setting to find, it just follows her
+  try { if (lessonKey() === curKey && strokes.length) { var pr = prefs(); if (pr.pinned !== curKey) { pr.pinned = curKey; } } } catch (e) {}
   try { if (typeof gannoSaveStrokes === 'function') gannoSaveStrokes(padKey(curKey), strokes); } catch (e) {}
   try {
     if (!store.padNotes) store.padNotes = {};
@@ -68860,7 +68909,11 @@ function loadSection(k){
   paintUndo();
   if (taEl) taEl.value = draftGet(k);
   var w = dock && dock.querySelector('#mn-where');
-  if (w) w.textContent = k ? secTitle(k) : '';
+  if (w) {
+    var away = !lessonKey() && !!k;
+    w.textContent = k ? ((away ? '\ud83d\udccc ' : '') + secTitle(k)) : '';
+    w.title = away ? 'Pinned page \u2014 writing here from anywhere' : '';
+  }
   syncFormulaTab();                 // a maths class gains the tab, others lose it
   if (isOpen) { sizeSvg(); redraw(); paintList(); if (tab === 'form') paintFormulas(); }
   paintBadge();
@@ -69146,6 +69199,8 @@ window.__notesPanel = {
                               count: pageCount(), inkPages: inkPages() }; },
   splitSessions: function(){ return splitSessions(); },
   paper: function(){ return paperId(); },
+  pin: function(k){ return setPinned(k); },
+  pinned: function(){ return pinnedKey(); },
   /* HER HANDWRITING, FOR ANY SECTION, without opening it. `ink` says how much
      is there; `inkPage` draws one page of it. Both read the per-page storage
      slot directly, so nothing about the open notebook changes. */
@@ -69217,16 +69272,24 @@ fab.addEventListener('click', function(){ if (isOpen) doMinimize(); else setOpen
 
 function place(){
   try {
+    var onLesson = !!lessonKey() && !!document.querySelector('.my-notes, .lesson');
     var k = secKey();
-    var onLesson = !!k && !!document.querySelector('.my-notes, .lesson');
     if (!fab.isConnected) document.body.appendChild(fab);
-    var want = onLesson ? 'flex' : 'none';
+    /* Everywhere she can write: a lesson, or anywhere at all once a page is
+       pinned. Not over a full-screen writing surface of its own - the free
+       notebooks have their own pen - and not over a modal that owns the
+       screen. */
+    var blocked = false;
+    try { blocked = (view && (view.name === 'notebook')) || !!document.querySelector('.modal-bg, .v2-modal-bg'); } catch (e) {}
+    var show = !!k && !blocked;
+    var want = show ? 'flex' : 'none';
     if (fab.style.display !== want) fab.style.display = want;
-    if (!onLesson) { if (isOpen) setOpen(false); return; }
+    if (!show) { if (isOpen) setOpen(false); return; }
     if (k !== curKey) loadSection(k);
     else paintBadge();
   } catch (e) {}
 }
+window.__mnPlace = place;
 if (typeof window.render === 'function' && !window.render.__mnWrapped) {
   var _appRender = window.render;
   var wrapped = function(){
