@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.592">
+<meta name="app-build" content="18.593">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -4809,6 +4809,28 @@ body.ganno-immersive .ganno-bar { display: none !important; }
 .nb-topbtns button { border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-2);
  border-radius: 10px; padding: 6px 11px; font-size: 13px; cursor: pointer; }
 .nb-hint { font-size: 12.5px; color: var(--text-4); margin: 2px 0 10px; }
+.cn-head { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin: 14px 0 4px; }
+.nb-cover.nb-class { background: linear-gradient(160deg, var(--accent-bg, var(--surface-2)), var(--surface)); }
+/* the free covers are dark with white lettering; a class cover is light, so its lettering has to be the page's own text colours */
+.nb-cover.nb-class .nb-name { color: var(--text); text-shadow: none; }
+.nb-cover.nb-class .nb-date { color: var(--text-3); text-shadow: none; }
+.cn-cover-sub { font-size: 11.5px; color: var(--text-3); line-height: 1.3; padding: 0 10px; margin-top: 2px; max-height: 3.9em; overflow: hidden; }
+.cn-chapter { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin: 18px 0 6px; }
+.cn-section { border: 1px solid var(--border); background: var(--surface); border-radius: 14px; margin: 0 0 10px; overflow: hidden; }
+.cn-sec-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; }
+.cn-sec-title { flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14.5px; color: var(--text); }
+.cn-sec-meta { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.cn-open { flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 999px; padding: 6px 11px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.cn-body { display: none; padding: 0 14px 12px; }
+.cn-section.open > .cn-body { display: block; }
+.cn-note { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); margin: 0 0 8px; }
+.cn-note-text { font-size: 14.5px; line-height: 1.55; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.cn-note-when { font-size: 11px; color: var(--text-4); margin-top: 4px; }
+.cn-pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 6px; }
+.cn-page { margin: 0; }
+.cn-page img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.cn-page figcaption { font-size: 11px; color: var(--text-4); margin-top: 4px; text-align: center; }
+.dash-notebooks { background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
 
 /* ==================== DESIGN POLISH v4.3 — success patterns from top apps ==================== */
 
@@ -14975,6 +14997,7 @@ function render() {
  else if (v.name === 'pretestresults') root.appendChild(renderPretestResults(v.courseId));
  else if (v.name === 'notebooks') root.appendChild(renderNotebooks());
  else if (v.name === 'notebook') root.appendChild(renderNotebook(v.nbId));
+ else if (v.name === 'classnotes') root.appendChild(renderClassNotes(v.courseId));
  // Existing routes (kept intact)
  else if (v.name === 'home') root.appendChild(renderHomeV3()); // dashboard redesign; classic renderHome retained for rollback
  else if (v.name === 'class') { try { gannoEnsureCourseChapters(v.courseId); root.appendChild(renderClass(v.courseId)); } catch(_ce) { var _r=document.createElement('div'); _r.className='app'; _r.style.padding='24px'; _r.innerHTML='<button class="back-btn" data-back>\u2039 Back</button><h2 style="margin-top:8px;">This class hit a snag opening</h2><p style="color:var(--text-2);line-height:1.55;">Something in this class\u2019s saved data caused an error. Your work is safe. Try fully closing and reopening the app first. If it keeps happening on this specific class, tell Claude the code below \u2014 it points right at the fix.</p><pre style="background:var(--surface-2);padding:10px;border-radius:8px;font-size:11px;white-space:pre-wrap;overflow:auto;">'+String((_ce&&_ce.message)||_ce)+'</pre>'; try{ _r.querySelector('[data-back]').addEventListener('click', function(){ go({name:'home'}); }); }catch(_b){} root.appendChild(_r); try{ if(window.console) console.error('renderClass failed for', v.courseId, _ce); }catch(_l){} } }
@@ -15169,6 +15192,9 @@ function updateBrandBarContents(bar) {
  </button>
  <button class="brand-nav-btn ${current === 'plan' ? 'active' : ''}" data-go="plan" role="tab" aria-label="Plan">
  <span class="nav-ico">📅</span><span class="nav-label">Plan</span>
+ </button>
+ <button class="brand-nav-btn ${(current === 'notebooks' || current === 'classnotes' || current === 'notebook') ? 'active' : ''}" data-go="notebooks" role="tab" aria-label="Notebooks">
+ <span class="nav-ico">📓</span><span class="nav-label">Notes</span>
  </button>
  <button class="brand-nav-btn ${current === 'search' ? 'active' : ''}" data-go="search" role="tab" aria-label="Search">
  <span class="nav-ico">⌕</span><span class="nav-label">Search</span>
@@ -36185,6 +36211,161 @@ function nbCreate() {
  saveStore();
  go({ name: 'notebook', nbId: nb.id });
 }
+/* ==================== CLASS NOTEBOOKS ====================
+ * "I would also like the notes to be accessible somewhere on the home page like
+ *  all collectively in notebooks. Although it's created in the lessons I'd like
+ *  a particular notebook to be accessible anywhere"
+ *
+ * Notes are written inside lessons - typed ones in store.notes, handwritten
+ * pages in the pad's per-section slots - and until now they could only be read
+ * from inside that same lesson: the notes panel refuses to open on any other
+ * route. The Notebooks screen already existed for her own free notebooks, but
+ * nothing in the app navigated to it.
+ *
+ * So every class with any notes is a notebook on that screen, and opening one
+ * shows every typed note and every handwritten page, grouped by chapter and
+ * section, with a way back into the lesson to keep writing. Notebooks itself
+ * is on the home page and in the nav bar, so a particular notebook is two taps
+ * from anywhere. Nothing is copied: this reads the same store the lessons
+ * write, so a note made on the train is here the moment she gets home.
+ */
+function classNotebookIndex() {
+ var byCourse = {};
+ var add = function(key) {
+ var parts = String(key || '').split('/');
+ if (parts.length < 3 || !COURSES[parts[0]]) return null;
+ var cid = parts[0];
+ var c = byCourse[cid] || (byCourse[cid] = { cid: cid, code: (COURSES[cid].code || cid), name: (COURSES[cid].name || cid), notes: 0, pages: 0, last: 0, secs: {} });
+ return c.secs[key] || (c.secs[key] = { key: key, chId: parts[1], secId: parts[2], typed: [], pages: 0 });
+ };
+ try {
+ var N = store.notes || {};
+ for (var k in N) {
+ var list = Array.isArray(N[k]) ? N[k].filter(function(x){ return x && String(x.text || '').trim(); }) : [];
+ if (!list.length) continue;
+ var sec = add(k); if (!sec) continue;
+ sec.typed = list.slice().sort(function(a, b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+ var c = byCourse[k.split('/')[0]];
+ c.notes += list.length;
+ list.forEach(function(x){ if ((x.createdAt || 0) > c.last) c.last = x.createdAt || 0; });
+ }
+ } catch (e) {}
+ try {
+ var P = store.padNotes || {};
+ for (var pk in P) {
+ if (!P[pk] || !(P[pk].n > 0)) continue;
+ var sec2 = add(pk); if (!sec2) continue;
+ var info = null;
+ try { info = window.__notesPanel && window.__notesPanel.ink ? window.__notesPanel.ink(pk) : null; } catch (e) {}
+ sec2.pages = (info && info.pages) || 1;
+ var c2 = byCourse[pk.split('/')[0]];
+ c2.pages += sec2.pages;
+ if ((P[pk].ts || 0) > c2.last) c2.last = P[pk].ts || 0;
+ }
+ } catch (e) {}
+ var out = Object.keys(byCourse).map(function(cid){ return byCourse[cid]; })
+ .filter(function(c){ return c.notes > 0 || c.pages > 0; })
+ .sort(function(a, b){ return b.last - a.last; });
+ return out;
+}
+function cnWhen(ts) {
+ if (!ts) return '';
+ var d = new Date(ts);
+ return (d.getMonth() + 1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2);
+}
+function classNotebooksHtml() {
+ var list = classNotebookIndex();
+ if (!list.length) return '<p class="nb-hint">Notes you write inside a lesson - typed or with the Pencil - collect here, one notebook per class.</p>';
+ return '<div class="cn-head">Class notebooks</div>' +
+ '<p class="nb-hint">Everything you have written inside lessons, one notebook per class. Open one to read it anywhere, or jump back into the lesson to keep writing.</p>' +
+ '<div class="nb-grid">' + list.map(function(c){
+ var bits = [];
+ if (c.notes) bits.push(c.notes + (c.notes === 1 ? ' note' : ' notes'));
+ if (c.pages) bits.push(c.pages + (c.pages === 1 ? ' page' : ' pages'));
+ return '<div class="nb-cover nb-class" data-class-nb="' + esc(c.cid) + '" role="button" tabindex="0">' +
+ '<div class="nb-name">' + esc(c.code) + '</div>' +
+ '<div class="cn-cover-sub">' + esc(c.name) + '</div>' +
+ '<div class="nb-date">' + esc(bits.join(' · ')) + (c.last ? ' · ' + cnWhen(c.last) : '') + '</div>' +
+ '</div>';
+ }).join('') + '</div>';
+}
+function renderClassNotes(courseId) {
+ var el = document.createElement('div');
+ el.className = 'screen screen-with-header';
+ var course = COURSES[courseId];
+ var nb = classNotebookIndex().filter(function(c){ return c.cid === courseId; })[0];
+ if (!course || !nb) {
+ el.innerHTML = '<div class="top-bar"><button class="back" data-back>‹</button><div class="title">Notebook</div></div>' +
+ '<p class="nb-hint">No notes in this class yet. Open a lesson and tap Notes to start one.</p>';
+ return el;
+ }
+ // Small notebooks open fully; big ones open with pages folded so a class with
+ // sixty handwritten pages does not draw sixty pictures on arrival.
+ var openAll = nb.pages <= 12;
+ var chapters = (course.chapters || []).map(function(ch){
+ var secs = (ch.sections || []).map(function(sc){ return nb.secs[courseId + '/' + ch.id + '/' + sc.id] ? { sec: sc, data: nb.secs[courseId + '/' + ch.id + '/' + sc.id] } : null; }).filter(Boolean);
+ return secs.length ? { ch: ch, secs: secs } : null;
+ }).filter(Boolean);
+ var html = '<div class="top-bar"><button class="back" data-back>‹</button><div class="title">' + esc(nb.code) + ' notebook</div></div>' +
+ '<p class="nb-hint">' + esc(nb.name) + ' · ' + nb.notes + (nb.notes === 1 ? ' note' : ' notes') + ' · ' + nb.pages + (nb.pages === 1 ? ' page' : ' pages') + '</p>';
+ chapters.forEach(function(C){
+ html += '<div class="cn-chapter">' + esc(C.ch.title || C.ch.id) + '</div>';
+ C.secs.forEach(function(S){
+ var d = S.data;
+ html += '<div class="cn-section' + (openAll ? ' open' : '') + '" data-key="' + esc(d.key) + '" data-pages="' + d.pages + '">' +
+ '<div class="cn-sec-head" data-cn-toggle>' +
+ '<div class="cn-sec-title">' + esc(S.sec.title || S.sec.id) + '</div>' +
+ '<div class="cn-sec-meta">' + (d.typed.length ? d.typed.length + (d.typed.length === 1 ? ' note' : ' notes') : '') + (d.typed.length && d.pages ? ' · ' : '') + (d.pages ? d.pages + (d.pages === 1 ? ' page' : ' pages') : '') + '</div>' +
+ '<button class="cn-open" data-open-lesson title="Open this lesson with the notebook on this page">✎ Open in lesson</button>' +
+ '</div>' +
+ '<div class="cn-body">' +
+ d.typed.map(function(x){ return '<div class="cn-note"><div class="cn-note-text">' + esc(x.text).replace(/\n/g, '<br>') + '</div>' + (x.createdAt ? '<div class="cn-note-when">' + cnWhen(x.createdAt) + '</div>' : '') + '</div>'; }).join('') +
+ (d.pages ? '<div class="cn-pages"></div>' : '') +
+ '</div></div>';
+ });
+ });
+ el.innerHTML = html;
+ // Handwritten pages are pictures made on demand from the same strokes the pad
+ // keeps, at reading width, once per section, only when that section is open.
+ function paintPages(secEl) {
+ var box = secEl.querySelector('.cn-pages');
+ if (!box || box.dataset.done === '1') return;
+ box.dataset.done = '1';
+ var key = secEl.getAttribute('data-key'), n = parseInt(secEl.getAttribute('data-pages'), 10) || 0;
+ for (var i = 1; i <= n; i++) {
+ try {
+ var pg = window.__notesPanel.inkPage(key, i, 900);
+ if (!pg || !pg.dataUrl) continue;
+ var f = document.createElement('figure');
+ f.className = 'cn-page';
+ f.innerHTML = '<img alt="Handwritten page ' + i + '" loading="lazy"><figcaption>Page ' + i + '</figcaption>';
+ f.querySelector('img').src = pg.dataUrl;
+ box.appendChild(f);
+ } catch (e) {}
+ }
+ }
+ el.querySelectorAll('.cn-section.open').forEach(paintPages);
+ el.addEventListener('click', function(ev){
+ var openBtn = ev.target.closest('[data-open-lesson]');
+ if (openBtn) {
+ ev.stopPropagation();
+ var secEl0 = openBtn.closest('.cn-section');
+ var parts = String(secEl0.getAttribute('data-key')).split('/');
+ go({ name: 'section', courseId: parts[0], chId: parts[1], secId: parts[2] });
+ // the pad opens on the section it is on; give the lesson a moment to land
+ setTimeout(function(){ try { window.__notesPanel.open(); } catch (e) {} }, 700);
+ return;
+ }
+ var head = ev.target.closest('[data-cn-toggle]');
+ if (head) {
+ var secEl = head.closest('.cn-section');
+ secEl.classList.toggle('open');
+ if (secEl.classList.contains('open')) paintPages(secEl);
+ }
+ });
+ return el;
+}
+
 function renderNotebooks() {
  var el = document.createElement('div');
  el.className = 'screen screen-with-header';
@@ -36202,11 +36383,15 @@ function renderNotebooks() {
  '</div>';
  }).join('');
  el.innerHTML = '<div class="top-bar"><button class="back" data-back>\u2039</button><div class="title">Notebooks</div></div>' +
+ classNotebooksHtml() +
+ '<div class="cn-head">My notebooks</div>' +
  '<p class="nb-hint">Your own GoodNotes-style space \u2014 separate from classes. Open a notebook and write with the pen toolbar.</p>' +
  '<div class="nb-grid">' +
  '<div class="nb-cover nb-new" data-nb-new role="button" tabindex="0"><div class="nb-plus">+</div><div>New Notebook</div></div>' +
  cards + '</div>';
  el.addEventListener('click', function(ev){
+ var cnb = ev.target.closest('[data-class-nb]');
+ if (cnb) { go({ name: 'classnotes', courseId: cnb.getAttribute('data-class-nb') }); return; }
  var t = ev.target.closest('[data-nb-new],[data-nb-open],[data-nb-rename],[data-nb-del]');
  if (!t) return;
  if (t.hasAttribute('data-nb-new')) { nbCreate(); return; }
@@ -36655,6 +36840,7 @@ function renderHomeV3() {
  const goalPct = goalMin > 0 ? Math.min(100, Math.round((todayMin / goalMin) * 100)) : 0;
  const lvl = (typeof levelInfo === 'function') ? levelInfo(store.xp || 0) : { level: 1 };
  const next = smartNextSection();
+ const nbSum = (function(){ var t = { classes: 0, notes: 0, pages: 0 }; try { classNotebookIndex().forEach(function(c){ t.classes++; t.notes += c.notes; t.pages += c.pages; }); } catch (e) {} return t; })();
  const filter = store.dashFilter || 'all';
  if (typeof store.homeSearch === 'undefined') store.homeSearch = '';
 
@@ -36696,6 +36882,7 @@ function renderHomeV3() {
   </div>
   <div class="dash-goalbar" title="${todayMin} of ${goalMin} min toward today's goal"><div class="dash-goalfill" style="width:${goalPct}%"></div></div>
   ${next ? `<button class="dash-continue" data-continue>▶ Continue: <strong>${esc((COURSES[next.courseId]||{}).name || next.courseId)}</strong></button>` : ''}
+  <button class="dash-continue dash-notebooks" data-notebooks>📓 Notebooks${nbSum.classes ? `: <strong>${nbSum.notes} note${nbSum.notes === 1 ? '' : 's'}${nbSum.pages ? ` · ${nbSum.pages} page${nbSum.pages === 1 ? '' : 's'}` : ''}</strong> across ${nbSum.classes} class${nbSum.classes === 1 ? '' : 'es'}` : ' — notes you write in lessons collect here'}</button>
   <div class="dash-courses-head">
    <h2>My Courses</h2>
    <input class="dash-search" type="search" placeholder="Search courses…" value="${esc(store.homeSearch||'')}" data-dash-search>
@@ -36749,6 +36936,7 @@ function renderHomeV3() {
  if (store.homeSearch && store.homeSearch.trim()) applyLiveSearch(store.homeSearch);
  content.querySelector('[data-pick-classes]')?.addEventListener('click', showClassPicker);
  content.querySelector('[data-continue]')?.addEventListener('click', () => { if (next) go({ name: 'section', courseId: next.courseId, chId: next.chId, secId: next.secId }); });
+ content.querySelector('[data-notebooks]')?.addEventListener('click', () => go({ name: 'notebooks' }));
  content.querySelectorAll('[data-dash-activate]').forEach(b => b.addEventListener('click', e => {
    e.stopPropagation();
    const cid = b.getAttribute('data-dash-activate');
@@ -62509,14 +62697,61 @@ function mergeInk(remoteInk, when){
     try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
     var seen = Object.create(null), i;
     for (i = 0; i < local.length; i++) { var sg = sig(local[i]); if (sg) seen[sg] = 1; }
-    var merged = local.slice(), grew = 0;
+    var fresh = [], theirs = Object.create(null);
     for (i = 0; i < incoming.length; i++) {
       var s2 = sig(incoming[i]);
-      if (!s2 || seen[s2]) continue;
-      seen[s2] = 1; merged.push(incoming[i]); grew++;
+      if (!s2) continue;
+      theirs[s2] = 1;
+      if (!seen[s2]) { seen[s2] = 1; fresh.push(incoming[i]); }
     }
-    if (grew) {
-      try { gannoSaveStrokes(rk, merged); added += grew; pages++; } catch (e) {}
+    if (!fresh.length) continue;
+    /* BOTH DEVICES WROTE THIS PAGE. "Why are the notes like this" - one page
+       with two sittings laid over each other. The phone had not pulled the
+       iPad's page yet, so it looked blank, she wrote on it, and this union put
+       the two on top of one another. Nothing was lost; it was unreadable.
+       When the local page holds strokes the other device never saw AND the
+       other device's copy holds strokes this one never saw, the incoming ones
+       are placed on a fresh page below hers - whole pages down, layout kept -
+       and she is told. A page written on one device only merges in place,
+       exactly as before. */
+    var mineOnly = 0;
+    for (i = 0; i < local.length; i++) { var sg2 = sig(local[i]); if (sg2 && !theirs[sg2]) { mineOnly++; break; } }
+    var placed = fresh, newPage = 0;
+    if (mineOnly && local.length) {
+      var PH = 1294;
+      try { PH = (window.__notesPanel && window.__notesPanel.limits().pageH) || PH; } catch (e) {}
+      var low = 0, minY = Infinity, j, q;
+      for (i = 0; i < local.length; i++) for (j = 0; j < (local[i].points || []).length; j++) { q = local[i].points[j]; if (q.y > low) low = q.y; }
+      for (i = 0; i < fresh.length; i++) for (j = 0; j < (fresh[i].points || []).length; j++) { q = fresh[i].points[j]; if (q.y < minY) minY = q.y; }
+      var basePages = Math.max(1, Math.ceil((low + 1) / PH));
+      var dy = basePages * PH - Math.floor((isFinite(minY) ? minY : 0) / PH) * PH;
+      placed = fresh.map(function(st){
+        var c = JSON.parse(JSON.stringify(st));
+        c.points = (c.points || []).map(function(pt){ var o = {}; for (var kk in pt) o[kk] = pt[kk]; o.y = pt.y + dy; return o; });
+        return c;
+      });
+      newPage = basePages + 1;
+    }
+    var merged = local.concat(placed), grew = placed.length;
+    try { gannoSaveStrokes(rk, merged); added += grew; pages++; } catch (e) {}
+    // keep the notebook's own index honest, so counts and page totals are
+    // right before she next opens the pad on this page
+    try {
+      var secKeyOf = (rk.indexOf('pad_') === 0) ? rk.slice(4) : null;
+      if (secKeyOf) {
+        var PH2 = 1294; try { PH2 = (window.__notesPanel && window.__notesPanel.limits().pageH) || PH2; } catch (e) {}
+        var lowest = 0, a, b2;
+        for (a = 0; a < merged.length; a++) for (b2 = 0; b2 < (merged[a].points || []).length; b2++) if (merged[a].points[b2].y > lowest) lowest = merged[a].points[b2].y;
+        if (!store.padNotes) store.padNotes = {};
+        store.padNotes[secKeyOf] = { n: merged.length, h: Math.max(1, Math.ceil((lowest + 1) / PH2)) * PH2, ts: Date.now() };
+      }
+    } catch (e) {}
+    if (newPage) {
+      try {
+        var title = rk;
+        try { var pp = rk.slice(4).split('/'), cc = COURSES[pp[0]]; var ch = cc && (cc.chapters || []).filter(function(x){ return x.id === pp[1]; })[0]; var sc = ch && (ch.sections || []).filter(function(x){ return x.id === pp[2]; })[0]; title = (sc && sc.title) || (cc && cc.code) || rk; } catch (e) {}
+        if (typeof toast === 'function') toast('Notes from your other device were added as page ' + newPage + ' of \u201c' + title + '\u201d, not on top of yours.', 7000);
+      } catch (e) {}
     }
   }
   return { added: added, pages: pages };
@@ -67131,6 +67366,8 @@ function openPagePop(anchor){
     var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add a page', false, function(){ closePop(); addPage(1); });
     pop.appendChild(addRow);
     pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add 5 pages', false, function(){ closePop(); addPage(5); }));
+    if (strokes.length > 1)
+      pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '⇅ Split this page by sitting', false, function(){ closePop(); splitSessions(); }));
   });
 }
 
@@ -67829,6 +68066,50 @@ function redo(){
   applyOp(op, 'redo');
   past.push(op);
   paintUndo();
+}
+/* SPLIT A STACKED PAGE. "Why are the notes like this" - one page carrying two
+   sittings' worth of writing, one laid over the other. That is what the sync
+   used to do when both devices had written the same page (see mergeInk); the
+   pages already like that can be pulled apart here, because every stroke
+   carries the moment it was made. Strokes are grouped into sittings by a gap
+   of twenty minutes or more; the first sitting stays, each later one moves to
+   a fresh page of its own, keeping its layout. Journaled as one erase-shaped
+   op - originals removed, shifted copies added - so Undo reverses the whole
+   thing in one tap. */
+function splitSessions(){
+  var GAP = 20 * 60 * 1000;
+  if (!strokes.length) return { moved: 0, pages: inkPages(), sessions: 0 };
+  var order = strokes.map(function(s, i){ return { s: s, i: i, t: (s && (s._ts || s.ts)) || 0 }; })
+                     .sort(function(a, b){ return a.t - b.t; });
+  var groups = [[order[0]]];
+  for (var k = 1; k < order.length; k++) {
+    if (order[k].t - order[k - 1].t >= GAP) groups.push([]);
+    groups[groups.length - 1].push(order[k]);
+  }
+  if (groups.length < 2) {
+    try { if (typeof toast === 'function') toast('This page was written in one sitting — nothing to split.'); } catch (e) {}
+    return { moved: 0, pages: inkPages(), sessions: groups.length };
+  }
+  var base = inkPages(), removed = [], added = [], moved = 0;
+  for (var g = 1; g < groups.length; g++) {
+    var grp = groups[g], minY = Infinity;
+    grp.forEach(function(r){ (r.s.points || []).forEach(function(q){ if (q.y < minY) minY = q.y; }); });
+    if (!isFinite(minY)) continue;
+    var dy = (base + g - 1) * PAGE_H - Math.floor(minY / PAGE_H) * PAGE_H;   // whole pages down, layout kept
+    grp.forEach(function(r){
+      var c = JSON.parse(JSON.stringify(r.s));
+      c.points = (c.points || []).map(function(q){ var o = {}; for (var kk in q) o[kk] = q[kk]; o.y = q.y + dy; return o; });
+      c._ts = Date.now();
+      removed.push({ s: r.s, i: r.i }); added.push(c); moved++;
+    });
+  }
+  if (!moved) return { moved: 0, pages: inkPages(), sessions: groups.length };
+  logOp({ op: 'erase', removed: removed, added: added });
+  removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
+  added.forEach(function(c){ strokes.push(c); });
+  pageH = pageHFor(); sizeSvg(); redraw(); persist(); paintBadge(); paintPageSoon();
+  try { if (typeof toast === 'function') toast('Split into ' + groups.length + ' pages by sitting \u2014 Undo puts it back.'); } catch (e) {}
+  return { moved: moved, pages: inkPages(), sessions: groups.length };
 }
 function clearPage(){
   if (!strokes.length) return;
@@ -68633,8 +68914,9 @@ window.__notesPanel = {
   surface: function(){ var r = svg ? svg.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 }; return { x: r.left, y: r.top, w: r.width, h: r.height }; },
   lastStroke: function(){ var s = strokes[strokes.length - 1]; return s ? JSON.parse(JSON.stringify(s)) : null; },
   livePoints: function(){ return live ? live.points.length : 0; },
-  limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H,
+  limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H, pageH: PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
+  splitSessions: function(){ return splitSessions(); },
   paper: function(){ return paperId(); },
   /* HER HANDWRITING, FOR ANY SECTION, without opening it. `ink` says how much
      is there; `inkPage` draws one page of it. Both read the per-page storage

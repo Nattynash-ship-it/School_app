@@ -59,6 +59,8 @@ run classreset classreset.js 1
 run resetreview resetreview.js 1
 run resetsticks resetsticks.js 1
 run resetbutton resetbutton.js 1
+run classnotes classnotes.js 1
+run inkmerge inkmerge.js 1
 run pretestkeep pretestkeep.js 1
 run listenvoice listenvoice.js 1
 run entities entities.js 1
