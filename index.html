@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.598">
+<meta name="app-build" content="18.599">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -930,6 +930,62 @@
  --page-glow: radial-gradient(520px 300px at 8% -8%, rgba(255,77,109,0.14), transparent 60%), radial-gradient(480px 280px at 94% -4%, rgba(79,216,175,0.10), transparent 60%), radial-gradient(560px 320px at 50% 108%, rgba(255,143,163,0.08), transparent 60%);
 }
 [data-theme="diner"] { --avatar-body-top: #ff8fa3; --avatar-body-bot: #ff4d6d; --avatar-belly-top: #fdeff2; --avatar-belly-bot: #f0d5dc; --avatar-beak: #4fd8af; --avatar-bg-1: rgba(255,77,109,0.20); --avatar-bg-2: rgba(79,216,175,0.14); }
+
+
+/* ============ FIVE MORE THEMES (18.599): two dark, three light, each with its own texture ============ */
+[data-theme="chalkboard"] { --bg: #1e2b27; --bg-2: #223330; --surface: #263a34; --surface-2: #2e453e; --surface-3: #38544b; --surface-glass: rgba(38,58,52,0.74); --border: rgba(242,239,230,0.14); --border-strong: rgba(242,239,230,0.32); --text: #f2efe6; --text-2: #dcd8cc; --text-3: #b3b0a4; --text-4: #86867b; --text-5: #5f6259; --accent: #f5d77a; --accent-2: #fbe7a6; --accent-bg: #3d3f22; --accent-text: #1e2b27; --accent-grad: linear-gradient(135deg, #f5d77a 0%, #fbe7a6 100%); --secondary: #f4a6b8; --secondary-2: #f8c3cf; --secondary-bg: #3f2a30; --secondary-grad: linear-gradient(135deg, #f4a6b8 0%, #f5d77a 100%); --warning: #f5d77a; --warning-bg: #3d3f22; --danger: #f28c8c; --danger-bg: #402626; --success: #a8e0a0; --success-bg: #24402a; --code-bg: #15201c; --code-text: #fbe7a6; --highlight: rgba(245,215,122,0.30); --note-bg: rgba(242,239,230,0.06); --note-border: #f4a6b8; --shadow: 0 4px 18px rgba(0,0,0,0.40); --shadow-strong: 0 14px 40px rgba(0,0,0,0.50), 0 2px 8px rgba(0,0,0,0.4); --shadow-card: 0 1px 2px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.30); --radius: 6px; --radius-sm: 4px; }
+[data-theme="chalkboard"] { --avatar-body-top: #fbe7a6; --avatar-body-bot: #f5d77a; --avatar-belly-top: #f2efe6; --avatar-belly-bot: #dcd8cc; --avatar-beak: #f4a6b8; --avatar-bg-1: rgba(245,215,122,0.16); --avatar-bg-2: rgba(244,166,184,0.12); }
+[data-theme="chalkboard"] body {
+ background-image: radial-gradient(ellipse 60% 40% at 18% 8%, rgba(242,239,230,0.06), transparent 60%), radial-gradient(ellipse 50% 40% at 82% 92%, rgba(242,239,230,0.045), transparent 60%);
+}
+[data-theme="chalkboard"] h1, [data-theme="chalkboard"] h2, [data-theme="chalkboard"] h3,
+[data-theme="chalkboard"] .brand-title, [data-theme="chalkboard"] .screen-title {
+ font-family: "Chalkboard SE", "Chalkduster", "Segoe Print", "Comic Neue", "Trebuchet MS", sans-serif; letter-spacing: 0.01em;
+}
+[data-theme="chalkboard"] .card, [data-theme="chalkboard"] .chapter-item, [data-theme="chalkboard"] .q-card { border-style: dashed; }
+[data-theme="sumi"] { --bg: #17181a; --bg-2: #1c1d20; --surface: #202225; --surface-2: #2a2c30; --surface-3: #36393e; --surface-glass: rgba(32,34,37,0.74); --border: rgba(236,230,218,0.10); --border-strong: rgba(236,230,218,0.26); --text: #ece6da; --text-2: #d5cfc3; --text-3: #aaa59a; --text-4: #7f7b73; --text-5: #57544f; --accent: #d63a2c; --accent-2: #f0705f; --accent-bg: #3a1a17; --accent-text: #ffffff; --accent-grad: linear-gradient(135deg, #c93526 0%, #e34234 60%, #f0705f 100%); --secondary: #8fb0cc; --secondary-2: #b3cbe0; --secondary-bg: #1e2a33; --secondary-grad: linear-gradient(135deg, #8fb0cc 0%, #e34234 100%); --warning: #e0b258; --warning-bg: #3a2f14; --danger: #f0705f; --danger-bg: #3a1a17; --success: #8fc48a; --success-bg: #1f3020; --code-bg: #0f1011; --code-text: #ece6da; --highlight: rgba(227,66,52,0.28); --note-bg: rgba(236,230,218,0.05); --note-border: #e34234; --shadow: 0 4px 18px rgba(0,0,0,0.50); --shadow-strong: 0 14px 44px rgba(0,0,0,0.60), 0 2px 8px rgba(227,66,52,0.10); --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35); --radius: 4px; --radius-sm: 3px; }
+[data-theme="sumi"] { --avatar-body-top: #f0705f; --avatar-body-bot: #c93526; --avatar-belly-top: #ece6da; --avatar-belly-bot: #d5cfc3; --avatar-beak: #8fb0cc; --avatar-bg-1: rgba(227,66,52,0.16); --avatar-bg-2: rgba(143,176,204,0.10); }
+[data-theme="sumi"] body {
+ background-image: radial-gradient(ellipse 50% 36% at 88% 0%, rgba(227,66,52,0.10), transparent 60%), radial-gradient(ellipse 40% 30% at 6% 100%, rgba(143,176,204,0.06), transparent 60%);
+}
+[data-theme="sumi"] h1, [data-theme="sumi"] h2, [data-theme="sumi"] h3,
+[data-theme="sumi"] .brand-title, [data-theme="sumi"] .screen-title {
+ font-family: "Hiragino Mincho ProN", "Songti SC", "Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif; letter-spacing: 0.02em; font-weight: 600;
+}
+[data-theme="riso"] { --bg: #f6f3ec; --bg-2: #faf8f3; --surface: #fffdf8; --surface-2: #f0ece2; --surface-3: #e4dfd2; --surface-glass: rgba(255,253,248,0.86); --border: rgba(28,28,28,0.16); --border-strong: rgba(28,28,28,0.40); --text: #1c1c1c; --text-2: #34322f; --text-3: #5d5a55; --text-4: #84807a; --text-5: #aca79f; --accent: #0069a8; --accent-2: #2f9be0; --accent-bg: #d6e9f8; --accent-text: #ffffff; --accent-grad: linear-gradient(135deg, #0069a8 0%, #2f9be0 45%, #ff48b0 100%); --secondary: #e0248f; --secondary-2: #ff48b0; --secondary-bg: #ffdcef; --secondary-grad: linear-gradient(135deg, #ff48b0 0%, #0069a8 100%); --warning: #9a6100; --warning-bg: #ffedc2; --danger: #c92626; --danger-bg: #ffe0e0; --success: #1d7a50; --success-bg: #d8f2e5; --code-bg: #1c1c1c; --code-text: #ff7ec8; --highlight: rgba(255,72,176,0.32); --note-bg: #ffdcef; --note-border: #e0248f; --shadow: 2px 2px 0 rgba(255,72,176,0.55); --shadow-strong: 4px 4px 0 rgba(0,105,168,0.50), 8px 8px 0 rgba(255,72,176,0.28); --shadow-card: 3px 3px 0 rgba(0,105,168,0.38); --radius: 2px; --radius-sm: 2px; }
+[data-theme="riso"] { --avatar-body-top: #2f9be0; --avatar-body-bot: #0069a8; --avatar-belly-top: #fffdf8; --avatar-belly-bot: #f0ece2; --avatar-beak: #ff48b0; --avatar-bg-1: rgba(0,105,168,0.16); --avatar-bg-2: rgba(255,72,176,0.16); }
+[data-theme="riso"] body {
+ background-image: radial-gradient(rgba(28,28,28,0.07) 0.9px, transparent 1.3px);
+ background-size: 6px 6px;
+}
+/* print-sharp corners and offset "misregistered" shadows, over the 18px card default */
+[data-theme="riso"] .card, [data-theme="riso"] .quiz-opt, [data-theme="riso"] .lesson-wrap, [data-theme="riso"] .pomo-card, [data-theme="riso"] .chapter-item { border-radius: 2px !important; }
+[data-theme="riso"] .card { box-shadow: 3px 3px 0 rgba(0,105,168,0.38) !important; border: 1px solid #1c1c1c; }
+[data-theme="riso"] h1, [data-theme="riso"] h2, [data-theme="riso"] h3,
+[data-theme="riso"] .brand-title, [data-theme="riso"] .screen-title {
+ font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 900; letter-spacing: -0.02em;
+}
+[data-theme="concrete"] { --bg: #e6e7e3; --bg-2: #ebece8; --surface: #f2f2ef; --surface-2: #dedfda; --surface-3: #cfd0ca; --surface-glass: rgba(242,242,239,0.88); --border: rgba(20,20,20,0.38); --border-strong: rgba(20,20,20,0.85); --text: #141414; --text-2: #2b2b2b; --text-3: #4f4f4d; --text-4: #6f6f6b; --text-5: #9c9c98; --accent: #1a3fe8; --accent-2: #4d6cff; --accent-bg: #d5dbff; --accent-text: #ffffff; --accent-grad: linear-gradient(135deg, #1a3fe8 0%, #1a3fe8 100%); --secondary: #d9440f; --secondary-2: #ff5a1f; --secondary-bg: #ffe0d2; --secondary-grad: linear-gradient(135deg, #d9440f 0%, #d9440f 100%); --warning: #7a5600; --warning-bg: #f4e6a8; --danger: #b81c1c; --danger-bg: #f7d4d4; --success: #1b6e38; --success-bg: #cfead8; --code-bg: #141414; --code-text: #e6e7e3; --highlight: rgba(26,63,232,0.22); --note-bg: #dedfda; --note-border: #141414; --shadow: 0 0 0 1px rgba(20,20,20,0.38); --shadow-strong: 0 0 0 2px #141414; --shadow-card: 0 0 0 1px rgba(20,20,20,0.38); --radius: 0px; --radius-sm: 0px; }
+[data-theme="concrete"] { --avatar-body-top: #4d6cff; --avatar-body-bot: #1a3fe8; --avatar-belly-top: #f2f2ef; --avatar-belly-bot: #dedfda; --avatar-beak: #ff5a1f; --avatar-bg-1: rgba(26,63,232,0.14); --avatar-bg-2: rgba(20,20,20,0.10); }
+[data-theme="concrete"] body { background-image: none; }
+[data-theme="concrete"] h1, [data-theme="concrete"] h2,
+[data-theme="concrete"] .brand-title, [data-theme="concrete"] .screen-title {
+ text-transform: uppercase; letter-spacing: 0.03em; font-weight: 800;
+}
+[data-theme="concrete"] .card, [data-theme="concrete"] .chapter-item, [data-theme="concrete"] .q-card, [data-theme="concrete"] .pomo-card { border: 1.5px solid #141414; }
+/* a later "design refresh" rule pins cards and quiz options to 18px/14px corners; brutalism has none */
+[data-theme="concrete"] .card, [data-theme="concrete"] .quiz-opt, [data-theme="concrete"] .lesson-wrap, [data-theme="concrete"] .pomo-card, [data-theme="concrete"] button.primary, [data-theme="concrete"] .pomo-btn, [data-theme="concrete"] .chapter-item { border-radius: 0 !important; }
+[data-theme="concrete"] .card { box-shadow: 0 0 0 1.5px #141414 !important; }
+[data-theme="terrazzo"] { --bg: #f8f4ee; --bg-2: #fbf8f3; --surface: #fffdf9; --surface-2: #f1ebe2; --surface-3: #e6ddd0; --surface-glass: rgba(255,253,249,0.84); --border: rgba(50,40,35,0.12); --border-strong: rgba(50,40,35,0.28); --text: #2b2622; --text-2: #45403a; --text-3: #6a635b; --text-4: #8f877d; --text-5: #b5ada3; --accent: #137c74; --accent-2: #2aa39a; --accent-bg: #d6efec; --accent-text: #ffffff; --accent-grad: linear-gradient(135deg, #137c74 0%, #2aa39a 55%, #e0a93a 100%); --secondary: #d4573f; --secondary-2: #f28c78; --secondary-bg: #fde3dc; --secondary-grad: linear-gradient(135deg, #e8674f 0%, #e0a93a 100%); --warning: #8f6300; --warning-bg: #f9ecc4; --danger: #bf3a26; --danger-bg: #fbe0da; --success: #2c7548; --success-bg: #dcefe1; --code-bg: #2b2622; --code-text: #f7d9a0; --highlight: rgba(224,169,58,0.35); --note-bg: #d6efec; --note-border: #137c74; --shadow: 0 3px 12px rgba(50,40,35,0.10); --shadow-strong: 0 10px 32px rgba(50,40,35,0.14); --shadow-card: 0 1px 3px rgba(50,40,35,0.06), 0 4px 14px rgba(50,40,35,0.08); --radius: 18px; --radius-sm: 12px; }
+[data-theme="terrazzo"] { --avatar-body-top: #2aa39a; --avatar-body-bot: #137c74; --avatar-belly-top: #fffdf9; --avatar-belly-bot: #f1ebe2; --avatar-beak: #e0a93a; --avatar-bg-1: rgba(19,124,116,0.18); --avatar-bg-2: rgba(232,103,79,0.14); }
+[data-theme="terrazzo"] body {
+ background-image: radial-gradient(ellipse 6px 4px at 12px 18px, rgba(19,124,116,0.22) 98%, transparent 100%), radial-gradient(ellipse 5px 7px at 60px 44px, rgba(232,103,79,0.22) 98%, transparent 100%), radial-gradient(ellipse 4px 4px at 92px 10px, rgba(224,169,58,0.28) 98%, transparent 100%), radial-gradient(ellipse 7px 5px at 40px 80px, rgba(43,38,34,0.10) 98%, transparent 100%), radial-gradient(ellipse 3px 5px at 106px 70px, rgba(19,124,116,0.16) 98%, transparent 100%), radial-gradient(ellipse 4px 3px at 78px 88px, rgba(232,103,79,0.14) 98%, transparent 100%);
+ background-size: 120px 96px;
+}
+[data-theme="terrazzo"] h1, [data-theme="terrazzo"] h2, [data-theme="terrazzo"] h3,
+[data-theme="terrazzo"] .brand-title, [data-theme="terrazzo"] .screen-title {
+ font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Avenir Next", system-ui, -apple-system, sans-serif; font-weight: 800;
+}
 
  /* ============ AVATAR COLOR PER THEME ============ */
  /* The owl mascot uses CSS vars so each theme gives it personality */
@@ -5019,6 +5075,11 @@ html { scroll-behavior: smooth; }
 .theme-preview.theme-crt { background: linear-gradient(135deg, #131007 0%, #3a2a08 55%, #ffb02e 100%); }
 .theme-preview.theme-gilded { background: linear-gradient(135deg, #120e0a 0%, #33290f 55%, #d9a441 100%); }
 .theme-preview.theme-diner { background: linear-gradient(135deg, #190d12 0%, #ff4d6d 55%, #4fd8af 100%); }
+.theme-preview.theme-chalkboard { background: linear-gradient(135deg, #1e2b27 0%, #38544b 55%, #f5d77a 84%, #f4a6b8 100%); }
+.theme-preview.theme-sumi { background: linear-gradient(135deg, #17181a 0%, #36393e 52%, #ece6da 74%, #e34234 100%); }
+.theme-preview.theme-riso { background: linear-gradient(135deg, #f6f3ec 0%, #ff48b0 52%, #0069a8 100%); }
+.theme-preview.theme-concrete { background: linear-gradient(135deg, #e6e7e3 0%, #cfd0ca 48%, #141414 76%, #1a3fe8 100%); }
+.theme-preview.theme-terrazzo { background: linear-gradient(135deg, #f8f4ee 0%, #137c74 44%, #e8674f 74%, #e0a93a 100%); }
 
 /* ==================== STICKERS ==================== */
 .ganno-tool[data-tool="sticker"] { order: 8; font-size: 19px; line-height: 1; }
@@ -15770,6 +15831,11 @@ const THEMES = [
  { id: 'gilded', name: 'Gilded Noir', desc: 'Espresso black & art-deco gold' },
  { id: 'diner', name: 'Cherry Diner', desc: 'Dark booth red · mint milkshake neon' },
  { id: 'glass', name: 'Glassmorphic', desc: 'Frosted glass · vivid glow blobs' },
+ { id: 'chalkboard', name: 'Chalkboard', desc: 'Slate-green board · white, yellow & pink chalk' },
+ { id: 'sumi', name: 'Sumi Ink', desc: 'Charcoal & bone · vermilion seal, slate blue' },
+ { id: 'riso', name: 'Riso Print', desc: 'Paper & ink · fluorescent pink and blue overprint' },
+ { id: 'concrete', name: 'Concrete', desc: 'Brutalist grey · black rules, electric blue' },
+ { id: 'terrazzo', name: 'Terrazzo', desc: 'Speckled cream · teal, coral & mustard chips' },
 ];
 function renderThemePicker() {
  let sheet = document.querySelector('.pomo-sheet.theme-sheet');
