@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.597">
+<meta name="app-build" content="18.598">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -5332,6 +5332,17 @@ body[data-route="home"] #wb-fab, body[data-route="today"] #wb-fab { display: non
 .dash-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .dash-cat-label { font-size: 11px; font-weight: 800; letter-spacing: 0.09em; color: var(--accent); text-transform: uppercase; margin: 20px 0 2px; display: flex; align-items: center; gap: 7px; } .dash-cat-label::before { content: ''; width: 4px; height: 13px; border-radius: 2px; background: var(--accent); display: inline-block; }
 .dash-cat-sub { font-size: 11px; color: var(--text-4); margin-bottom: 8px; }
+details.cls-group { margin: 12px 0 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 0 12px 4px; }
+details.cls-group[open] { padding-bottom: 12px; }
+.cls-group-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 13px 0; }
+.cls-group-head::-webkit-details-marker { display: none; }
+.cls-group-ico { flex: 0 0 auto; font-size: 16px; }
+.cls-group-title { flex: 0 0 auto; font-weight: 800; font-size: 13.5px; color: var(--text); }
+.cls-group-n { display: inline-block; min-width: 20px; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--accent-bg, var(--surface-2)); color: var(--accent); font-size: 11px; font-weight: 800; text-align: center; }
+.cls-group-preview { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cls-group-chev { flex: 0 0 auto; font-size: 18px; color: var(--text-4); transition: transform .18s ease; line-height: 1; }
+details.cls-group[open] .cls-group-chev { transform: rotate(90deg); }
+details.cls-group .chapter-item { margin-top: 8px; }
 details.dash-cat { margin: 10px 0 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 0 12px 4px; }
 details.dash-cat[open] { padding-bottom: 12px; }
 .dash-cat-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 11px 0; }
@@ -19293,7 +19304,27 @@ function renderClass(courseId) {
  `;
  })()}
 
- ${c.chapters.map((ch, i) => {
+ ${(() => {
+ /* THE STUDY UNITS STAY EXACTLY AS THEY ARE; THE DRILLS GET ORGANIZED.
+    "please keep the study sections as they are and organize the drills ...
+    be sure that the drills make sense with the ones that are combined."
+    C959 listed 26 "chapters" and D286 35, of which 7 and 19 are study
+    units; the rest - simulations, drills, cheat sheets, concept notes - sat
+    in the same list, numbered like units. The units below are the same
+    cards, in the same order, with the same numbers they had. Everything
+    else goes into three folds by what it IS, so nothing is grouped with
+    something it does not belong with:
+      practice exams - the timed simulations and fresh-question sittings
+      drills         - targeted practice: weak spots, missed, hard, traces,
+                       labs, builds, solving, challenge, the J-method
+      reference      - concepts made clear, cheat sheet, how to pass, her
+                       own documents
+    Every chapter is still here, exactly once, and opens exactly as before. */
+ const EXAMS = /^(oa_sim|pa_sim|fresh_sim|pa_fresh|exam|pa|pretest|final)$|_sim$/;
+ const DRILLS = /^(weak_drill|review_missed|hard_drill|challenge|oa_prac|oa_lab|pa_build|solving|solving_only|solving2|aistote|playbook)$|_drill$|_prac$/;
+ const isUnit = ch => (typeof isLearningChapter === 'function') ? isLearningChapter(ch) : true;
+ const groupOf = ch => EXAMS.test(String(ch.id)) ? 'exams' : (DRILLS.test(String(ch.id)) ? 'drills' : 'ref');
+ const card = (ch, i) => {
  const cprog = chapterProgress(courseId, ch.id);
  const status = cprog === 0 ? `untouched` : (cprog >= 80 ? `mastered` : `in progress`);
  return `
@@ -19307,10 +19338,9 @@ function renderClass(courseId) {
  <div class="chevron">›</div>
  </div>
  `;
- }).join(``)}
-
- ${SAMPLE_QUESTIONS[`${courseId}/final/exam`] ? `
- <div class="chapter-item" data-final-exam style="margin-top: 16px; border: 1.5px solid var(--accent); background: var(--accent-bg, transparent);">
+ };
+ const finalHtml = SAMPLE_QUESTIONS[`${courseId}/final/exam`] ? `
+ <div class="chapter-item" data-final-exam style="margin-top: 10px; border: 1.5px solid var(--accent); background: var(--accent-bg, transparent);">
  <div class="chapter-num" style="color: var(--accent);">★</div>
  <div class="chapter-body">
  <div class="chapter-title">Final Exam (OA Simulation)</div>
@@ -19318,7 +19348,40 @@ function renderClass(courseId) {
  </div>
  <div class="chevron">›</div>
  </div>
- ` : ``}
+ ` : ``;
+ const groups = { exams: [], drills: [], ref: [] };
+ const units = [];
+ c.chapters.forEach((ch, i) => { if (isUnit(ch)) units.push(card(ch, i)); else groups[groupOf(ch)].push({ ch, i }); });
+ const TITLES = { exams: ['\ud83d\udcdd', 'Practice exams'], drills: ['\ud83c\udfaf', 'Drills'], ref: ['\ud83d\udca1', 'Reference & guides'] };
+ const openMap = (store.classGroupOpen && typeof store.classGroupOpen === 'object') ? store.classGroupOpen : {};
+ const fold = key => {
+ const items = groups[key];
+ const extra = (key === 'exams' && finalHtml) ? 1 : 0;
+ if (!items.length && !extra) return '';
+ // a preview reads whole words, and keeps the part after the dash when two
+ // chapters share the same first words ("Fresh Questions - Brand-New" and
+ // "Fresh Questions - new every attempt" are not the same thing)
+ const clean = t => String(t || '').replace(/^[^A-Za-z0-9]+\s*/, '').replace(/\s+[\u2014\u2013-]\s+/g, ': ');
+ const cut = (t, n) => t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026';
+ const heads = items.map(x => clean(x.ch.title || x.ch.id).split(': ')[0]);
+ const names = items.map((x, i) => { const full = clean(x.ch.title || x.ch.id); const dup = heads.filter(h => h === heads[i]).length > 1; return cut(dup ? full : full.split(': ')[0], 30); });
+ if (extra) names.push('Final Exam');
+ const preview = names.slice(0, 3).join(' \u00b7 ') + (names.length > 3 ? ` \u00b7 +${names.length - 3}` : '');
+ const open = !!openMap[courseId + '/' + key];
+ return `
+ <details class="cls-group" data-group="${key}"${open ? ' open' : ''}>
+ <summary class="cls-group-head">
+ <span class="cls-group-ico">${TITLES[key][0]}</span>
+ <span class="cls-group-title">${TITLES[key][1]} <span class="cls-group-n">${items.length + extra}</span></span>
+ <span class="cls-group-preview">${esc(preview)}</span>
+ <span class="cls-group-chev">\u203a</span>
+ </summary>
+ ${items.map(x => card(x.ch, x.i)).join('')}
+ ${key === 'exams' ? finalHtml : ''}
+ </details>`;
+ };
+ return units.join('') + fold('exams') + fold('drills') + fold('ref');
+ })()}
  </div>
  `;
 
@@ -19334,6 +19397,11 @@ function renderClass(courseId) {
  if (preOaEl) preOaEl.addEventListener('click', () => go({ name: 'preoa', courseId }));
  const oaExamEl = wrap.querySelector('[data-oa-exam]');
  if (oaExamEl) oaExamEl.addEventListener('click', () => startExamSimulator(courseId));
+ wrap.querySelectorAll('details.cls-group').forEach(d => d.addEventListener('toggle', () => {
+ if (!store.classGroupOpen || typeof store.classGroupOpen !== 'object') store.classGroupOpen = {};
+ store.classGroupOpen[courseId + '/' + d.getAttribute('data-group')] = d.open;
+ saveStore();
+ }));
  wrap.querySelectorAll('[data-chapter]').forEach(el => {
  el.addEventListener('click', () => go({ name: 'chapter', courseId, chId: el.getAttribute('data-chapter') }));
  });
