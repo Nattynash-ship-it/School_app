@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.599">
+<meta name="app-build" content="18.600">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -33381,14 +33381,8 @@ function planAlertsHTML() {
   const remaining = store.classPlan.filter(c => !c.done).length;
   const curIdx = store.classPlan.findIndex(c => !c.done);
   const cur = curIdx >= 0 ? store.classPlan[curIdx] : null;
-  if (cur) {
-    const cd = (typeof daysUntil === 'function') ? daysUntil(cur.target) : null;
-    if (cd != null) {
-      if (cd < 0) out += planAlertBar('danger', '\uD83D\uDD34 <strong>' + cur.code + '</strong> is ' + (-cd) + ' day' + (cd === -1 ? '' : 's') + ' past its target. Shift your dates below or push to finish it.');
-      else if (cd <= 3) out += planAlertBar('warning', '\u26A0\uFE0F <strong>' + cur.code + '</strong> target in ' + cd + ' day' + (cd === 1 ? '' : 's') + ' \u2014 take the pre-assessment now.');
-      else out += planAlertBar('info', '\uD83D\uDCCC <strong>' + cur.code + '</strong> \u2014 ' + cd + ' days until its target date. Keep going!');
-    }
-  } else {
+  // per-class target dates are no longer shown or nagged about (her request)
+  if (!cur) {
     out += planAlertBar('info', '\uD83C\uDF89 Every class is checked off \u2014 you did it!');
   }
   if (gradDays != null && gradDays >= 0 && remaining > 0) {
@@ -33454,19 +33448,20 @@ function renderPlan() {
   }, 0);
   const weeklyHrs = Math.round(weeklyMin / 6) / 10;
 
+  /* "Please remove the due dates and the dates I would have liked to meet for
+     my courses." The roadmap is the ORDER of her classes and which are passed -
+     no date per class, no countdown, no picker, nothing to be overdue against.
+     The per-class target dates stay in the store untouched; they are simply
+     not shown or asked for here any more. */
   const classRows = store.classPlan.map((c, idx) => {
-    const d = (typeof daysUntil === 'function') ? daysUntil(c.target) : null;
-    const win = windows[idx];
     const isCur = idx === curIdx && !c.done;
     const badge = c.done ? '<span style="color:var(--accent);font-weight:700;">\u2713 Passed</span>'
-      : (d == null ? '' : (d < 0 ? '<span style="color:var(--danger);">' + (-d) + 'd overdue</span>' : '<span style="color:var(--text-3);">' + d + 'd left</span>'));
+      : (isCur ? '<span style="color:var(--text-3);">all of this week\u2019s study time</span>' : '<span style="color:var(--text-4);">up next</span>');
     const nowTag = isCur ? '<span style="background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;margin-left:6px;">\u25b6 NOW</span>' : '';
-    const hrs = Math.round(win.wks * weeklyHrs);
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:' + (isCur ? '2px solid var(--accent)' : '1px solid var(--border)') + ';border-radius:10px;margin:6px 0;background:var(--surface);' + (c.done ? 'opacity:.6;' : '') + '">'
+    return '<div class="plan-class-row" data-plan-row="' + idx + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:' + (isCur ? '2px solid var(--accent)' : '1px solid var(--border)') + ';border-radius:10px;margin:6px 0;background:var(--surface);' + (c.done ? 'opacity:.6;' : '') + '">'
       + '<input type="checkbox" data-class-done="' + idx + '" ' + (c.done ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;">'
       + '<div style="flex:1;min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + c.code + ' \u2014 ' + c.name + nowTag + '</div>'
-      + '<div style="font-size:12px;color:var(--text-3);">\ud83d\udcc5 ' + planFmtDate(win.start) + ' \u2192 ' + planFmtDate(c.target) + ' \u00b7 ' + win.wks + ' wk' + (win.wks === 1 ? '' : 's') + ' \u00b7 ~' + hrs + ' hrs \u00b7 ' + badge + '</div></div>'
-      + '<input type="date" data-class-target="' + idx + '" value="' + c.target + '" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text);"></div>';
+      + '<div style="font-size:12px;color:var(--text-3);">' + badge + '</div></div></div>';
   }).join('');
 
   const blockRows = store.timeBlocks.map(b => '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin:5px 0;background:var(--surface);">'
@@ -33495,7 +33490,7 @@ function renderPlan() {
     + '<span style="font-size:13px;color:var(--text-3);">' + doneCount + '/' + totalCount + ' passed</span></div>'
     + '<div style="height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:' + pct + '%;background:var(--accent);"></div></div>'
     + classRows
-    + '<p style="font-size:12px;color:var(--text-4);margin:8px 2px 18px;">Each class gets your full weekly study time until you pass its exam, then you roll to the next. Tip: set the exam date inside a class\u2019s OA Exam Prep chapter too for targeted drills.</p>'
+    + '<p style="font-size:12px;color:var(--text-4);margin:8px 2px 18px;">Each class gets your full weekly study time until you pass its exam, then you roll to the next. Tick a class off when you pass it.</p>'
     + '<h2 style="font-size:17px;margin:8px 0;">Weekly study blocks</h2>'
     + '<p style="font-size:12px;color:var(--text-3);margin:-2px 2px 8px;">' + blocksNote + '</p>'
     + (blockRows || '<p style="color:var(--text-4);font-size:13px;">No blocks yet \u2014 add one below.</p>')
@@ -39002,8 +38997,9 @@ function getQuestions(courseId, chId, secId) {
   if (typeof renderPlan === 'function'){
     var _rp=renderPlan;
     renderPlan=function(){ var el=_rp.apply(this, arguments);
-      try{ if(el && !el.querySelector('#pl-exam')){
-        el.insertBefore(buildExamPrep(), el.firstChild);
+      /* the "Exam target & prep" card asked for a target date per class; the
+         Plan screen no longer shows or asks for class dates (her request) */
+      try{ if(el && !el.querySelector('#pl-blocks') && !el.querySelector('.pw-card')){
         el.insertBefore(buildTimeBlocks(), el.firstChild);
       } }catch(e){}
       return el; };
@@ -41922,29 +41918,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     var gradDays = du(store.goals && store.goals.gradDate);
     var remaining = plan.filter(function(c){ return !c.done; }).length;
 
-    // 1) current class target overdue or within 7 days
-    if(cur){
-      var cd=du(cur.target);
-      if(cd!=null){
-        if(cd<0) return { key:'cls'+cur.code+cd, kind:'danger', icon:'\uD83D\uDD34',
-          msg:'<b>'+cur.code+'</b> is '+(-cd)+' day'+(cd===-1?'':'s')+' past its target date. You set this to stay accountable \u2014 time to close it out.' };
-        if(cd<=7) return { key:'cls'+cur.code+cd, kind:(cd<=3?'danger':'warning'), icon:(cd<=3?'\u23F0':'\u26A0\uFE0F'),
-          msg:'<b>'+cur.code+'</b> target is '+(cd===0?'TODAY':('in '+cd+' day'+(cd===1?'':'s')))+'. '+(cd<=3?'Take the pre-assessment now.':'Line up your final review.') };
-      }
-    }
+    // 1) per-class target dates are no longer shown anywhere - no nag about them either
     // 2) finish line within 14 days
     if(gradDays!=null && gradDays>=0 && gradDays<=14 && remaining>0){
       return { key:'grad'+gradDays, kind:(gradDays<=7?'danger':'warning'), icon:'\uD83C\uDFC1',
         msg:'Your finish line is '+(gradDays===0?'TODAY':('in '+gradDays+' day'+(gradDays===1?'':'s')))+' with '+remaining+' class'+(remaining===1?'':'es')+' left. Keep the pace \u2014 you set this date for a reason.' };
-    }
-    // 3) tight pace (informational, only if a class target is also within 10 days)
-    if(cur){
-      var cd2=du(cur.target);
-      if(gradDays!=null && gradDays>0 && remaining>0 && cd2!=null && cd2<=10){
-        var per=gradDays/remaining;
-        if(per<7) return { key:'pace'+Math.round(per*10), kind:'warning', icon:'\u23F3',
-          msg:'About '+per.toFixed(1)+' days per remaining class from here \u2014 a focused stretch. You\u2019ve got this.' };
-      }
     }
     return null;
   }
@@ -58410,6 +58388,7 @@ window.__inkDropAll = function(){
   } catch (e) {}
   try { cache = Object.create(null); } catch (e) {}
   try { tail = Object.create(null); } catch (e) {}
+  try { lastRefs = Object.create(null); } catch (e) {}
   try { store.gannoInkIndex = {}; } catch (e) {}
   try { store.gannoStrokes = {}; } catch (e) {}
   return n;
@@ -58461,6 +58440,41 @@ try {
   }
 } catch (e) { installPersistOverride(); }
 
+/* WHAT A SAVE TOOK AWAY.
+   The pad hands over the same array every time, mutated in place, so the list
+   itself cannot say what was removed. The references written last time can:
+   a stroke object that was in the last write and is not in this one was
+   erased, undone or moved, and the erase record is told. A stroke that is new
+   here but already on the record as erased was brought back (Undo), and the
+   record is told that too. A copy dropped in favour of an identical one is
+   not an erase. Appending a stroke costs one Set of the page - microseconds. */
+var lastRefs = Object.create(null);
+function noteErasures(rk, next){
+  var E = window.__erase;
+  next = next || [];
+  var prev = lastRefs[rk];
+  lastRefs[rk] = next.slice();
+  if (!E || typeof E.markStrokes !== 'function' || (E.isQuiet && E.isQuiet())) return;
+  if (!prev || !prev.length) return;
+  try {
+    var have = new Set(next), removed = [], i;
+    for (i = 0; i < prev.length; i++) if (!have.has(prev[i])) removed.push(prev[i]);
+    var dm = E.deadMap(rk), alive = [];
+    if (dm) {
+      var was = new Set(prev);
+      for (i = 0; i < next.length; i++) if (!was.has(next[i])) { var kk = E.strokeKey(next[i]); if (dm[kk] > 0) alive.push(next[i]); }
+    }
+    if (removed.length) {
+      var keep = Object.create(null);
+      for (i = 0; i < next.length; i++) keep[E.strokeKey(next[i])] = 1;
+      removed = removed.filter(function(st){ return !keep[E.strokeKey(st)]; });
+    }
+    if (removed.length || alive.length) E.markStrokes(rk, removed, alive);
+    if (!next.length && prev.length) E.mark('page', rk);
+  } catch (e) {}
+}
+window.__inkLastRefs = function(rk){ return (lastRefs[rk] || []).length; };
+
 // ---- route the app's accessors at the per-page slots ----
 try {
   if (typeof gannoGetStrokes === 'function') {
@@ -58469,13 +58483,14 @@ try {
       var mem = store.gannoStrokes[routeKey];
       if (mem && mem.length) return mem;
       var v = readInk(routeKey);
-      if (v) { store.gannoStrokes[routeKey] = v; return v; }
+      if (v) { store.gannoStrokes[routeKey] = v; if (!lastRefs[routeKey]) lastRefs[routeKey] = v.slice(); return v; }
       return [];
     };
   }
   if (typeof gannoSaveStrokes === 'function') {
     gannoSaveStrokes = function(routeKey, strokes){
       if (!store.gannoStrokes) store.gannoStrokes = {};
+      noteErasures(routeKey, strokes);          // what this save removed goes on the erase record
       store.gannoStrokes[routeKey] = strokes;   // instant in memory - nothing is ever lost
       writeInk(routeKey, strokes);              // and only THIS page is written
     };
@@ -62576,19 +62591,121 @@ var KINDS = { all: 1, scores: 1, ink: 1 };
 var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1,
                    knowtProgress: 1, recentSections: 1, projectStatus: 1 };
 
+var _rc = null;                  // the parsed record; re-parsing it on every stroke save was the cost
 function read(){
+  if (_rc) return _rc;
   var o = null;
   try { o = JSON.parse(localStorage.getItem(LKEY) || 'null'); } catch (e) {}
   if (!o || typeof o !== 'object') o = {};
   if (!o.pages || typeof o.pages !== 'object') o.pages = {};
   if (!o.courses || typeof o.courses !== 'object') o.courses = {};
   if (!o.courseNotes || typeof o.courseNotes !== 'object') o.courseNotes = {};
+  if (!o.strokes || typeof o.strokes !== 'object') o.strokes = {};
+  _rc = o;
   return o;
 }
 function write(o){
+  _rc = o;
   try { localStorage.setItem(LKEY, JSON.stringify(o)); } catch (e) {}
   try { store.__erased = o; } catch (e) {}
   idbSave(o);
+}
+/* ONE STROKE, ERASED, STAYS ERASED.
+ *
+ * "The notes are still overlapping when there is a new update." The record
+ * above knows when a whole page, or all ink, was cleared. It did not know about
+ * a single stroke: rub one out, or clear a page and write it again, or split a
+ * stacked page by sitting, and the copy the sync holds still carries the old
+ * strokes. The sync merges by union, so the next pull - the boot pull that runs
+ * four seconds into every launch, which is every update - put them straight
+ * back. With the eraser's fragments counting as "hers alone", the returning
+ * originals were laid on a new page below; a cleared page simply refilled.
+ *
+ * So every stroke removed from a page is recorded here by a key made from the
+ * stroke itself - its kind, colour, width, moment and points, with coordinates
+ * rounded exactly as the page store rounds them, so a copy pushed from memory
+ * and the same stroke read back from storage agree. A pull drops any incoming
+ * stroke whose key is on the record; a device learning of the erase carries it
+ * out. Undoing an erase records the stroke alive again (a negative stamp), and
+ * the later stamp wins, so the undo travels too. Bounded per page.
+ */
+var STROKE_CAP = 4000;
+function fnv(str){
+  var h = 0x811c9dc5;
+  for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+function strokeKey(st){
+  try {
+    if (!st) return '';
+    var j = JSON.stringify(st, function(k, v){
+      if (k.charAt(0) === '_') return undefined;
+      return (typeof v === 'number' && (k === 'x' || k === 'y' || k === 'anchorY')) ? Math.round(v * 10) / 10 : v;
+    });
+    return (st.ts || 0) + '.' + fnv(j) + '.' + j.length;
+  } catch (e) { return ''; }
+}
+function deadMap(rk){
+  var o = read(), m = o.strokes && o.strokes[rk];
+  if (!m) return null;
+  for (var k in m) return m;       // only worth handing back when it has something in it
+  return null;
+}
+function isDead(rk, st){
+  var m = deadMap(rk);
+  return !!(m && m[strokeKey(st)] > 0);
+}
+var _quiet = false;                // set while an erase from the other device is being carried out here
+var _pushTimer = null;
+function pushSoon(){
+  if (_pushTimer) clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(function(){
+    _pushTimer = null;
+    try { if (window.__sync && window.__sync.state().on && navigator.onLine) window.__sync.push().catch(function(){}); } catch (e) {}
+  }, 3000);
+}
+function trimStrokes(m){
+  var ks = Object.keys(m);
+  if (ks.length <= STROKE_CAP) return;
+  ks.sort(function(a, b){ return Math.abs(m[a]) - Math.abs(m[b]); });
+  for (var i = 0; i < ks.length - STROKE_CAP; i++) delete m[ks[i]];
+}
+function markStrokes(rk, dead, alive){
+  if (!rk) return 0;
+  var o = read(), now = Date.now(), n = 0, i, k;
+  if (!o.strokes[rk]) o.strokes[rk] = {};
+  var m = o.strokes[rk];
+  for (i = 0; i < (dead || []).length; i++) { k = strokeKey(dead[i]); if (k) { m[k] = now; n++; } }
+  for (i = 0; i < (alive || []).length; i++) { k = strokeKey(alive[i]); if (k && m[k]) { m[k] = -now; n++; } }
+  if (!n) return 0;
+  trimStrokes(m);
+  write(o);
+  pushSoon();
+  return n;
+}
+/* Carry out, on this device, stroke erases learned from another: the keys are
+   matched against the page and the matches removed. The page save that follows
+   runs quiet, so it records nothing new - the record already has these. */
+function applyStrokeMarks(rk, keys){
+  var changed = false;
+  try {
+    var list = gannoGetStrokes(rk) || [];
+    if (!list.length) return false;
+    var keep = [];
+    for (var i = 0; i < list.length; i++) { if (keys[strokeKey(list[i])]) continue; keep.push(list[i]); }
+    if (keep.length !== list.length) {
+      _quiet = true;
+      try { gannoSaveStrokes(rk, keep); } finally { _quiet = false; }
+      changed = true;
+      try {
+        // the notebook's own index, and the open pad if this is its page
+        var sk = (rk.indexOf('pad_') === 0) ? rk.slice(4) : null;
+        if (sk && store.padNotes && store.padNotes[sk]) { if (keep.length) store.padNotes[sk].n = keep.length; else delete store.padNotes[sk]; }
+        if (window.__notesPanel && window.__notesPanel.state().key === sk && typeof window.__notesPanel.reloadInk === 'function') window.__notesPanel.reloadInk();
+      } catch (e) {}
+    }
+  } catch (e) {}
+  return changed;
 }
 /* WHY THIS RECORD IS WRITTEN TWICE.
  *
@@ -62706,6 +62823,20 @@ function absorb(remote){
   for (k in rn) if ((rn[k] || 0) > (o.courseNotes[k] || 0)) {
     o.courseNotes[k] = rn[k]; changed = true;
     if (applyCourseNotesMark(k, rn[k])) applied = true;
+  }
+  var rs = remote.strokes || {};
+  for (k in rs) {
+    var rm = rs[k]; if (!rm || typeof rm !== 'object') continue;
+    if (!o.strokes[k]) o.strokes[k] = {};
+    var lm = o.strokes[k], fresh = null, sk2;
+    for (sk2 in rm) {
+      var rv = rm[sk2] || 0, lv = lm[sk2] || 0;
+      if (Math.abs(rv) > Math.abs(lv)) {
+        lm[sk2] = rv; changed = true;
+        if (rv > 0) { if (!fresh) fresh = {}; fresh[sk2] = 1; }
+      }
+    }
+    if (fresh) { trimStrokes(lm); if (applyStrokeMarks(k, fresh)) applied = true; }
   }
   var rc = remote.courses || {};
   for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) {
@@ -62998,6 +63129,8 @@ function filter(incoming, when){
   return stripResetCourses(out, when);
 }
 window.__erase = { mark: mark, at: at, pageAt: pageAt, absorb: absorb, filter: filter,
+                  strokeKey: strokeKey, markStrokes: markStrokes, deadMap: deadMap, isDead: isDead,
+                  isQuiet: function(){ return _quiet; },
                   applyCourse: applyCourseMark,
                   read: read, hydrate: hydrate,
                   courseAt: function(cid){ return (read().courses || {})[cid] || 0; } };
@@ -63153,6 +63286,10 @@ function unpack(s){
 
 /* ---------- ink union ---------- */
 function sig(s){
+  // the erase record's key, when it exists: it rounds coordinates the way the
+  // page store does, so a copy pushed from memory and the same stroke read
+  // back after a reload match instead of doubling the page
+  try { if (window.__erase && window.__erase.strokeKey) { var ek = window.__erase.strokeKey(s); if (ek) return ek; } } catch (e) {}
   try {
     var ks = [];
     for (var k in s) if (k.charAt(0) !== '_') ks.push(k);
@@ -63200,6 +63337,14 @@ function mergeInk(remoteInk, when, remoteErased){
       if (!seen[s2]) { seen[s2] = 1; fresh.push(incoming[i]); }
     }
     if (!fresh.length) continue;
+    /* A STROKE SHE ERASED STAYS ERASED - see the erase record. */
+    try {
+      var dm = (E && E.deadMap) ? E.deadMap(rk) : null;
+      if (dm) {
+        fresh = fresh.filter(function(st){ return !(dm[E.strokeKey(st)] > 0); });
+        if (!fresh.length) continue;
+      }
+    } catch (e) {}
     /* BOTH DEVICES WROTE THIS PAGE. "Why are the notes like this" - one page
        with two sittings laid over each other. The phone had not pulled the
        iPad's page yet, so it looked blank, she wrote on it, and this union put
@@ -63270,12 +63415,31 @@ function applyRemote(snap){
   var ink = inkOk ? mergeInk(snap.ink, when, snap.store && snap.store.__erased) : { added: 0, pages: 0 };
   res.ink = ink.added; res.pages = ink.pages;
   try { saveStore(); } catch (e) {}
-  try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
+  /* "The pages stall for a second when the notes are updated." A pull that
+     merged nothing still re-rendered the whole lesson - and its ink - under
+     her. A lesson is redrawn only when the pull actually brought something. */
+  var onLesson = false; try { onLesson = !!(typeof view === 'object' && view && view.name === 'section'); } catch (e) {}
+  if (res.history || res.ink || !onLesson) {
+    try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
+  }
   try { if (window.__applyTextHighlights) window.__applyTextHighlights(); } catch (e) {}
   return res;
 }
 
 /* ---------- network ---------- */
+/* THE COPY THIS DEVICE SENT LAST IS NOT NEWS. Every pull unpacked the whole
+   copy and walked every page of ink against its own - on a device that was
+   the last to push, that is a second of work to learn nothing. The packed
+   text is fingerprinted on the way out and on the way in; a match is skipped. */
+var _lastBlob = '';
+function blobHash(str){
+  try {
+    if (typeof str !== 'string' || !str.length) return '';
+    var h = 0x811c9dc5, step = str.length > 400000 ? 7 : 1;   // a long blob is sampled; its length is part of the key
+    for (var i = 0; i < str.length; i += step) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return str.length + '.' + h.toString(16) + '.' + str.slice(-24);
+  } catch (e) { return ''; }
+}
 function pull(){
   var c = cfg();
   if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
@@ -63283,9 +63447,12 @@ function pull(){
     .then(function(r){ try { window.__gateCheck && window.__gateCheck(r); } catch (e) {} return r.json().then(function(j){ if (!r.ok) throw new Error(r.status === 401 ? 'Signed out of the site - tap Sign in' : (j.error || ('server said ' + r.status))); return j; }); })
     .then(function(j){
       if (j.empty) return { empty: true, history: 0, ink: 0 };
+      var bh = blobHash(j.data);
+      if (bh && bh === _lastBlob) return { history: 0, ink: 0, pages: 0, skipped: 0, same: true, remoteAt: j.updatedAt || 0 };
       var snap = unpack(j.data);
       if (!snap) throw new Error('The synced data could not be read.');
       var res = applyRemote(snap);
+      _lastBlob = bh;
       res.remoteAt = j.updatedAt || 0;
       return res;
     });
@@ -63310,7 +63477,7 @@ function push(){
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ data: data, device: c.label || '' })
   }).then(function(r){ try { window.__gateCheck && window.__gateCheck(r); } catch (e) {} return r.json().then(function(j){ if (!r.ok) throw new Error(r.status === 401 ? 'Signed out of the site - tap Sign in' : (j.error || ('server said ' + r.status))); return j; }); })
-    .then(function(j){ var cc = cfg() || {}; cc.lastPush = Date.now(); setCfg(cc); return j; });
+    .then(function(j){ var cc = cfg() || {}; cc.lastPush = Date.now(); setCfg(cc); _lastBlob = blobHash(data); return j; });
   });
 }
 
@@ -63330,6 +63497,7 @@ function syncNow(){
     .catch(function(e){ state.busy = false; state.error = e && e.message ? e.message : String(e); throw e; });
 }
 window.__sync = { now: syncNow, pull: pull, push: push, state: function(){ return { on: on(), busy: state.busy, last: state.last, error: state.error, cfg: cfg() }; },
+                  _blobHash: blobHash, _lastBlob: function(){ return _lastBlob; },
                   _snapshot: snapshot, _pack: pack, _unpack: unpack, _apply: applyRemote, _sha: sha256hex };
 
 /* ---------- when it runs by itself ---------- */
@@ -66823,6 +66991,85 @@ function paper(){
   return PAPERS[0];
 }
 function ruleGap(){ return paper().gap; }
+/* NOTEBOOK SKINS. "Create skins for the notebook." The ruling says WHERE the
+   lines are; the skin says what the paper and its lines look like - a canary
+   legal pad, cream stock, ivory, mint, blush, a graphite board, a blueprint.
+   Chosen per class exactly as the ruling is, remembered the same way, and
+   painted as CSS variables on the dock: not one stroke is touched. On the two
+   dark skins a near-black pen is SHOWN light so it can be read; what is stored
+   is still the colour she picked, and it exports black on white as before. */
+var SKINS = [
+  { id: 'classic',   name: 'Classic',    note: 'follows your theme' },
+  { id: 'legal',     name: 'Legal pad',  note: 'canary yellow, blue rules',  v: { paper: '#fff9c9', rule: '#7f9fd6', ruleA: '.62', margin: '#e07a7a', head: '#e07a7a', label: '#8d8146', brk: '#cfc47e', cover: '#fff2a0', sw: ['#fff9c9', '#7f9fd6', '#e07a7a'] } },
+  { id: 'cream',     name: 'Cream',      note: 'warm ivory, brown rules',    v: { paper: '#f7efdf', rule: '#c4ad87', ruleA: '.58', margin: '#b07a4f', head: '#b07a4f', label: '#8a7350', brk: '#d5c4a4', cover: '#efe4cf', sw: ['#f7efdf', '#c4ad87', '#b07a4f'] } },
+  { id: 'ivory',     name: 'Ivory',      note: 'soft ivory, grey rules',     v: { paper: '#f5f2ea', rule: '#bfbbb1', ruleA: '.75', margin: '#8e897f', head: '#8e897f', label: '#8b8780', brk: '#cfcbc1', cover: '#e9e5dc', sw: ['#f5f2ea', '#bfbbb1', '#8e897f'] } },
+  { id: 'mint',      name: 'Mint',       note: 'cool green, sage rules',     v: { paper: '#eef8f1', rule: '#93c5a6', ruleA: '.7',  margin: '#4f9a70', head: '#4f9a70', label: '#5f8a70', brk: '#b8dcc5', cover: '#dff0e5', sw: ['#eef8f1', '#93c5a6', '#4f9a70'] } },
+  { id: 'rose',      name: 'Rose',       note: 'blush pink, plum rules',     v: { paper: '#fbf0f3', rule: '#dca9ba', ruleA: '.7',  margin: '#b9527a', head: '#b9527a', label: '#9a6579', brk: '#eac6d1', cover: '#f5dfe6', sw: ['#fbf0f3', '#dca9ba', '#b9527a'] } },
+  { id: 'graphite',  name: 'Graphite',   note: 'dark board, pale rules',     dark: true, v: { paper: '#2a2d33', rule: '#7b8290', ruleA: '.6',  margin: '#b3bac8', head: '#b3bac8', label: '#b6bdcb', brk: '#5a606b', cover: '#1f2126', sw: ['#2a2d33', '#7b8290', '#b3bac8'] } },
+  { id: 'blueprint', name: 'Blueprint',  note: 'deep blue, white rules',     dark: true, v: { paper: '#12305e', rule: '#9cc3ff', ruleA: '.55', margin: '#e3eeff', head: '#e3eeff', label: '#cfe0ff', brk: '#3b5d94', cover: '#0d2447', sw: ['#12305e', '#9cc3ff', '#e3eeff'] } }
+];
+function skinId(){
+  var pr = prefs(), c = paperCourse();
+  if (c && pr.skinBy && typeof pr.skinBy === 'object' && pr.skinBy[c]) return pr.skinBy[c];
+  return pr.skin || 'classic';
+}
+function skin(){
+  var id = skinId();
+  for (var i = 0; i < SKINS.length; i++) if (SKINS[i].id === id) return SKINS[i];
+  return SKINS[0];
+}
+var SKIN_VARS = { paper: '--mn-paper', rule: '--mn-rule', ruleA: '--mn-rule-a', margin: '--mn-margin', head: '--mn-head', label: '--mn-label', brk: '--mn-break', cover: '--mn-cover' };
+function applySkin(){
+  if (!dock) return;
+  var S = skin(), k;
+  if (!S.v) {
+    for (k in SKIN_VARS) dock.style.removeProperty(SKIN_VARS[k]);
+    dock.removeAttribute('data-skin');
+    return;
+  }
+  for (k in SKIN_VARS) if (S.v[k] != null) dock.style.setProperty(SKIN_VARS[k], S.v[k]);
+  dock.setAttribute('data-skin', S.id);
+}
+function setSkin(id){
+  var pr = prefs(), c = paperCourse();
+  pr.skin = id;
+  if (c) {
+    if (!pr.skinBy || typeof pr.skinBy !== 'object') pr.skinBy = {};
+    pr.skinBy[c] = id;
+  }
+  save();
+  applySkin();
+  redraw();                            // a dark skin shows the pen light; a light one shows it as it is
+  var S = skin();
+  try { if (typeof toast === 'function')
+    toast(S.name + ' notebook' + (c ? ' for this class' : '') + ' \u2014 your writing has not moved'); } catch (e) {}
+}
+function skinSwatch(S){
+  var d = document.createElement('span');
+  d.className = 'mn-paper-sw';
+  if (!S.v) { d.style.background = 'var(--surface,#fff)'; d.style.borderColor = 'var(--border-strong,rgba(148,163,184,.75))'; return d; }
+  var sw = S.v.sw;
+  d.style.background = sw[0];
+  d.style.backgroundImage = 'linear-gradient(' + sw[1] + ' 1px, transparent 1px)';
+  d.style.backgroundSize = '5px 5px';
+  d.style.borderLeft = '6px solid ' + sw[2];
+  return d;
+}
+/* Display-only: on a dark skin a pen darker than the paper is shown light. */
+function inkShown(c){
+  try {
+    var S = skin();
+    if (!S.dark) return c;
+    var m = /^#([0-9a-f]{6})$/i.exec(String(c || '').trim());
+    if (!m) return c;
+    var v = parseInt(m[1], 16), r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+    var lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    if (lum > 0.38) return c;
+    // lift it: keep the hue, push it to a readable tint
+    var f = function(x){ return Math.round(x + (255 - x) * 0.78); };
+    return '#' + ((f(r) << 16) | (f(g) << 8) | f(b)).toString(16).padStart(6, '0');
+  } catch (e) { return c; }
+}
 function isCornell(){ return paper().kind === 'cornell'; }
 
 var MINH = 200, MAXH = 620;     // dock height in CSS px
@@ -67281,31 +67528,33 @@ css.textContent = [
      and it keeps the stack that builds it up over the desk colour. */
   '#mn-ink{display:block; width:100%; touch-action:pan-x pan-y;',
   '  background-color:var(--surface);}',
+  /* a skin paints the sheet itself - and wins over the glass theme's stack */
+  '#mn-dock[data-skin] #mn-ink{background-color:var(--mn-paper) !important; background-image:none !important;}',
   '[data-theme="glass"] #mn-ink{background-color:var(--bg-2,var(--bg));',
   '  background-image:linear-gradient(var(--surface),var(--surface)),',
   '                   linear-gradient(var(--surface),var(--surface)),',
   '                   linear-gradient(var(--surface),var(--surface));}',
-  '#mn-ink .mn-rule{stroke:var(--text-4,#94a3b8); stroke-width:1; opacity:.30;',
+  '#mn-ink .mn-rule{stroke:var(--mn-rule,var(--text-4,#94a3b8)); stroke-width:1; opacity:var(--mn-rule-a,.30);',
   '  vector-effect:non-scaling-stroke;}',
   /* the three Cornell divisions, drawn stronger than the writing lines */
-  '#mn-ink .mn-margin{stroke:var(--secondary,#f472b6); stroke-width:1.5; opacity:.75;',
+  '#mn-ink .mn-margin{stroke:var(--mn-margin,var(--secondary,#f472b6)); stroke-width:1.5; opacity:.75;',
   '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-head{stroke:var(--secondary,#f472b6); stroke-width:1.5; opacity:.55;',
+  '#mn-ink .mn-head{stroke:var(--mn-head,var(--secondary,#f472b6)); stroke-width:1.5; opacity:.55;',
   '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-pagebreak{stroke:var(--text-4,#94a3b8); stroke-width:2; opacity:.5;',
+  '#mn-ink .mn-pagebreak{stroke:var(--mn-break,var(--text-4,#94a3b8)); stroke-width:2; opacity:.5;',
   '  stroke-dasharray:10 8; vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-label{fill:var(--text-4,#94a3b8); opacity:.62; font-size:13px; font-weight:700;',
+  '#mn-ink .mn-label{fill:var(--mn-label,var(--text-4,#94a3b8)); opacity:.62; font-size:13px; font-weight:700;',
   '  letter-spacing:1.6px; font-family:inherit;}',
-  '#mn-ink .mn-cover{fill:var(--bg-2,var(--bg)); stroke:var(--secondary,#f472b6);',
+  '#mn-ink .mn-cover{fill:var(--mn-cover,var(--bg-2,var(--bg))); stroke:var(--mn-margin,var(--secondary,#f472b6));',
   '  stroke-width:1; vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-cover-label{fill:var(--text-4,#94a3b8); font-size:20px; font-weight:600;',
+  '#mn-ink .mn-cover-label{fill:var(--mn-label,var(--text-4,#94a3b8)); font-size:20px; font-weight:600;',
   '  font-family:inherit; text-anchor:middle; opacity:.85;}',
   /* the highlighter band - flat, even, translucent; it is painted UNDER the
      writing (see redraw) so no blend mode is needed to keep the ink crisp */
   '#mn-ink .mn-hl{fill:none; stroke-linecap:round; stroke-linejoin:round;}',
-  '#mn-ink .mn-grid{stroke:var(--text-4,#94a3b8); stroke-width:1; opacity:.26; fill:none;',
+  '#mn-ink .mn-grid{stroke:var(--mn-rule,var(--text-4,#94a3b8)); stroke-width:1; opacity:.26; fill:none;',
   '  vector-effect:non-scaling-stroke;}',
-  '#mn-ink .mn-dotgrid{fill:var(--text-4,#94a3b8); opacity:.55;}',
+  '#mn-ink .mn-dotgrid{fill:var(--mn-rule,var(--text-4,#94a3b8)); opacity:.55;}',
   /* the picker shows each ruling as a small drawing of itself, not a word */
   '.mn-paper-sw{width:30px; height:22px; border-radius:3px; flex:0 0 auto;',
   '  border:1px solid var(--border,#d5dbe4); background:var(--surface,#fff);',
@@ -67831,10 +68080,20 @@ function paperSwatch(P){
 function openPaperPop(anchor){
   openPop(anchor, 'paper', 'Paper', function(pop){
     var cur = paperId();
+    var l1 = document.createElement('div'); l1.className = 'mn-pop-label'; l1.textContent = 'Ruling'; pop.appendChild(l1);
     PAPERS.forEach(function(P){
-      pop.appendChild(sizeRow(paperSwatch(P), P.name + ' — ' + P.note, P.id === cur, function(){
+      pop.appendChild(sizeRow(paperSwatch(P), P.name + ' \u2014 ' + P.note, P.id === cur, function(){
         closePop(); setPaper(P.id);
       }));
+    });
+    var curS = skinId();
+    var l2 = document.createElement('div'); l2.className = 'mn-pop-label'; l2.textContent = 'Notebook skin'; l2.style.marginTop = '8px'; pop.appendChild(l2);
+    SKINS.forEach(function(S){
+      var row = sizeRow(skinSwatch(S), S.name + ' \u2014 ' + S.note, S.id === curS, function(){
+        closePop(); setSkin(S.id);
+      });
+      row.setAttribute('data-skin', S.id);
+      pop.appendChild(row);
     });
   });
 }
@@ -67922,9 +68181,18 @@ function openPagePop(anchor){
         }));
       })(p);
     }
-    var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add a page', false, function(){ closePop(); addPage(1); });
+    var addRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\uFF0B Add a page at the end', false, function(){ closePop(); addPage(1); });
+    addRow.setAttribute('data-page-act', 'add');
     pop.appendChild(addRow);
-    pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '＋ Add 5 pages', false, function(){ closePop(); addPage(5); }));
+    var add5 = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\uFF0B Add 5 pages', false, function(){ closePop(); addPage(5); });
+    add5.setAttribute('data-page-act', 'add5');
+    pop.appendChild(add5);
+    var ins = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\u2913 Insert a blank page before page ' + cur, false, function(){ closePop(); insertPage(cur); });
+    ins.setAttribute('data-page-act', 'insert');
+    pop.appendChild(ins);
+    var del = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\uD83D\uDDD1 Delete page ' + cur + (inkOn[cur - 1] ? '' : ' (blank)'), false, function(){ closePop(); deletePage(cur); });
+    del.setAttribute('data-page-act', 'delete');
+    if (n > 1 || inkOn[cur - 1]) pop.appendChild(del);
     if (strokes.length > 1)
       pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '⇅ Split this page by sitting', false, function(){ closePop(); splitSessions(); }));
   });
@@ -68313,14 +68581,14 @@ function el(s){
   if (s && s.type === 'hl') {
     n.setAttribute('class', 'mn-hl');
     n.setAttribute('fill', 'none');
-    n.setAttribute('stroke', s.color);
+    n.setAttribute('stroke', inkShown(s.color));
     n.setAttribute('stroke-width', String(s.width));
     n.setAttribute('stroke-opacity', String(HL_ALPHA));
     return n;
   }
-  if (p.fill) { n.setAttribute('fill', s.color); n.setAttribute('stroke', 'none'); }
+  if (p.fill) { n.setAttribute('fill', inkShown(s.color)); n.setAttribute('stroke', 'none'); }
   else {
-    n.setAttribute('fill', 'none'); n.setAttribute('stroke', s.color);
+    n.setAttribute('fill', 'none'); n.setAttribute('stroke', inkShown(s.color));
     n.setAttribute('stroke-width', String(s.width));
     n.setAttribute('stroke-linecap', 'round'); n.setAttribute('stroke-linejoin', 'round');
   }
@@ -68351,6 +68619,7 @@ function label(g, x, y, txt, anchor){
   g.appendChild(t);
 }
 function drawRules(){
+  applySkin();
   svg.appendChild(buildRules());
 }
 /* More paper must not rebuild the ink. redraw() tears down and re-creates
@@ -68500,7 +68769,7 @@ function liveNode(s){
   n.setAttribute('fill', 'none');
   n.setAttribute('stroke-linecap', 'round');
   n.setAttribute('stroke-linejoin', 'round');
-  n.setAttribute('stroke', s.color);
+  n.setAttribute('stroke', inkShown(s.color));
   n.setAttribute('stroke-width', String(s.width));
   if (s.type === 'hl') {
     n.setAttribute('class', 'mn-hl');
@@ -68542,6 +68811,69 @@ function addPage(n){
   sizeSvg(); redraw(); persist();
   try { if (pagesEl) pagesEl.scrollTop = pagesEl.scrollHeight; } catch (e) {}
   if (pageCount() === was && typeof toast === 'function') toast('This notebook is at its ' + MAX_PAGES + '-page limit');
+}
+/* PAGES SHE CAN TAKE OUT AND PUT IN. "Options to remove pages, add pages etc."
+   Delete a page: its ink goes (Undo brings it back), every page below moves up
+   one whole page so its layout is kept, and the erase record learns of the
+   strokes that went - so the copy on the other device loses them too instead
+   of putting them back on the next pull. Insert a blank page before page N:
+   everything from page N down moves down one page. A stroke belongs to the
+   page its first point is on. */
+function strokesOnPage(n){
+  var top = (n - 1) * PAGE_H, bot = n * PAGE_H, out = [];
+  for (var i = 0; i < strokes.length; i++) {
+    var st = strokes[i]; if (!st || !st.points || !st.points.length) continue;
+    var y = st.points[0].y;
+    if (y >= top && y < bot) out.push({ s: st, i: i });
+  }
+  return out;
+}
+function shiftedCopy(st, dy){
+  var c = JSON.parse(JSON.stringify(st));
+  c.points = (c.points || []).map(function(q){ var o = {}; for (var kk in q) o[kk] = q[kk]; o.y = q.y + dy; return o; });
+  if (c.start) c.start = { x: c.start.x, y: c.start.y + dy };
+  if (c.end) c.end = { x: c.end.x, y: c.end.y + dy };
+  c._ts = Date.now();
+  return c;
+}
+function movePagesFrom(n, dy){          // every stroke on page n and below moves by dy
+  var top = (n - 1) * PAGE_H, removed = [], added = [];
+  for (var i = 0; i < strokes.length; i++) {
+    var st = strokes[i]; if (!st || !st.points || !st.points.length) continue;
+    if (st.points[0].y >= top) { removed.push({ s: st, i: i }); added.push(shiftedCopy(st, dy)); }
+  }
+  return { removed: removed, added: added };
+}
+function deletePage(n){
+  n = Math.max(1, Math.min(pageCount(), n | 0));
+  var onIt = strokesOnPage(n), below = movePagesFrom(n + 1, -PAGE_H);
+  if (onIt.length && typeof confirm === 'function' &&
+      !confirm('Delete page ' + n + ' and the ' + onIt.length + ' stroke' + (onIt.length === 1 ? '' : 's') + ' on it? Pages below move up. (Undo brings it back.)')) return false;
+  var removed = onIt.concat(below.removed), added = below.added;
+  if (removed.length) logOp({ op: 'erase', removed: removed, added: added, prevH: pageH });
+  else logOp({ op: 'erase', removed: [], added: [], prevH: pageH });
+  removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
+  added.forEach(function(c){ strokes.push(c); });
+  var pages = Math.max(1, pageCount() - 1);
+  pageH = Math.max(pageHFor(), pages * PAGE_H);
+  if (pageH > pages * PAGE_H && !lowestInk()) pageH = Math.max(PAGE0, pages * PAGE_H);
+  sizeSvg(); redraw(); persist(); paintBadge(); paintPageSoon();
+  try { if (typeof toast === 'function') toast('Page ' + n + ' removed \u2014 Undo puts it back.'); } catch (e) {}
+  gotoPage(Math.min(n, pageCount()));
+  return true;
+}
+function insertPage(n){
+  n = Math.max(1, Math.min(pageCount() + 1, n | 0));
+  if (pageCount() >= MAX_PAGES) { try { if (typeof toast === 'function') toast('This notebook is at its ' + MAX_PAGES + '-page limit'); } catch (e) {} return false; }
+  var mv = movePagesFrom(n, PAGE_H);
+  logOp({ op: 'erase', removed: mv.removed, added: mv.added, prevH: pageH });
+  mv.removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
+  mv.added.forEach(function(c){ strokes.push(c); });
+  pageH = Math.max(pageHFor(), (pageCount() + 1) * PAGE_H);
+  sizeSvg(); redraw(); persist(); paintBadge(); paintPageSoon();
+  try { if (typeof toast === 'function') toast('A blank page is now page ' + n + ' \u2014 Undo takes it out.'); } catch (e) {}
+  gotoPage(n);
+  return true;
 }
 function grewIfNeeded(){
   if (lowestInk() > pageH - GROW_AT || pageCount() < withHeadroom(pageCount())) {
@@ -69197,6 +69529,7 @@ function loadSection(k){
     w.title = away ? 'Pinned page \u2014 writing here from anywhere' : '';
   }
   syncFormulaTab();                 // a maths class gains the tab, others lose it
+  applySkin();                      // this class's notebook look
   if (isOpen) { sizeSvg(); redraw(); paintList(); if (tab === 'form') paintFormulas(); }
   paintBadge();
 }
@@ -69474,12 +69807,21 @@ window.__notesPanel = {
   page: function(){ return { cur: curPage(), count: pageCount() }; },
   gotoPage: function(n){ gotoPage(n); },
   addPage: function(n){ addPage(n); return pageCount(); },
+  insertPage: function(n){ insertPage(n); return pageCount(); },
+  deletePage: function(n){ deletePage(n); return pageCount(); },
+  undo: function(){ undo(); return strokes.length; },
+  redo: function(){ redo(); return strokes.length; },
+  skins: function(){ return SKINS.map(function(S){ return S.id; }); },
+  skin: function(){ return skinId(); },
+  setSkin: function(id){ setSkin(id); return skinId(); },
+  inkShown: function(c){ return inkShown(c); },
   surface: function(){ var r = svg ? svg.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 }; return { x: r.left, y: r.top, w: r.width, h: r.height }; },
   lastStroke: function(){ var s = strokes[strokes.length - 1]; return s ? JSON.parse(JSON.stringify(s)) : null; },
   livePoints: function(){ return live ? live.points.length : 0; },
   limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H, pageH: PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
   splitSessions: function(){ return splitSessions(); },
+  reloadInk: function(){ if (!curKey) return 0; strokes = loadStrokes(curKey); pageH = pageHFor(); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); return strokes.length; },
   paper: function(){ return paperId(); },
   pin: function(k){ return setPinned(k); },
   pinned: function(){ return pinnedKey(); },
