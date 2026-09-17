@@ -145,7 +145,8 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   await p.click('.ganno-bar [data-act="undo"]'); await p.waitForTimeout(100);
   ok('lesson: second undo removes the last DRAWN stroke, not a random one', await G() === 2 && await p.evaluate((y) => !gannoGetStrokes(ganno.routeKey).some(s => Math.abs(s.points[0].y - y) < 4), storedYs[2]), await G());
   const ts = await p.evaluate(() => gannoGetStrokes(ganno.routeKey).map(s => s._ts));
-  ok('lesson: restored ink carries a timestamp (sync-safe)', ts.every(t => typeof t === 'number' && t > 0), JSON.stringify(ts));
+  // no strokes restored would pass .every() with nothing checked
+  ok('lesson: restored ink carries a timestamp (sync-safe)', ts.length > 0 && ts.every(t => typeof t === 'number' && t > 0), JSON.stringify(ts));
   await p.evaluate(() => { gannoSaveStrokes(ganno.routeKey, []); gannoRender([], null); store.gannoAllowFinger = false; saveStore(); });
   ok('no page errors', errs.length===0, errs.join(' | ').slice(0,300));
   await b.close();

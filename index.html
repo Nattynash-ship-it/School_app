@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.593">
+<meta name="app-build" content="18.594">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -13549,6 +13549,7 @@ const defaultStore = {
  plannerCards: [], // { id, title, column: 'todo'|'doing'|'done', courseId?, dueDate?, notes?, createdAt, completedAt? }
  pretests: {}, // courseId -> { takenAt, score, total, chapterScores: { chId: { correct, total } }, questions: [qId] }
  pretestLive: {}, // courseId -> a pretest still being taken: { ts, qids, idx, answers, byChap }
+ __t: {},         // key -> when this device last CHOSE it (goals, exam dates, which classes are active)
  useNewNav: true, // toggle: show v2 sidebar nav and Today as home
  // anonymous metric cache, recomputed lazily
 };
@@ -15463,7 +15464,7 @@ function showOverflowMenu() {
  sheet.querySelector('[data-act="goal"]').addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); close(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); close(); render(); }
  });
  sheet.querySelector('[data-act="bulk-diff"]').addEventListener('click', () => {
  close();
@@ -20113,7 +20114,7 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  function playRecorded() {
  const parts = chunk(text);
  if (!parts.length) { speakWithDevice(); return; }
- const voice = (store && store.listenVoice) || 'nova';
+ const voice = window.__neuralVoice.voice();
  const sess = { dead: false, paused: false, i: 0 };
  window.__listenSession = sess;
  if (!listenAudio) listenAudio = new Audio();
@@ -20148,6 +20149,7 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
 
  const V = window.__neuralVoice;
  if (!V) { speakWithDevice(); return; }
+ if (V.mode() === 'off') { speakWithDevice(); return; }   // her choice: the device voice
  if (V.on()) { playRecorded(); return; }
  if (V.state() === 'off') { speakWithDevice(); return; }
  // First use on this device: ask whether the site can do this at all. The
@@ -24106,7 +24108,7 @@ function renderFocus() {
  if (adjBtn) adjBtn.addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); render(); }
  });
  const wp = wrap.querySelector('[data-act="practice-weak"]');
  if (wp && weak.length) {
@@ -24268,6 +24270,46 @@ function showInterleavedSheet(courseId) {
  });
 }
 
+/* The Listen voice picker. Says plainly what each choice costs, because one of
+   them spends her own API credit and the other does not. */
+function showListenVoiceSheet() {
+  const V = window.__neuralVoice;
+  if (!V) { toast('Audio is not available on this device.'); return; }
+  let sheet = document.querySelector('.pomo-sheet.listen-sheet');
+  if (sheet) { sheet.remove(); return; }
+  sheet = document.createElement('div');
+  sheet.className = 'pomo-sheet listen-sheet';
+  sheet.style.alignItems = 'flex-end';
+  const m = V.mode(), cur = V.voice();
+  const row = (act, label, sub, on) =>
+    `<button class="pomo-btn" data-act="${act}" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; ${on ? 'background:var(--accent); color:var(--accent-text);' : ''}">
+       <span style="display:block;">${on ? '\u2713 ' : ''}${label}</span>
+       <span style="display:block; font-size:11.5px; opacity:0.8; font-weight:500;">${sub}</span></button>`;
+  sheet.innerHTML = `
+  <div class="pomo-card" style="text-align:left; max-width:480px; padding:18px 20px 24px; max-height:80vh; overflow-y:auto;">
+   <button class="pomo-close" data-close>\u00d7</button>
+   <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:10px;">Listen voice</div>
+   ${row('mode-auto', 'Recorded voice when available', 'Sounds far better than the iPad\u2019s own. Costs a few pence the first time a lesson is read, then nothing \u2014 it is saved on this device and plays offline.', m === 'auto')}
+   ${row('mode-off', 'This device\u2019s own voice', 'Free, always offline, and noticeably more robotic. iPad Settings \u203a Accessibility \u203a Spoken Content \u203a Voices \u2014 an \u201cEnhanced\u201d voice improves it.', m === 'off')}
+   <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin:14px 0 8px;">Which voice</div>
+   ${V.voices.map(v => row('v-' + v.id, v.name, v.note, v.id === cur)).join('')}
+  </div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
+  sheet.querySelector('[data-close]').addEventListener('click', close);
+  sheet.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const a = b.getAttribute('data-act');
+    if (a === 'mode-auto') { V.setMode('auto'); close(); showListenVoiceSheet(); return; }
+    if (a === 'mode-off')  { V.setMode('off');  close(); showListenVoiceSheet(); return; }
+    if (a.indexOf('v-') === 0) {
+      V.setVoice(a.slice(2));
+      if (V.mode() === 'off') V.setMode('auto');   // picking a voice means she wants it read in one
+      close(); showListenVoiceSheet();
+    }
+  });
+}
 function showMoreSheet() {
  // Reuse pomo-sheet styling for a generic bottom sheet
  let sheet = document.querySelector('.pomo-sheet.more-sheet');
@@ -24285,6 +24327,7 @@ function showMoreSheet() {
  <button class="pomo-btn" data-act="study-modes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background:var(--accent); color:var(--accent-text,#fff);">✨ Study modes (Feynman, mixed practice…)</button>
  <button class="pomo-btn" data-act="defer-answers" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">🎯 Answers: ${deferAnswersOn() ? 'shown at the end' : 'shown after each question'}</button>
  <button class="pomo-btn" data-act="pdf" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">📄 Export to PDF (for GoodNotes)</button>
+ <button class="pomo-btn" data-act="listen-voice" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">\ud83d\udd0a Listen voice: ${window.__neuralVoice ? (window.__neuralVoice.mode() === 'off' ? 'this device' : (window.__neuralVoice.voices.filter(v => v.id === window.__neuralVoice.voice())[0] || {}).name + (window.__neuralVoice.mode() === 'on' ? '' : ' (when available)')) : 'this device'}</button>
  <button class="pomo-btn" data-act="export" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↓ Export backup</button>
  <button class="pomo-btn" data-act="email-backup" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">✉ Email backup to myself</button>
  <button class="pomo-btn" data-act="import" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↑ Import backup</button>
@@ -24302,6 +24345,7 @@ function showMoreSheet() {
  close();
  renderThemePicker();
  });
+ sheet.querySelector('[data-act="listen-voice"]')?.addEventListener('click', () => { close(); showListenVoiceSheet(); });
  sheet.querySelector('[data-act="dashboard"]').addEventListener('click', () => {
  close();
  showProgressDashboard();
@@ -24335,7 +24379,7 @@ function showMoreSheet() {
  sheet.querySelector('[data-act="goal"]').addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); close(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); close(); render(); }
  });
  sheet.querySelector('[data-act="wipe-annotations"]') && sheet.querySelector('[data-act="wipe-annotations"]').addEventListener('click', () => {
  if (!confirm('Erase ALL pen and highlighter marks on every page? Your notes, progress, and flashcards are kept. This cannot be undone.')) return;
@@ -27300,6 +27344,7 @@ function showTestPrepSheet(courseId) {
  const typeInput = sheet.querySelector('#testprep-type');
  if (!dateInput.value) { toast('Pick a date first'); return; }
  if (!store.testPrep) store.testPrep = {};
+ touch('testPrep');
  store.testPrep[courseId] = {
  examDate: dateInput.value,
  examType: typeInput.value || 'OA',
@@ -28246,6 +28291,140 @@ function mergeIntoStore(incoming) {
  if (incoming.pinnedCourses && typeof incoming.pinnedCourses === 'object') {
  store.pinnedCourses = Object.assign({}, store.pinnedCourses || {}, incoming.pinnedCourses);
  }
+ /* ===== WHAT USED TO STAY ON ONE DEVICE =====
+    Measured before this build: of the store's 28 keys, only 8 crossed between
+    her iPad and her phone. Exam-sim results, pretest results, her own flashcard
+    decks, Learn progress, exam dates, streak, daily goal, calendar, planner,
+    project status and text highlights all stopped at whichever device made
+    them - so a class could read differently on each, and work done on the phone
+    was invisible on the iPad.
+
+    Same three rules as everything above: never delete, union what accumulates,
+    and let the later decision win only for the handful of things that are a
+    decision rather than a record. A class reset still outranks all of it - the
+    erase record strips these keys out of an older copy before this runs. */
+
+ // Exam-sim results — union, newest kept, same shape as quiz history
+ if (Array.isArray(incoming.examSessions)) {
+ const seen = new Set((store.examSessions || []).map(x => x && (x.id || (x.ts + ':' + (x.courseId || '')))));
+ const merged = [...(store.examSessions || [])];
+ for (const e of incoming.examSessions) {
+ if (!e) continue;
+ const k = e.id || (e.ts + ':' + (e.courseId || ''));
+ if (!seen.has(k)) { seen.add(k); merged.push(e); }
+ }
+ merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+ store.examSessions = merged.slice(-2000);
+ }
+ // Pretest results — the later sitting is the one she wants to see
+ if (incoming.pretests && typeof incoming.pretests === 'object') {
+ store.pretests = store.pretests || {};
+ for (const cid of Object.keys(incoming.pretests)) {
+ const inc = incoming.pretests[cid], cur = store.pretests[cid];
+ if (!cur || ((inc && inc.takenAt) || 0) > ((cur && cur.takenAt) || 0)) store.pretests[cid] = inc;
+ }
+ }
+ // Learn progress — per card, the later sighting wins
+ if (incoming.knowtProgress && typeof incoming.knowtProgress === 'object') {
+ store.knowtProgress = store.knowtProgress || {};
+ for (const cid of Object.keys(incoming.knowtProgress)) {
+ const inc = incoming.knowtProgress[cid] || {};
+ const cur = store.knowtProgress[cid] || (store.knowtProgress[cid] = {});
+ for (const cardId of Object.keys(inc)) {
+ const a = inc[cardId], b = cur[cardId];
+ if (!b || ((a && a.lastSeen) || 0) > ((b && b.lastSeen) || 0)) cur[cardId] = a;
+ }
+ }
+ }
+ /* Her own decks — the deck is content she made, its schedule is progress.
+    A deck either device has is kept; cards union by id; a card's schedule
+    follows the later review, exactly as the per-lesson cards above do. */
+ if (incoming.flashDecks && typeof incoming.flashDecks === 'object') {
+ store.flashDecks = store.flashDecks || {};
+ for (const did of Object.keys(incoming.flashDecks)) {
+ const inc = incoming.flashDecks[did];
+ if (!inc) continue;
+ const cur = store.flashDecks[did];
+ if (!cur) { store.flashDecks[did] = inc; continue; }
+ const byId = {};
+ (cur.cards || []).forEach(c => { if (c && c.id) byId[c.id] = c; });
+ (inc.cards || []).forEach(c => {
+ if (!c || !c.id) return;
+ const mine = byId[c.id];
+ if (!mine) { byId[c.id] = c; return; }
+ if ((c.due || 0) > (mine.due || 0)) byId[c.id] = c;
+ });
+ cur.cards = Object.keys(byId).map(k => byId[k]);
+ if (!cur.name && inc.name) cur.name = inc.name;
+ }
+ }
+ // Text highlights on lessons — union per section by id
+ if (incoming.textHL && typeof incoming.textHL === 'object') {
+ store.textHL = store.textHL || {};
+ for (const k of Object.keys(incoming.textHL)) {
+ const inc = Array.isArray(incoming.textHL[k]) ? incoming.textHL[k] : [];
+ const cur = Array.isArray(store.textHL[k]) ? store.textHL[k] : (store.textHL[k] = []);
+ const have = new Set(cur.map(h => h && h.id));
+ inc.forEach(h => { if (h && h.id && !have.has(h.id)) { have.add(h.id); cur.push(h); } });
+ cur.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+ }
+ }
+ // Calendar and planner — union by id, the later edit of a card wins
+ [['calendarEvents', 'date'], ['plannerCards', 'createdAt']].forEach(([key]) => {
+ if (!Array.isArray(incoming[key])) return;
+ const cur = Array.isArray(store[key]) ? store[key] : (store[key] = []);
+ const at = x => (x && (x.completedAt || x.updatedAt || x.createdAt || 0)) || 0;
+ const byId = {}; cur.forEach(x => { if (x && x.id) byId[x.id] = x; });
+ incoming[key].forEach(x => {
+ if (!x || !x.id) return;
+ const mine = byId[x.id];
+ if (!mine || at(x) > at(mine)) byId[x.id] = x;
+ });
+ store[key] = Object.keys(byId).map(k => byId[k]);
+ });
+ // Project status — the later milestone wins
+ if (incoming.projectStatus && typeof incoming.projectStatus === 'object') {
+ store.projectStatus = store.projectStatus || {};
+ const at = x => (x && (x.completedAt || x.startedAt || 0)) || 0;
+ for (const pid of Object.keys(incoming.projectStatus)) {
+ const inc = incoming.projectStatus[pid], cur = store.projectStatus[pid];
+ if (!cur || at(inc) > at(cur)) store.projectStatus[pid] = inc;
+ }
+ }
+ /* The streak is one number about her, not per device. Whichever device
+    studied most recently holds the true count; a tie keeps the higher. */
+ if (incoming.streak && typeof incoming.streak === 'object') {
+ const cur = store.streak || (store.streak = { lastStudy: null, count: 0 });
+ const a = String(incoming.streak.lastStudy || ''), b = String(cur.lastStudy || '');
+ if (a > b) store.streak = incoming.streak;
+ else if (a === b && (incoming.streak.count || 0) > (cur.count || 0)) store.streak = incoming.streak;
+ }
+ // XP is earned on both devices; the higher total is the honest one
+ if (typeof incoming.xp === 'number' && incoming.xp > (store.xp || 0)) store.xp = incoming.xp;
+ /* ---- decisions, not records: the later choice wins ---- */
+ {
+ const t = (o, k) => ((o && o.__t && o.__t[k]) || 0);
+ if (incoming.goals && typeof incoming.goals === 'object' && t(incoming, 'goals') > t(store, 'goals')) {
+ store.goals = Object.assign({}, store.goals || {}, incoming.goals);
+ store.__t = store.__t || {}; store.__t.goals = t(incoming, 'goals');
+ }
+ if (incoming.testPrep && typeof incoming.testPrep === 'object') {
+ store.testPrep = store.testPrep || {};
+ const newer = t(incoming, 'testPrep') > t(store, 'testPrep');
+ for (const cid of Object.keys(incoming.testPrep)) {
+ if (!store.testPrep[cid] || newer) store.testPrep[cid] = incoming.testPrep[cid];
+ }
+ if (newer) { store.__t = store.__t || {}; store.__t.testPrep = t(incoming, 'testPrep'); }
+ }
+ // which classes are active travels as a PAIR - the list and the states
+ // disagreeing is what makes a class look active on one screen and not another
+ if (t(incoming, 'courseState') > t(store, 'courseState')) {
+ if (incoming.courseState && typeof incoming.courseState === 'object') store.courseState = incoming.courseState;
+ if (Array.isArray(incoming.activeOrder)) store.activeOrder = incoming.activeOrder;
+ store.__t = store.__t || {}; store.__t.courseState = t(incoming, 'courseState');
+ }
+ }
+
  // Flashcards (SM-2 schedule) — newer next-review wins per card
  if (incoming.flashcards && typeof incoming.flashcards === 'object') {
  store.flashcards = store.flashcards || {};
@@ -32357,6 +32536,16 @@ function isProjectCourse(courseId) {
 function isCoursePassed(courseId) {
  return !!(store.coursesPassed && store.coursesPassed[courseId]);
 }
+/* WHEN A CHOICE WAS LAST MADE.
+   Most of what syncs is work that accumulates - answers, sessions, cards - and
+   unions safely. A few things are a decision instead: the daily goal, an exam
+   date, which classes are active. Two devices cannot both be right about those,
+   so the later decision wins, and this is how a device says when it decided.
+   No stamp at all reads as "long ago", so an older copy never overwrites a
+   newer one, and the first edit after this build settles it for good. */
+function touch(key) {
+  try { if (!store.__t || typeof store.__t !== 'object') store.__t = {}; store.__t[key] = Date.now(); } catch (e) {}
+}
 function markCoursePassed(courseId, passed) {
  if (!store.coursesPassed) store.coursesPassed = {};
  if (passed) {
@@ -32406,6 +32595,7 @@ function activeCourseCount() {
  return (store.activeOrder || []).filter(cid => getCourseState(cid) === 'active' && !isProjectCourse(cid)).length;
 }
 function setCourseState(courseId, newState) {
+  touch('courseState');
  const old = getCourseState(courseId);
  if (old === newState) return true;
  if (newState === 'active') {
@@ -33863,7 +34053,11 @@ function renderPretest(courseId) {
  return;
  }
  if (e.target.dataset.quit !== undefined) {
- if (confirm('Save partial progress and exit? You can retake the pretest later.')) {
+ /* It RESUMES now (18.590), so saying "you can retake it later" sent her
+         back expecting a fresh test and got a half-finished one instead. */
+ if (confirm(session.idx >= 5
+        ? 'Save your answers and exit? Your score so far is recorded, and you can retake the pretest later.'
+        : 'Leave the pretest? Your answers are kept \u2014 opening it again picks up where you left off.')) {
  if (session.idx >= 5) finishPretest(true);
  else go({ name: 'class', courseId });
  }
@@ -40972,6 +41166,11 @@ function getQuestions(courseId, chId, secId) {
   function openResetDialog(cid){
     cid = cid || currentCourseId();
     if (!cid){ if (typeof toast==='function') toast('Open a class first, then reset it.'); return; }
+    /* ONE DIALOG. The class page's own reset (CLASS_RESET_V1) is the one she
+       sees, and it offers the choice this one does not - scores only, or notes
+       and pen marks too. Two dialogs with different wording for the same act is
+       how "reset" came to mean two different things; this defers to that one. */
+    try { if (typeof window.__openClassResetDialog === 'function') { window.__openClassResetDialog(cid); return; } } catch (e) {}
     var ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
     var card=document.createElement('div');
@@ -47146,6 +47345,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
          go first so the erase record is written over the final state. */
       if (alsoNotes) {
         prefixDelete(store.notes, cid);
+        prefixDelete(store.textHL, cid);        // highlights go with the notes
         prefixDelete(store.noteDrafts, cid);   // an unsent draft is still her text
         prefixDelete(store.padNotes, cid);
         prefixDelete(store.bookmarks, cid);
@@ -47196,6 +47396,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     } catch(e){ try { toast('Reset failed — nothing was changed'); } catch(_){} return false; }
   }
 
+  window.__openClassResetDialog = function(cid){ return openDialog(cid); };
   function openDialog(cid){
     var c = COURSES[cid] || {};
     var have = countFor(cid);
@@ -63541,7 +63742,34 @@ function clip(voice, text){
   });
 }
 
+/* HER CHOICE, NOT MINE. The recorded voice bills per character - a few pence
+   the first time a lesson is read, nothing ever again for that lesson - so it
+   should not simply start spending because the site happens to be configured.
+   Three settings, all hers: off (the device voice, free), auto (recorded when
+   the site can, which is what shipped), and a voice to read in. */
+var VOICES = [
+  { id: 'nova',    name: 'Nova',    note: 'warm, clear \u2014 the default' },
+  { id: 'shimmer', name: 'Shimmer', note: 'bright, light' },
+  { id: 'sage',    name: 'Sage',    note: 'calm, even' },
+  { id: 'coral',   name: 'Coral',   note: 'friendly' },
+  { id: 'fable',   name: 'Fable',   note: 'storytelling' },
+  { id: 'alloy',   name: 'Alloy',   note: 'neutral' },
+  { id: 'echo',    name: 'Echo',    note: 'low, steady' },
+  { id: 'onyx',    name: 'Onyx',    note: 'deep' }
+];
+function mode(){
+  try { var m = store.listenMode; return (m === 'off' || m === 'on') ? m : 'auto'; } catch (e) { return 'auto'; }
+}
+function voice(){
+  try { var v = store.listenVoice; for (var i = 0; i < VOICES.length; i++) if (VOICES[i].id === v) return v; } catch (e) {}
+  return 'nova';
+}
 window.__neuralVoice = {
+  voices: VOICES,
+  mode: mode,
+  setMode: function(m){ try { store.listenMode = (m === 'off' || m === 'on') ? m : 'auto'; saveStore(); } catch (e) {} return mode(); },
+  voice: voice,
+  setVoice: function(v){ try { store.listenVoice = v; saveStore(); } catch (e) {} return voice(); },
   probe: probe,
   on: function(){ return state === 'on'; },
   state: function(){ return state; },

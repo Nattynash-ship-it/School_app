@@ -14,6 +14,9 @@ run() {
   printf '%s\n' "$out" | tail -"$lines"
   if [ "$rc" -ne 0 ]; then
     echo "SUITE-FAILED $name (exit $rc)"
+    # the summary line alone does not say WHICH assertion went - print them, so
+    # a red battery is diagnosable without re-running the suite by hand
+    printf '%s\n' "$out" | grep -E '^(FAIL|HARNESS|Error)' | head -12
     FAILED="$FAILED $name"
   elif [ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
     echo "SUITE-SILENT $name (ran, said nothing - treat as failed)"
@@ -59,6 +62,7 @@ run classreset classreset.js 1
 run resetreview resetreview.js 1
 run resetsticks resetsticks.js 1
 run resetbutton resetbutton.js 1
+run syncall syncall.js 1
 run classnotes classnotes.js 1
 run inkmerge inkmerge.js 1
 run pretestkeep pretestkeep.js 1
