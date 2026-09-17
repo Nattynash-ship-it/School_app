@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.591">
+<meta name="app-build" content="18.592">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -23699,9 +23699,19 @@ function renderReview() {
  // Seed due-records for any flashcards (user-added from missed questions, or built-in)
   // that have never been rated yet — otherwise they never surface in Daily Review.
   try {
+    /* "CARDS YOU STUDY WILL APPEAR HERE" - the empty state below says so, and
+       this used to contradict it: every built-in card of every active class was
+       seeded as due the moment Review opened, whether or not she had ever
+       touched the class. After a reset that meant the very same cards were
+       back on the next visit, so the reset looked like it had done nothing.
+       Her own cards are always hers. A built-in card is seeded only for a
+       section she has answered questions in - and a reset empties exactly
+       that record. */
     const _seedKeys = new Set();
     if (store.userFlashcards) for (const sk in store.userFlashcards) _seedKeys.add(sk);
-    if (typeof BUILTIN_FLASHCARDS === 'object' && BUILTIN_FLASHCARDS) for (const sk in BUILTIN_FLASHCARDS) _seedKeys.add(sk);
+    const _studied = (typeof _sectionsWithHistory === 'function') ? _sectionsWithHistory() : null;
+    if (typeof BUILTIN_FLASHCARDS === 'object' && BUILTIN_FLASHCARDS)
+      for (const sk in BUILTIN_FLASHCARDS) if (!_studied || _studied.has(sk)) _seedKeys.add(sk);
     _seedKeys.forEach(sk => {
       const parts = sk.split('/'); if (parts.length < 3) return;
       const cs = getFlashcards(parts[0], parts[1], parts[2]) || [];
@@ -40691,6 +40701,18 @@ function getQuestions(courseId, chId, secId) {
       if (store.knowtProgress && store.knowtProgress[cid]) delete store.knowtProgress[cid];
       if (store.pretests && store.pretests[cid]) delete store.pretests[cid];
       if (store.pretestLive && store.pretestLive[cid]) delete store.pretestLive[cid];
+      /* ONE RESET, NOT TWO. There were two: this one, and a second inside
+         CLASS_RESET_V1 whose button sits under the readiness panel - the one
+         she actually taps. That one cleared more (section ratings, exam-taken,
+         unlock overrides, celebrations) but recorded no erase, so the next
+         sync put the class straight back; this one recorded the erase but was
+         reachable only from a header the class page never renders. Everything
+         both of them cleared now lives here, and the other calls this. */
+      var pre = function(obj){ if (!obj) return; Object.keys(obj).forEach(function(k){ if (k === cid || k.indexOf(cid + '/') === 0) delete obj[k]; }); };
+      pre(store.sectionRatings);
+      pre(store.unlockOverride);
+      if (store.examTaken && store.examTaken[cid]) delete store.examTaken[cid];
+      if (store.celebrated) { pre(store.celebrated.sections); pre(store.celebrated.chapters); pre(store.celebrated.courses); }
       // per-lesson user flashcards created from this course's quizzes (keys start "CID/")
       if (store.userFlashcards){ Object.keys(store.userFlashcards).forEach(function(k){ if (k.indexOf(cid+'/')===0) delete store.userFlashcards[k]; }); }
       /* REVIEW AND FLASHCARDS HAVE TO FOLLOW SUIT.
@@ -40738,6 +40760,14 @@ function getQuestions(courseId, chId, secId) {
          reloaded or killed inside that window the write never happens and every
          class comes back. Force it out now, the way the other irreversible
          writes in this app do. */
+      /* THE SCREENS HOLD THEIR OWN COPY. Review, Flashcards, Learn and Quiz keep
+         the session they are showing in a global, and a re-render redraws from
+         it - so a reset that emptied the store still showed the same cards. The
+         readiness number is cached the same way. All of it is dropped here. */
+      try { flashState = null; } catch (e5) {}
+      try { knowtState = null; } catch (e6) {}
+      try { quizState = null; } catch (e7) {}
+      try { _rdyKey = ''; _histKey = ''; } catch (e8) {}
       try { persistNow(); } catch (e3) { try { if (typeof saveStore==='function') saveStore(); } catch (e4) {} }
     }catch(e){ if(window.console&&console.warn) console.warn('reset failed', e); return {ok:false}; }
     return {ok:true, removed:removed};
@@ -46918,24 +46948,14 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
 
   function doReset(cid, alsoNotes){
     try {
-      // scores, attempts and anything derived from them
-      if (Array.isArray(store.quizHistory)) store.quizHistory = store.quizHistory.filter(function(h){ return !h || h.courseId !== cid; });
-      if (Array.isArray(store.examSessions)) store.examSessions = store.examSessions.filter(function(s){ return !s || s.courseId !== cid; });
-      if (Array.isArray(store.sessions)) store.sessions = store.sessions.filter(function(s){ return !s || s.courseId !== cid; });
-      if (store.pretests) delete store.pretests[cid];
-      if (store.pretestLive) delete store.pretestLive[cid];
-      if (store.preOaProgress) delete store.preOaProgress[cid];
-      if (store.knowtProgress) delete store.knowtProgress[cid];
-      if (store.examTaken) delete store.examTaken[cid];
-      prefixDelete(store.flashcards, cid);
-      prefixDelete(store.userFlashcards, cid);
-      prefixDelete(store.sectionRatings, cid);
-      prefixDelete(store.unlockOverride, cid);
-      if (store.celebrated) {
-        prefixDelete(store.celebrated.sections, cid);
-        prefixDelete(store.celebrated.chapters, cid);
-        prefixDelete(store.celebrated.courses, cid);
-      }
+      /* THIS IS THE RESET SHE TAPS, and until now it was the wrong one. It
+         cleared the store and stopped: no erase recorded, so the next sync
+         merged the class straight back ("reverts to the original percentage");
+         no in-memory session dropped, so Review kept showing the cards it
+         already held. The durable reset - the one that records the erase,
+         resets deck schedules and flags, drops the screens' own copies and
+         flushes to disk - lives in __resetCourseProgress. Notes and pen marks
+         go first so the erase record is written over the final state. */
       if (alsoNotes) {
         prefixDelete(store.notes, cid);
         prefixDelete(store.noteDrafts, cid);   // an unsent draft is still her text
@@ -46958,7 +46978,28 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
           });
         }
       }
-      try { saveStore(); } catch(e){}
+      var core = null;
+      try { if (typeof window.__resetCourseProgress === 'function') core = window.__resetCourseProgress(cid); } catch(e){}
+      if (!core || !core.ok) {
+        // the durable reset is missing or refused: do the old in-place clearing
+        // rather than tell her it worked when nothing happened
+        if (Array.isArray(store.quizHistory)) store.quizHistory = store.quizHistory.filter(function(h){ return !h || h.courseId !== cid; });
+        if (Array.isArray(store.examSessions)) store.examSessions = store.examSessions.filter(function(s){ return !s || s.courseId !== cid; });
+        if (Array.isArray(store.sessions)) store.sessions = store.sessions.filter(function(s){ return !s || s.courseId !== cid; });
+        if (store.pretests) delete store.pretests[cid];
+        if (store.pretestLive) delete store.pretestLive[cid];
+        if (store.preOaProgress) delete store.preOaProgress[cid];
+        if (store.knowtProgress) delete store.knowtProgress[cid];
+        if (store.examTaken) delete store.examTaken[cid];
+        prefixDelete(store.flashcards, cid);
+        prefixDelete(store.userFlashcards, cid);
+        prefixDelete(store.sectionRatings, cid);
+        prefixDelete(store.unlockOverride, cid);
+        if (store.celebrated) { prefixDelete(store.celebrated.sections, cid); prefixDelete(store.celebrated.chapters, cid); prefixDelete(store.celebrated.courses, cid); }
+        try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch(e){}
+        try { flashState = null; knowtState = null; } catch(e){}
+      }
+      try { saveStore(); if (saveStore.flushNow) saveStore.flushNow(); } catch(e){}
       try { _rdyKey = ''; } catch(e){}          // force readiness recalculation
       try { quizState = null; } catch(e){}
       try { render(); } catch(e){}
@@ -62183,6 +62224,15 @@ function applyCourseMark(cid, T){
       if (rec && rec.courseId === cid && ((rec.flaggedAt || 0) < T)) { delete fq[qk]; changed = true; }
     }
   } catch (e) {}
+  // what the class-page reset also clears: ratings, unlocks, exam-taken, celebrations
+  try {
+    var drop = function(obj){ if (!obj) return; for (var k in obj) if (k === cid || k.indexOf(cid + '/') === 0) { delete obj[k]; changed = true; } };
+    drop(store.sectionRatings); drop(store.unlockOverride);
+    if (store.examTaken && store.examTaken[cid]) { delete store.examTaken[cid]; changed = true; }
+    if (store.celebrated) { drop(store.celebrated.sections); drop(store.celebrated.chapters); drop(store.celebrated.courses); }
+  } catch (e) {}
+  try { flashState = null; knowtState = null; } catch (e) {}
+  try { _rdyKey = ''; _histKey = ''; } catch (e) {}
   return changed;
 }
 
@@ -62257,6 +62307,15 @@ function stripResetCourses(incoming, when){
       if (!(rec && stale(rec.courseId, rec.flaggedAt))) fq[qk] = rec;
     }
     out.flaggedQuestions = fq;
+  }
+  // Celebrations merge earliest-wins, so an older copy would put a reset
+  // class's milestones straight back. Ratings, unlocks and exam-taken are not
+  // merged today; stripped anyway so that stays true if the merge ever grows.
+  var keep = function(src){ if (!src || typeof src !== 'object') return src; var cp = {}; for (var k in src) if (!hit(String(k).split('/')[0])) cp[k] = src[k]; return cp; };
+  ['sectionRatings', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
+  if (out.celebrated && typeof out.celebrated === 'object') {
+    var cel = {}; for (var tier in out.celebrated) cel[tier] = keep(out.celebrated[tier]);
+    out.celebrated = cel;
   }
   return out;
 }
