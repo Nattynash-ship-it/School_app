@@ -65,14 +65,15 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   ok('the guide button opens the PORTFOLIO lesson with the diagram', R.guideOpens, R.guideOpens);
   ok('PORTFOLIO chapters include team, and the duplicate ch2/ch3 are gone', R.chapterIds.includes('team') && !R.chapterIds.includes('ch2') && !R.chapterIds.includes('ch3'), R.chapterIds.join(','));
   ok('team chapter has the 7 projects in build order', R.teamSections.join(',') === 'pa1,pau1,pbi1,py1,py2,pau2,cap', R.teamSections.join(','));
-  ok('every team project has objectives', R.teamObjectives.every(n => n >= 3), R.teamObjectives.join(','));
+  // an empty list would pass .every() - so say there are projects to check
+  ok('every team project has objectives', R.teamObjectives.length > 0 && R.teamObjectives.every(n => n >= 3), R.teamObjectives.join(','));
   for (const pg of R.pages) {
     ok(`team/${pg.s} renders as a full project page (title, diagram, table, numbered steps, callouts, objectives)`, pg.h2 && pg.svg >= 1 && pg.tables >= 1 && pg.ols >= 3 && pg.callouts >= 3 && pg.prove && !pg.notInBuild && pg.textLen > 4000, JSON.stringify(pg));
     ok(`team/${pg.s} has 10 questions and no junk definitions table`, pg.q === 10 && !pg.defglance, `q=${pg.q} defglance=${pg.defglance}`);
   }
   ok('legacy Python project now has numbered build steps with checkpoints and no definitions table', R.legacy.buildSteps >= 3 && R.legacy.stepItems >= 8 && !R.legacy.defglance && R.legacy.checkpoints >= 2, JSON.stringify(R.legacy));
   ok('legacy Power Apps project converted too', R.legacy2.buildSteps >= 3 && !R.legacy2.defglance, JSON.stringify(R.legacy2));
-  ok('cheat sheet has a Correspondence Team entry with 7 cards and no "More ..." duplicates', R.cheat && R.cheat.cards === 7 && !R.cheat.titles.some(t => /^More /.test(t)), JSON.stringify(R.cheat));
+  ok('cheat sheet has a Correspondence Team entry with 7 cards and no "More ..." duplicates', R.cheat && R.cheat.cards === 7 && R.cheat.titles.length > 0 && !R.cheat.titles.some(t => /^More /.test(t)), JSON.stringify(R.cheat));
   ok('no page errors', errs.length===0, errs.join('|').slice(0,300));
   await p.evaluate(async () => { const w=ms=>new Promise(r=>setTimeout(r,ms)); go({name:'section', courseId:'PORTFOLIO', chId:'team', secId:'pa1'}); await w(900); });
   await p.screenshot({ path: 'team-pa1.png', fullPage: false });

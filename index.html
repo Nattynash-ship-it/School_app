@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.593">
+<meta name="app-build" content="18.598">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -5332,6 +5332,31 @@ body[data-route="home"] #wb-fab, body[data-route="today"] #wb-fab { display: non
 .dash-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .dash-cat-label { font-size: 11px; font-weight: 800; letter-spacing: 0.09em; color: var(--accent); text-transform: uppercase; margin: 20px 0 2px; display: flex; align-items: center; gap: 7px; } .dash-cat-label::before { content: ''; width: 4px; height: 13px; border-radius: 2px; background: var(--accent); display: inline-block; }
 .dash-cat-sub { font-size: 11px; color: var(--text-4); margin-bottom: 8px; }
+details.cls-group { margin: 12px 0 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 0 12px 4px; }
+details.cls-group[open] { padding-bottom: 12px; }
+.cls-group-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 13px 0; }
+.cls-group-head::-webkit-details-marker { display: none; }
+.cls-group-ico { flex: 0 0 auto; font-size: 16px; }
+.cls-group-title { flex: 0 0 auto; font-weight: 800; font-size: 13.5px; color: var(--text); }
+.cls-group-n { display: inline-block; min-width: 20px; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--accent-bg, var(--surface-2)); color: var(--accent); font-size: 11px; font-weight: 800; text-align: center; }
+.cls-group-preview { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cls-group-chev { flex: 0 0 auto; font-size: 18px; color: var(--text-4); transition: transform .18s ease; line-height: 1; }
+details.cls-group[open] .cls-group-chev { transform: rotate(90deg); }
+details.cls-group .chapter-item { margin-top: 8px; }
+details.dash-cat { margin: 10px 0 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 0 12px 4px; }
+details.dash-cat[open] { padding-bottom: 12px; }
+.dash-cat-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 11px 0; }
+.dash-cat-head::-webkit-details-marker { display: none; }
+.dash-cat-head .dash-cat-label { margin: 0; flex: 1 1 auto; min-width: 0; }
+.dash-cat-count { font-size: 11.5px; color: var(--text-3); white-space: nowrap; } .dash-cat-count b { color: var(--text); font-weight: 800; }
+.dash-cat-chev { font-size: 18px; color: var(--text-4); transition: transform .18s ease; line-height: 1; }
+details.dash-cat[open] .dash-cat-chev { transform: rotate(90deg); }
+details.dash-cat .dash-cat-sub { margin: -4px 0 10px; }
+details.dash-locked { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.dash-locked-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); padding: 6px 0; }
+.dash-locked-head::-webkit-details-marker { display: none; }
+details.dash-locked[open] .dash-cat-chev { transform: rotate(90deg); }
+details.dash-locked .dash-grid { margin-top: 6px; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
 .dash-card { position: relative; border-radius: 14px; }
 .dash-card .class-card { margin: 0; }
@@ -13549,6 +13574,7 @@ const defaultStore = {
  plannerCards: [], // { id, title, column: 'todo'|'doing'|'done', courseId?, dueDate?, notes?, createdAt, completedAt? }
  pretests: {}, // courseId -> { takenAt, score, total, chapterScores: { chId: { correct, total } }, questions: [qId] }
  pretestLive: {}, // courseId -> a pretest still being taken: { ts, qids, idx, answers, byChap }
+ __t: {},         // key -> when this device last CHOSE it (goals, exam dates, which classes are active)
  useNewNav: true, // toggle: show v2 sidebar nav and Today as home
  // anonymous metric cache, recomputed lazily
 };
@@ -15463,7 +15489,7 @@ function showOverflowMenu() {
  sheet.querySelector('[data-act="goal"]').addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); close(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); close(); render(); }
  });
  sheet.querySelector('[data-act="bulk-diff"]').addEventListener('click', () => {
  close();
@@ -19278,7 +19304,27 @@ function renderClass(courseId) {
  `;
  })()}
 
- ${c.chapters.map((ch, i) => {
+ ${(() => {
+ /* THE STUDY UNITS STAY EXACTLY AS THEY ARE; THE DRILLS GET ORGANIZED.
+    "please keep the study sections as they are and organize the drills ...
+    be sure that the drills make sense with the ones that are combined."
+    C959 listed 26 "chapters" and D286 35, of which 7 and 19 are study
+    units; the rest - simulations, drills, cheat sheets, concept notes - sat
+    in the same list, numbered like units. The units below are the same
+    cards, in the same order, with the same numbers they had. Everything
+    else goes into three folds by what it IS, so nothing is grouped with
+    something it does not belong with:
+      practice exams - the timed simulations and fresh-question sittings
+      drills         - targeted practice: weak spots, missed, hard, traces,
+                       labs, builds, solving, challenge, the J-method
+      reference      - concepts made clear, cheat sheet, how to pass, her
+                       own documents
+    Every chapter is still here, exactly once, and opens exactly as before. */
+ const EXAMS = /^(oa_sim|pa_sim|fresh_sim|pa_fresh|exam|pa|pretest|final)$|_sim$/;
+ const DRILLS = /^(weak_drill|review_missed|hard_drill|challenge|oa_prac|oa_lab|pa_build|solving|solving_only|solving2|aistote|playbook)$|_drill$|_prac$/;
+ const isUnit = ch => (typeof isLearningChapter === 'function') ? isLearningChapter(ch) : true;
+ const groupOf = ch => EXAMS.test(String(ch.id)) ? 'exams' : (DRILLS.test(String(ch.id)) ? 'drills' : 'ref');
+ const card = (ch, i) => {
  const cprog = chapterProgress(courseId, ch.id);
  const status = cprog === 0 ? `untouched` : (cprog >= 80 ? `mastered` : `in progress`);
  return `
@@ -19292,10 +19338,9 @@ function renderClass(courseId) {
  <div class="chevron">›</div>
  </div>
  `;
- }).join(``)}
-
- ${SAMPLE_QUESTIONS[`${courseId}/final/exam`] ? `
- <div class="chapter-item" data-final-exam style="margin-top: 16px; border: 1.5px solid var(--accent); background: var(--accent-bg, transparent);">
+ };
+ const finalHtml = SAMPLE_QUESTIONS[`${courseId}/final/exam`] ? `
+ <div class="chapter-item" data-final-exam style="margin-top: 10px; border: 1.5px solid var(--accent); background: var(--accent-bg, transparent);">
  <div class="chapter-num" style="color: var(--accent);">★</div>
  <div class="chapter-body">
  <div class="chapter-title">Final Exam (OA Simulation)</div>
@@ -19303,7 +19348,40 @@ function renderClass(courseId) {
  </div>
  <div class="chevron">›</div>
  </div>
- ` : ``}
+ ` : ``;
+ const groups = { exams: [], drills: [], ref: [] };
+ const units = [];
+ c.chapters.forEach((ch, i) => { if (isUnit(ch)) units.push(card(ch, i)); else groups[groupOf(ch)].push({ ch, i }); });
+ const TITLES = { exams: ['\ud83d\udcdd', 'Practice exams'], drills: ['\ud83c\udfaf', 'Drills'], ref: ['\ud83d\udca1', 'Reference & guides'] };
+ const openMap = (store.classGroupOpen && typeof store.classGroupOpen === 'object') ? store.classGroupOpen : {};
+ const fold = key => {
+ const items = groups[key];
+ const extra = (key === 'exams' && finalHtml) ? 1 : 0;
+ if (!items.length && !extra) return '';
+ // a preview reads whole words, and keeps the part after the dash when two
+ // chapters share the same first words ("Fresh Questions - Brand-New" and
+ // "Fresh Questions - new every attempt" are not the same thing)
+ const clean = t => String(t || '').replace(/^[^A-Za-z0-9]+\s*/, '').replace(/\s+[\u2014\u2013-]\s+/g, ': ');
+ const cut = (t, n) => t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, '') + '\u2026';
+ const heads = items.map(x => clean(x.ch.title || x.ch.id).split(': ')[0]);
+ const names = items.map((x, i) => { const full = clean(x.ch.title || x.ch.id); const dup = heads.filter(h => h === heads[i]).length > 1; return cut(dup ? full : full.split(': ')[0], 30); });
+ if (extra) names.push('Final Exam');
+ const preview = names.slice(0, 3).join(' \u00b7 ') + (names.length > 3 ? ` \u00b7 +${names.length - 3}` : '');
+ const open = !!openMap[courseId + '/' + key];
+ return `
+ <details class="cls-group" data-group="${key}"${open ? ' open' : ''}>
+ <summary class="cls-group-head">
+ <span class="cls-group-ico">${TITLES[key][0]}</span>
+ <span class="cls-group-title">${TITLES[key][1]} <span class="cls-group-n">${items.length + extra}</span></span>
+ <span class="cls-group-preview">${esc(preview)}</span>
+ <span class="cls-group-chev">\u203a</span>
+ </summary>
+ ${items.map(x => card(x.ch, x.i)).join('')}
+ ${key === 'exams' ? finalHtml : ''}
+ </details>`;
+ };
+ return units.join('') + fold('exams') + fold('drills') + fold('ref');
+ })()}
  </div>
  `;
 
@@ -19319,6 +19397,11 @@ function renderClass(courseId) {
  if (preOaEl) preOaEl.addEventListener('click', () => go({ name: 'preoa', courseId }));
  const oaExamEl = wrap.querySelector('[data-oa-exam]');
  if (oaExamEl) oaExamEl.addEventListener('click', () => startExamSimulator(courseId));
+ wrap.querySelectorAll('details.cls-group').forEach(d => d.addEventListener('toggle', () => {
+ if (!store.classGroupOpen || typeof store.classGroupOpen !== 'object') store.classGroupOpen = {};
+ store.classGroupOpen[courseId + '/' + d.getAttribute('data-group')] = d.open;
+ saveStore();
+ }));
  wrap.querySelectorAll('[data-chapter]').forEach(el => {
  el.addEventListener('click', () => go({ name: 'chapter', courseId, chId: el.getAttribute('data-chapter') }));
  });
@@ -20113,7 +20196,7 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
  function playRecorded() {
  const parts = chunk(text);
  if (!parts.length) { speakWithDevice(); return; }
- const voice = (store && store.listenVoice) || 'nova';
+ const voice = window.__neuralVoice.voice();
  const sess = { dead: false, paused: false, i: 0 };
  window.__listenSession = sess;
  if (!listenAudio) listenAudio = new Audio();
@@ -20148,6 +20231,7 @@ function wireAudioReadAloud(wrap, courseId, chId, secId) {
 
  const V = window.__neuralVoice;
  if (!V) { speakWithDevice(); return; }
+ if (V.mode() === 'off') { speakWithDevice(); return; }   // her choice: the device voice
  if (V.on()) { playRecorded(); return; }
  if (V.state() === 'off') { speakWithDevice(); return; }
  // First use on this device: ask whether the site can do this at all. The
@@ -24106,7 +24190,7 @@ function renderFocus() {
  if (adjBtn) adjBtn.addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); render(); }
  });
  const wp = wrap.querySelector('[data-act="practice-weak"]');
  if (wp && weak.length) {
@@ -24268,6 +24352,46 @@ function showInterleavedSheet(courseId) {
  });
 }
 
+/* The Listen voice picker. Says plainly what each choice costs, because one of
+   them spends her own API credit and the other does not. */
+function showListenVoiceSheet() {
+  const V = window.__neuralVoice;
+  if (!V) { toast('Audio is not available on this device.'); return; }
+  let sheet = document.querySelector('.pomo-sheet.listen-sheet');
+  if (sheet) { sheet.remove(); return; }
+  sheet = document.createElement('div');
+  sheet.className = 'pomo-sheet listen-sheet';
+  sheet.style.alignItems = 'flex-end';
+  const m = V.mode(), cur = V.voice();
+  const row = (act, label, sub, on) =>
+    `<button class="pomo-btn" data-act="${act}" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; ${on ? 'background:var(--accent); color:var(--accent-text);' : ''}">
+       <span style="display:block;">${on ? '\u2713 ' : ''}${label}</span>
+       <span style="display:block; font-size:11.5px; opacity:0.8; font-weight:500;">${sub}</span></button>`;
+  sheet.innerHTML = `
+  <div class="pomo-card" style="text-align:left; max-width:480px; padding:18px 20px 24px; max-height:80vh; overflow-y:auto;">
+   <button class="pomo-close" data-close>\u00d7</button>
+   <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:10px;">Listen voice</div>
+   ${row('mode-auto', 'Recorded voice when available', 'Sounds far better than the iPad\u2019s own. Costs a few pence the first time a lesson is read, then nothing \u2014 it is saved on this device and plays offline.', m === 'auto')}
+   ${row('mode-off', 'This device\u2019s own voice', 'Free, always offline, and noticeably more robotic. iPad Settings \u203a Accessibility \u203a Spoken Content \u203a Voices \u2014 an \u201cEnhanced\u201d voice improves it.', m === 'off')}
+   <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin:14px 0 8px;">Which voice</div>
+   ${V.voices.map(v => row('v-' + v.id, v.name, v.note, v.id === cur)).join('')}
+  </div>`;
+  document.body.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
+  sheet.querySelector('[data-close]').addEventListener('click', close);
+  sheet.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const a = b.getAttribute('data-act');
+    if (a === 'mode-auto') { V.setMode('auto'); close(); showListenVoiceSheet(); return; }
+    if (a === 'mode-off')  { V.setMode('off');  close(); showListenVoiceSheet(); return; }
+    if (a.indexOf('v-') === 0) {
+      V.setVoice(a.slice(2));
+      if (V.mode() === 'off') V.setMode('auto');   // picking a voice means she wants it read in one
+      close(); showListenVoiceSheet();
+    }
+  });
+}
 function showMoreSheet() {
  // Reuse pomo-sheet styling for a generic bottom sheet
  let sheet = document.querySelector('.pomo-sheet.more-sheet');
@@ -24285,6 +24409,7 @@ function showMoreSheet() {
  <button class="pomo-btn" data-act="study-modes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background:var(--accent); color:var(--accent-text,#fff);">✨ Study modes (Feynman, mixed practice…)</button>
  <button class="pomo-btn" data-act="defer-answers" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">🎯 Answers: ${deferAnswersOn() ? 'shown at the end' : 'shown after each question'}</button>
  <button class="pomo-btn" data-act="pdf" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">📄 Export to PDF (for GoodNotes)</button>
+ <button class="pomo-btn" data-act="listen-voice" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">\ud83d\udd0a Listen voice: ${window.__neuralVoice ? (window.__neuralVoice.mode() === 'off' ? 'this device' : (window.__neuralVoice.voices.filter(v => v.id === window.__neuralVoice.voice())[0] || {}).name + (window.__neuralVoice.mode() === 'on' ? '' : ' (when available)')) : 'this device'}</button>
  <button class="pomo-btn" data-act="export" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↓ Export backup</button>
  <button class="pomo-btn" data-act="email-backup" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">✉ Email backup to myself</button>
  <button class="pomo-btn" data-act="import" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;">↑ Import backup</button>
@@ -24302,6 +24427,7 @@ function showMoreSheet() {
  close();
  renderThemePicker();
  });
+ sheet.querySelector('[data-act="listen-voice"]')?.addEventListener('click', () => { close(); showListenVoiceSheet(); });
  sheet.querySelector('[data-act="dashboard"]').addEventListener('click', () => {
  close();
  showProgressDashboard();
@@ -24335,7 +24461,7 @@ function showMoreSheet() {
  sheet.querySelector('[data-act="goal"]').addEventListener('click', () => {
  const v = prompt('Daily study minutes goal?', String(store.goals.dailyMin));
  const n = parseInt(v);
- if (n > 0) { store.goals.dailyMin = n; saveStore(); close(); render(); }
+ if (n > 0) { store.goals.dailyMin = n; touch('goals'); saveStore(); close(); render(); }
  });
  sheet.querySelector('[data-act="wipe-annotations"]') && sheet.querySelector('[data-act="wipe-annotations"]').addEventListener('click', () => {
  if (!confirm('Erase ALL pen and highlighter marks on every page? Your notes, progress, and flashcards are kept. This cannot be undone.')) return;
@@ -27300,6 +27426,7 @@ function showTestPrepSheet(courseId) {
  const typeInput = sheet.querySelector('#testprep-type');
  if (!dateInput.value) { toast('Pick a date first'); return; }
  if (!store.testPrep) store.testPrep = {};
+ touch('testPrep');
  store.testPrep[courseId] = {
  examDate: dateInput.value,
  examType: typeInput.value || 'OA',
@@ -28246,6 +28373,140 @@ function mergeIntoStore(incoming) {
  if (incoming.pinnedCourses && typeof incoming.pinnedCourses === 'object') {
  store.pinnedCourses = Object.assign({}, store.pinnedCourses || {}, incoming.pinnedCourses);
  }
+ /* ===== WHAT USED TO STAY ON ONE DEVICE =====
+    Measured before this build: of the store's 28 keys, only 8 crossed between
+    her iPad and her phone. Exam-sim results, pretest results, her own flashcard
+    decks, Learn progress, exam dates, streak, daily goal, calendar, planner,
+    project status and text highlights all stopped at whichever device made
+    them - so a class could read differently on each, and work done on the phone
+    was invisible on the iPad.
+
+    Same three rules as everything above: never delete, union what accumulates,
+    and let the later decision win only for the handful of things that are a
+    decision rather than a record. A class reset still outranks all of it - the
+    erase record strips these keys out of an older copy before this runs. */
+
+ // Exam-sim results — union, newest kept, same shape as quiz history
+ if (Array.isArray(incoming.examSessions)) {
+ const seen = new Set((store.examSessions || []).map(x => x && (x.id || (x.ts + ':' + (x.courseId || '')))));
+ const merged = [...(store.examSessions || [])];
+ for (const e of incoming.examSessions) {
+ if (!e) continue;
+ const k = e.id || (e.ts + ':' + (e.courseId || ''));
+ if (!seen.has(k)) { seen.add(k); merged.push(e); }
+ }
+ merged.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+ store.examSessions = merged.slice(-2000);
+ }
+ // Pretest results — the later sitting is the one she wants to see
+ if (incoming.pretests && typeof incoming.pretests === 'object') {
+ store.pretests = store.pretests || {};
+ for (const cid of Object.keys(incoming.pretests)) {
+ const inc = incoming.pretests[cid], cur = store.pretests[cid];
+ if (!cur || ((inc && inc.takenAt) || 0) > ((cur && cur.takenAt) || 0)) store.pretests[cid] = inc;
+ }
+ }
+ // Learn progress — per card, the later sighting wins
+ if (incoming.knowtProgress && typeof incoming.knowtProgress === 'object') {
+ store.knowtProgress = store.knowtProgress || {};
+ for (const cid of Object.keys(incoming.knowtProgress)) {
+ const inc = incoming.knowtProgress[cid] || {};
+ const cur = store.knowtProgress[cid] || (store.knowtProgress[cid] = {});
+ for (const cardId of Object.keys(inc)) {
+ const a = inc[cardId], b = cur[cardId];
+ if (!b || ((a && a.lastSeen) || 0) > ((b && b.lastSeen) || 0)) cur[cardId] = a;
+ }
+ }
+ }
+ /* Her own decks — the deck is content she made, its schedule is progress.
+    A deck either device has is kept; cards union by id; a card's schedule
+    follows the later review, exactly as the per-lesson cards above do. */
+ if (incoming.flashDecks && typeof incoming.flashDecks === 'object') {
+ store.flashDecks = store.flashDecks || {};
+ for (const did of Object.keys(incoming.flashDecks)) {
+ const inc = incoming.flashDecks[did];
+ if (!inc) continue;
+ const cur = store.flashDecks[did];
+ if (!cur) { store.flashDecks[did] = inc; continue; }
+ const byId = {};
+ (cur.cards || []).forEach(c => { if (c && c.id) byId[c.id] = c; });
+ (inc.cards || []).forEach(c => {
+ if (!c || !c.id) return;
+ const mine = byId[c.id];
+ if (!mine) { byId[c.id] = c; return; }
+ if ((c.due || 0) > (mine.due || 0)) byId[c.id] = c;
+ });
+ cur.cards = Object.keys(byId).map(k => byId[k]);
+ if (!cur.name && inc.name) cur.name = inc.name;
+ }
+ }
+ // Text highlights on lessons — union per section by id
+ if (incoming.textHL && typeof incoming.textHL === 'object') {
+ store.textHL = store.textHL || {};
+ for (const k of Object.keys(incoming.textHL)) {
+ const inc = Array.isArray(incoming.textHL[k]) ? incoming.textHL[k] : [];
+ const cur = Array.isArray(store.textHL[k]) ? store.textHL[k] : (store.textHL[k] = []);
+ const have = new Set(cur.map(h => h && h.id));
+ inc.forEach(h => { if (h && h.id && !have.has(h.id)) { have.add(h.id); cur.push(h); } });
+ cur.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+ }
+ }
+ // Calendar and planner — union by id, the later edit of a card wins
+ [['calendarEvents', 'date'], ['plannerCards', 'createdAt']].forEach(([key]) => {
+ if (!Array.isArray(incoming[key])) return;
+ const cur = Array.isArray(store[key]) ? store[key] : (store[key] = []);
+ const at = x => (x && (x.completedAt || x.updatedAt || x.createdAt || 0)) || 0;
+ const byId = {}; cur.forEach(x => { if (x && x.id) byId[x.id] = x; });
+ incoming[key].forEach(x => {
+ if (!x || !x.id) return;
+ const mine = byId[x.id];
+ if (!mine || at(x) > at(mine)) byId[x.id] = x;
+ });
+ store[key] = Object.keys(byId).map(k => byId[k]);
+ });
+ // Project status — the later milestone wins
+ if (incoming.projectStatus && typeof incoming.projectStatus === 'object') {
+ store.projectStatus = store.projectStatus || {};
+ const at = x => (x && (x.completedAt || x.startedAt || 0)) || 0;
+ for (const pid of Object.keys(incoming.projectStatus)) {
+ const inc = incoming.projectStatus[pid], cur = store.projectStatus[pid];
+ if (!cur || at(inc) > at(cur)) store.projectStatus[pid] = inc;
+ }
+ }
+ /* The streak is one number about her, not per device. Whichever device
+    studied most recently holds the true count; a tie keeps the higher. */
+ if (incoming.streak && typeof incoming.streak === 'object') {
+ const cur = store.streak || (store.streak = { lastStudy: null, count: 0 });
+ const a = String(incoming.streak.lastStudy || ''), b = String(cur.lastStudy || '');
+ if (a > b) store.streak = incoming.streak;
+ else if (a === b && (incoming.streak.count || 0) > (cur.count || 0)) store.streak = incoming.streak;
+ }
+ // XP is earned on both devices; the higher total is the honest one
+ if (typeof incoming.xp === 'number' && incoming.xp > (store.xp || 0)) store.xp = incoming.xp;
+ /* ---- decisions, not records: the later choice wins ---- */
+ {
+ const t = (o, k) => ((o && o.__t && o.__t[k]) || 0);
+ if (incoming.goals && typeof incoming.goals === 'object' && t(incoming, 'goals') > t(store, 'goals')) {
+ store.goals = Object.assign({}, store.goals || {}, incoming.goals);
+ store.__t = store.__t || {}; store.__t.goals = t(incoming, 'goals');
+ }
+ if (incoming.testPrep && typeof incoming.testPrep === 'object') {
+ store.testPrep = store.testPrep || {};
+ const newer = t(incoming, 'testPrep') > t(store, 'testPrep');
+ for (const cid of Object.keys(incoming.testPrep)) {
+ if (!store.testPrep[cid] || newer) store.testPrep[cid] = incoming.testPrep[cid];
+ }
+ if (newer) { store.__t = store.__t || {}; store.__t.testPrep = t(incoming, 'testPrep'); }
+ }
+ // which classes are active travels as a PAIR - the list and the states
+ // disagreeing is what makes a class look active on one screen and not another
+ if (t(incoming, 'courseState') > t(store, 'courseState')) {
+ if (incoming.courseState && typeof incoming.courseState === 'object') store.courseState = incoming.courseState;
+ if (Array.isArray(incoming.activeOrder)) store.activeOrder = incoming.activeOrder;
+ store.__t = store.__t || {}; store.__t.courseState = t(incoming, 'courseState');
+ }
+ }
+
  // Flashcards (SM-2 schedule) — newer next-review wins per card
  if (incoming.flashcards && typeof incoming.flashcards === 'object') {
  store.flashcards = store.flashcards || {};
@@ -32357,6 +32618,16 @@ function isProjectCourse(courseId) {
 function isCoursePassed(courseId) {
  return !!(store.coursesPassed && store.coursesPassed[courseId]);
 }
+/* WHEN A CHOICE WAS LAST MADE.
+   Most of what syncs is work that accumulates - answers, sessions, cards - and
+   unions safely. A few things are a decision instead: the daily goal, an exam
+   date, which classes are active. Two devices cannot both be right about those,
+   so the later decision wins, and this is how a device says when it decided.
+   No stamp at all reads as "long ago", so an older copy never overwrites a
+   newer one, and the first edit after this build settles it for good. */
+function touch(key) {
+  try { if (!store.__t || typeof store.__t !== 'object') store.__t = {}; store.__t[key] = Date.now(); } catch (e) {}
+}
 function markCoursePassed(courseId, passed) {
  if (!store.coursesPassed) store.coursesPassed = {};
  if (passed) {
@@ -32406,6 +32677,7 @@ function activeCourseCount() {
  return (store.activeOrder || []).filter(cid => getCourseState(cid) === 'active' && !isProjectCourse(cid)).length;
 }
 function setCourseState(courseId, newState) {
+  touch('courseState');
  const old = getCourseState(courseId);
  if (old === newState) return true;
  if (newState === 'active') {
@@ -33863,7 +34135,11 @@ function renderPretest(courseId) {
  return;
  }
  if (e.target.dataset.quit !== undefined) {
- if (confirm('Save partial progress and exit? You can retake the pretest later.')) {
+ /* It RESUMES now (18.590), so saying "you can retake it later" sent her
+         back expecting a fresh test and got a half-finished one instead. */
+ if (confirm(session.idx >= 5
+        ? 'Save your answers and exit? Your score so far is recorded, and you can retake the pretest later.'
+        : 'Leave the pretest? Your answers are kept \u2014 opening it again picks up where you left off.')) {
  if (session.idx >= 5) finishPretest(true);
  else go({ name: 'class', courseId });
  }
@@ -36316,7 +36592,8 @@ function renderClassNotes(courseId) {
  '<div class="cn-sec-head" data-cn-toggle>' +
  '<div class="cn-sec-title">' + esc(S.sec.title || S.sec.id) + '</div>' +
  '<div class="cn-sec-meta">' + (d.typed.length ? d.typed.length + (d.typed.length === 1 ? ' note' : ' notes') : '') + (d.typed.length && d.pages ? ' · ' : '') + (d.pages ? d.pages + (d.pages === 1 ? ' page' : ' pages') : '') + '</div>' +
- '<button class="cn-open" data-open-lesson title="Open this lesson with the notebook on this page">✎ Open in lesson</button>' +
+ '<button class="cn-open" data-write-here title="Pin this page and write on it here, without leaving this screen">✎ Write here</button>' +
+ '<button class="cn-open" data-open-lesson title="Open this lesson with the notebook on this page">↗ Open in lesson</button>' +
  '</div>' +
  '<div class="cn-body">' +
  d.typed.map(function(x){ return '<div class="cn-note"><div class="cn-note-text">' + esc(x.text).replace(/\n/g, '<br>') + '</div>' + (x.createdAt ? '<div class="cn-note-when">' + cnWhen(x.createdAt) + '</div>' : '') + '</div>'; }).join('') +
@@ -36346,6 +36623,17 @@ function renderClassNotes(courseId) {
  }
  el.querySelectorAll('.cn-section.open').forEach(paintPages);
  el.addEventListener('click', function(ev){
+ var writeBtn = ev.target.closest('[data-write-here]');
+ if (writeBtn) {
+     ev.stopPropagation();
+ var wk = writeBtn.closest('.cn-section').getAttribute('data-key');
+ try {
+ window.__notesPanel.pin(wk);
+ window.__notesPanel.open();
+ if (typeof toast === 'function') toast('Writing on “' + secTitle(wk) + '” — it stays pinned until you write in another lesson.');
+ } catch (e) {}
+ return;
+ }
  var openBtn = ev.target.closest('[data-open-lesson]');
  if (openBtn) {
  ev.stopPropagation();
@@ -36859,11 +37147,43 @@ function renderHomeV3() {
   (cats[label] = cats[label] || { sub, items: [] }).items.push(cr);
  });
  const CAT_ORDER = ['WGU · B.S. COMPUTER SCIENCE', 'GLOBAL AI MASTERY', 'DATACAMP', 'CAREER PATH · DATA ENGINEERING', 'MICROSOFT POWER PLATFORM', 'MATHEMATICS', 'PHYSICS', 'AGENTIC & GEN AI', 'LANGUAGES', 'OTHER PRACTICE'];
- const catHtml = CAT_ORDER.filter(k => cats[k]).map(k => `
-  <div class="dash-cat-label">${k}</div>
-  <div class="dash-cat-sub">${cats[k].sub}</div>
-  <div class="dash-grid">${cats[k].items.map(dashCard).join('')}</div>
- `).join('');
+ /* NINE CATEGORY SECTIONS, 42 CARDS, 6,879px TALL. "There are way too many
+    sections and it's confusing and overwhelming ... leave the actual sections
+    of work there but combine anything that can be combined." Every course is
+    still here. Each category is now one row that opens - and the ones she is
+    actually working in are open already, with their live courses first, so
+    the screen starts with the work and the rest waits a tap away. Her own
+    opens and closes are remembered per category. */
+ const WORKING = { active: 0, inprogress: 1, paused: 2, notstarted: 3, mastered: 4, locked: 5 };
+ const openCats = (store.dashCatOpen && typeof store.dashCatOpen === 'object') ? store.dashCatOpen : {};
+ const catHtml = CAT_ORDER.filter(k => cats[k]).map(k => {
+  const items = cats[k].items.slice().sort((a, b) => (WORKING[dashStatus(a)] ?? 9) - (WORKING[dashStatus(b)] ?? 9));
+  // "active" here means what the card's badge means: hers and not passed -
+  // the same rule the ACTIVE badge uses, so the row never contradicts the cards
+  const hers = items.filter(c => { const st = dashStatus(c); return st !== 'locked' && st !== 'mastered'; });
+  const locked = items.filter(c => dashStatus(c) === 'locked');
+  const shown = items.filter(c => dashStatus(c) !== 'locked');
+  const chosen = openCats[k];
+  const searching = !!(store.homeSearch && store.homeSearch.trim());
+  const open = (chosen === true) || (chosen === undefined && hers.length > 0) || (filter !== 'all') || searching;
+  // not-yet-activated courses are not work: one line inside the fold, not a wall
+  const lockedHtml = locked.length ? `
+   <details class="dash-locked"${(filter === 'locked' || searching) ? ' open' : ''}>
+    <summary class="dash-locked-head">${locked.length} more not activated${shown.length ? '' : ' — tap to see them'}<span class="dash-cat-chev">›</span></summary>
+    <div class="dash-grid">${locked.map(dashCard).join('')}</div>
+   </details>` : '';
+  return `
+  <details class="dash-cat" data-cat="${esc(k)}"${open ? ' open' : ''}>
+   <summary class="dash-cat-head">
+    <span class="dash-cat-label">${k}</span>
+    <span class="dash-cat-count">${items.length} course${items.length === 1 ? '' : 's'}${hers.length ? ` · <b>${hers.length} active</b>` : ''}</span>
+    <span class="dash-cat-chev">›</span>
+   </summary>
+   <div class="dash-cat-sub">${cats[k].sub}</div>
+   ${shown.length ? `<div class="dash-grid">${shown.map(dashCard).join('')}</div>` : ''}
+   ${lockedHtml}
+  </details>`;
+ }).join('');
 
  content.innerHTML = `
   ${showBackup ? `
@@ -36909,13 +37229,11 @@ function renderHomeV3() {
    cardEl.style.display = hit ? '' : 'none';
    if (hit) visible++;
   });
-  content.querySelectorAll('.dash-grid').forEach(grid => {
-   const anyVisible = Array.prototype.some.call(grid.querySelectorAll('.dash-card'), c => c.style.display !== 'none');
-   grid.style.display = anyVisible ? '' : 'none';
-   const sub = grid.previousElementSibling;
-   const label = sub ? sub.previousElementSibling : null;
-   if (sub && sub.classList && sub.classList.contains('dash-cat-sub')) sub.style.display = anyVisible ? '' : 'none';
-   if (label && label.classList && label.classList.contains('dash-cat-label')) label.style.display = anyVisible ? '' : 'none';
+  content.querySelectorAll('.dash-cat, .dash-locked').forEach(cat => {
+   const anyVisible = Array.prototype.some.call(cat.querySelectorAll('.dash-card'), c => c.style.display !== 'none');
+   cat.style.display = anyVisible ? '' : 'none';
+   // a search is an ask to SEE the matches: open the folds that hold them
+   if (q && anyVisible) cat.open = true;
   });
   // "No matches" message for a search that hides everything.
   const nm = content.querySelector('.dash-nomatch');
@@ -36935,6 +37253,11 @@ function renderHomeV3() {
  // instantly shows every course again.
  if (store.homeSearch && store.homeSearch.trim()) applyLiveSearch(store.homeSearch);
  content.querySelector('[data-pick-classes]')?.addEventListener('click', showClassPicker);
+ content.querySelectorAll('details.dash-cat').forEach(d => d.addEventListener('toggle', () => {
+  if (!store.dashCatOpen || typeof store.dashCatOpen !== 'object') store.dashCatOpen = {};
+  store.dashCatOpen[d.getAttribute('data-cat')] = d.open;
+  saveStore();
+ }));
  content.querySelector('[data-continue]')?.addEventListener('click', () => { if (next) go({ name: 'section', courseId: next.courseId, chId: next.chId, secId: next.secId }); });
  content.querySelector('[data-notebooks]')?.addEventListener('click', () => go({ name: 'notebooks' }));
  content.querySelectorAll('[data-dash-activate]').forEach(b => b.addEventListener('click', e => {
@@ -40972,6 +41295,11 @@ function getQuestions(courseId, chId, secId) {
   function openResetDialog(cid){
     cid = cid || currentCourseId();
     if (!cid){ if (typeof toast==='function') toast('Open a class first, then reset it.'); return; }
+    /* ONE DIALOG. The class page's own reset (CLASS_RESET_V1) is the one she
+       sees, and it offers the choice this one does not - scores only, or notes
+       and pen marks too. Two dialogs with different wording for the same act is
+       how "reset" came to mean two different things; this defers to that one. */
+    try { if (typeof window.__openClassResetDialog === 'function') { window.__openClassResetDialog(cid); return; } } catch (e) {}
     var ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
     var card=document.createElement('div');
@@ -47146,6 +47474,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
          go first so the erase record is written over the final state. */
       if (alsoNotes) {
         prefixDelete(store.notes, cid);
+        prefixDelete(store.textHL, cid);        // highlights go with the notes
         prefixDelete(store.noteDrafts, cid);   // an unsent draft is still her text
         prefixDelete(store.padNotes, cid);
         prefixDelete(store.bookmarks, cid);
@@ -47154,7 +47483,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
           // Pen marks now live in their own per-page slots, so clear those too.
           var _keys = (typeof window.__inkKeys === 'function') ? window.__inkKeys().slice() : [];
           _keys.forEach(function(k){
-            if (k.split('_').indexOf(cid) >= 0) {
+            /* Two key shapes. The pen's annotation layer keys a page
+               "section_C959_ch1_s1"; the notebook pad keys it "pad_C959/ch4/s1".
+               Splitting on "_" finds the first and never the second, so the
+               notebook's own handwriting survived "Reset everything". */
+            if (k.split('_').indexOf(cid) >= 0 || k.indexOf('pad_' + cid + '/') === 0) {
               if (typeof window.__inkDrop === 'function') window.__inkDrop(k);
               if (store.gannoStrokes) delete store.gannoStrokes[k];
             }
@@ -47162,9 +47495,12 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         } catch(e){}
         if (store.gannoStrokes) {
           Object.keys(store.gannoStrokes).forEach(function(k){
-            if (k.split('_').indexOf(cid) >= 0) delete store.gannoStrokes[k];
+            if (k.split('_').indexOf(cid) >= 0 || k.indexOf('pad_' + cid + '/') === 0) delete store.gannoStrokes[k];
           });
         }
+        // recorded, so the other device carries it out too instead of merging
+        // her notes straight back on the next pull
+        try { if (window.__erase && window.__erase.mark) window.__erase.mark('courseNotes', cid); } catch(e){}
       }
       var core = null;
       try { if (typeof window.__resetCourseProgress === 'function') core = window.__resetCourseProgress(cid); } catch(e){}
@@ -47196,6 +47532,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     } catch(e){ try { toast('Reset failed — nothing was changed'); } catch(_){} return false; }
   }
 
+  window.__openClassResetDialog = function(cid){ return openDialog(cid); };
   function openDialog(cid){
     var c = COURSES[cid] || {};
     var have = countFor(cid);
@@ -62179,6 +62516,7 @@ function read(){
   if (!o || typeof o !== 'object') o = {};
   if (!o.pages || typeof o.pages !== 'object') o.pages = {};
   if (!o.courses || typeof o.courses !== 'object') o.courses = {};
+  if (!o.courseNotes || typeof o.courseNotes !== 'object') o.courseNotes = {};
   return o;
 }
 function write(o){
@@ -62298,6 +62636,11 @@ function absorb(remote){
   }
   var rp = remote.pages || {};
   for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
+  var rn = remote.courseNotes || {};
+  for (k in rn) if ((rn[k] || 0) > (o.courseNotes[k] || 0)) {
+    o.courseNotes[k] = rn[k]; changed = true;
+    if (applyCourseNotesMark(k, rn[k])) applied = true;
+  }
   var rc = remote.courses || {};
   for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) {
     o.courses[k] = rc[k]; changed = true;
@@ -62320,6 +62663,7 @@ function mark(kind, rk){
   var o = read(), now = Date.now();
   if (kind === 'page' && rk) o.pages[rk] = now;
   else if (kind === 'course' && rk) o.courses[rk] = now;
+  else if (kind === 'courseNotes' && rk) o.courseNotes[rk] = now;
   else if (KINDS[kind]) {
     o[kind] = now;
     if (kind === 'all') { o.scores = now; o.ink = now; o.pages = {}; }
@@ -62430,11 +62774,49 @@ function applyCourseMark(cid, T){
    If it has not, its copy still predates the reset however new the copy itself
    is - which is the case the old rule missed, because it only ever compared the
    COPY's timestamp against the mark and a copy pushed a second later passed. */
-function senderApplied(incoming, cid, mark){
+function senderApplied(incoming, cid, mark, kind){
   try {
-    var e = incoming && incoming.__erased;
-    return !!(e && e.courses && (e.courses[cid] || 0) >= mark);
+    var e = incoming && incoming.__erased, m = e && e[kind || 'courses'];
+    return !!(m && (m[cid] || 0) >= mark);
   } catch (err) { return false; }
+}
+/* "RESET EVERYTHING - ALSO NOTES & PEN MARKS", carried between devices.
+   Scores had an erase record from 18.589; the notes half of that reset had
+   none, so the other device merged her typed notes, highlights, bookmarks
+   and drafts straight back on the next pull. This is the notes twin of
+   applyCourseMark: anything written AFTER the erase is new and stays. A
+   bookmark or an unsent draft carries no time, so it goes. */
+var NOTE_LISTS = [['notes', 'createdAt'], ['textHL', 'ts']];
+function applyCourseNotesMark(cid, T){
+  var changed = false, pre = cid + '/';
+  try {
+    NOTE_LISTS.forEach(function(pair){
+      var m = store[pair[0]]; if (!m || typeof m !== 'object') return;
+      for (var k in m) {
+        if (k.indexOf(pre) !== 0 || !Array.isArray(m[k])) continue;
+        var keep = m[k].filter(function(x){ return x && ((x[pair[1]] || 0) >= T); });
+        if (keep.length !== m[k].length) { changed = true; if (keep.length) m[k] = keep; else delete m[k]; }
+      }
+    });
+  } catch (e) {}
+  try {
+    ['bookmarks', 'noteDrafts'].forEach(function(key){
+      var m = store[key]; if (!m || typeof m !== 'object') return;
+      for (var k in m) if (k.indexOf(pre) === 0) { delete m[k]; changed = true; }
+    });
+  } catch (e) {}
+  try {
+    var pn = store.padNotes || {}, keys = (typeof window.__inkKeys === 'function') ? window.__inkKeys().slice() : [];
+    for (var sk in pn) if (sk.indexOf(pre) === 0 && ((pn[sk].ts || 0) < T)) { delete pn[sk]; changed = true; }
+    keys.forEach(function(rk){
+      var mine = rk.indexOf('pad_' + pre) === 0 || rk.split('_').indexOf(cid) >= 0;
+      if (!mine) return;
+      var sec = rk.indexOf('pad_') === 0 ? rk.slice(4) : null;
+      if (sec && pn[sec] && (pn[sec].ts || 0) >= T) return;      // written after the erase
+      try { if (typeof window.__inkDrop === 'function') { window.__inkDrop(rk); changed = true; } } catch (e) {}
+    });
+  } catch (e) {}
+  return changed;
 }
 function stripResetCourses(incoming, when){
   var o = read(), marks = {}, any = false, cid;
@@ -62500,6 +62882,36 @@ function stripResetCourses(incoming, when){
   // class's milestones straight back. Ratings, unlocks and exam-taken are not
   // merged today; stripped anyway so that stays true if the merge ever grows.
   var keep = function(src){ if (!src || typeof src !== 'object') return src; var cp = {}; for (var k in src) if (!hit(String(k).split('/')[0])) cp[k] = src[k]; return cp; };
+  // the notes half: only for classes she reset "everything" on, by the age
+  // of each note, so a note written after the erase still arrives
+  var nmarks = {}, nany = false, ncid;
+  for (ncid in o.courseNotes) {
+    var nm = o.courseNotes[ncid];
+    if (!nm || senderApplied(incoming, ncid, nm, 'courseNotes')) continue;
+    nmarks[ncid] = nm; nany = true;
+  }
+  if (nany) {
+    var nstale = function(k, ts){ var mk = nmarks[String(k).split('/')[0]]; return mk !== undefined && (ts || 0) < mk; };
+    NOTE_LISTS.forEach(function(pair){
+      var src = out[pair[0]]; if (!src || typeof src !== 'object') return;
+      var cp = {};
+      for (var k in src) {
+        if (!Array.isArray(src[k]) || nmarks[String(k).split('/')[0]] === undefined) { cp[k] = src[k]; continue; }
+        var kept = src[k].filter(function(x){ return x && !nstale(k, x[pair[1]]); });
+        if (kept.length) cp[k] = kept;
+      }
+      out[pair[0]] = cp;
+    });
+    ['bookmarks', 'noteDrafts'].forEach(function(key){
+      var src = out[key]; if (!src || typeof src !== 'object') return;
+      var cp = {}; for (var k in src) if (nmarks[String(k).split('/')[0]] === undefined) cp[k] = src[k];
+      out[key] = cp;
+    });
+    if (out.padNotes && typeof out.padNotes === 'object') {
+      var pcp = {}; for (var pk in out.padNotes) if (!nstale(pk, (out.padNotes[pk] || {}).ts)) pcp[pk] = out.padNotes[pk];
+      out.padNotes = pcp;
+    }
+  }
   ['sectionRatings', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
   if (out.celebrated && typeof out.celebrated === 'object') {
     var cel = {}; for (var tier in out.celebrated) cel[tier] = keep(out.celebrated[tier]);
@@ -62684,7 +63096,7 @@ function sig(s){
     return JSON.stringify(o);
   } catch (e) { return null; }
 }
-function mergeInk(remoteInk, when){
+function mergeInk(remoteInk, when, remoteErased){
   var added = 0, pages = 0;
   if (!remoteInk) return { added: 0, pages: 0 };
   var E = window.__erase || null;
@@ -62693,6 +63105,23 @@ function mergeInk(remoteInk, when){
     if (!incoming || !incoming.length) continue;
     // Ink she cleared after this copy was taken must not come back with it.
     try { if (E && when && when < E.pageAt(rk)) continue; } catch (e) {}
+    /* THE SAME FLAW THE SCORES HAD (18.589), IN INK. A copy STAMPED after the
+       erase but still CARRYING the erased strokes passed the line above - the
+       other device pushes a second later and the page she cleared is back.
+       Every stroke carries the moment it was drawn, so each is judged on its
+       own age. A sender whose own erase record covers this page has already
+       applied it, and its strokes are post-erase by definition. */
+    try {
+      var pAt = E ? E.pageAt(rk) : 0;
+      if (pAt) {
+        var sp = remoteErased && remoteErased.pages && remoteErased.pages[rk];
+        var senderPageAt = Math.max(sp || 0, (remoteErased && remoteErased.ink) || 0, (remoteErased && remoteErased.all) || 0);
+        if (senderPageAt < pAt) {
+          incoming = incoming.filter(function(st){ return st && (((st._ts || st.ts) || 0) >= pAt); });
+          if (!incoming.length) continue;
+        }
+      }
+    } catch (e) {}
     var local = [];
     try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
     var seen = Object.create(null), i;
@@ -62772,7 +63201,7 @@ function applyRemote(snap){
   res.history = Math.max(0, (((store.quizHistory || []).length) || 0) - before);
   var inkOk = true;
   try { if (E && when && when < E.at('ink')) inkOk = false; } catch (e) {}
-  var ink = inkOk ? mergeInk(snap.ink, when) : { added: 0, pages: 0 };
+  var ink = inkOk ? mergeInk(snap.ink, when, snap.store && snap.store.__erased) : { added: 0, pages: 0 };
   res.ink = ink.added; res.pages = ink.pages;
   try { saveStore(); } catch (e) {}
   try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
@@ -63541,7 +63970,34 @@ function clip(voice, text){
   });
 }
 
+/* HER CHOICE, NOT MINE. The recorded voice bills per character - a few pence
+   the first time a lesson is read, nothing ever again for that lesson - so it
+   should not simply start spending because the site happens to be configured.
+   Three settings, all hers: off (the device voice, free), auto (recorded when
+   the site can, which is what shipped), and a voice to read in. */
+var VOICES = [
+  { id: 'nova',    name: 'Nova',    note: 'warm, clear \u2014 the default' },
+  { id: 'shimmer', name: 'Shimmer', note: 'bright, light' },
+  { id: 'sage',    name: 'Sage',    note: 'calm, even' },
+  { id: 'coral',   name: 'Coral',   note: 'friendly' },
+  { id: 'fable',   name: 'Fable',   note: 'storytelling' },
+  { id: 'alloy',   name: 'Alloy',   note: 'neutral' },
+  { id: 'echo',    name: 'Echo',    note: 'low, steady' },
+  { id: 'onyx',    name: 'Onyx',    note: 'deep' }
+];
+function mode(){
+  try { var m = store.listenMode; return (m === 'off' || m === 'on') ? m : 'auto'; } catch (e) { return 'auto'; }
+}
+function voice(){
+  try { var v = store.listenVoice; for (var i = 0; i < VOICES.length; i++) if (VOICES[i].id === v) return v; } catch (e) {}
+  return 'nova';
+}
 window.__neuralVoice = {
+  voices: VOICES,
+  mode: mode,
+  setMode: function(m){ try { store.listenMode = (m === 'off' || m === 'on') ? m : 'auto'; saveStore(); } catch (e) {} return mode(); },
+  voice: voice,
+  setVoice: function(v){ try { store.listenVoice = v; saveStore(); } catch (e) {} return voice(); },
   probe: probe,
   on: function(){ return state === 'on'; },
   state: function(){ return state; },
@@ -66321,12 +66777,43 @@ var past=[], future=[];         // the action journal: what Undo and Redo step t
 var eraseBatch=null;            // strokes removed by the eraser gesture in progress
 
 /* ---------- keys ---------- */
-function secKey(){
+/* WRITING ANYWHERE, NOT JUST IN THE LESSON.
+ *
+ * "I'd like a particular notebook to be accessible anywhere" - 18.593 made a
+ * class notebook READABLE anywhere, and left writing where it had always been:
+ * the pad opened only on a lesson page, because that is the only route that
+ * answers "which page am I writing on".
+ *
+ * So she can PIN a page. "Write here" in a class notebook pins that section,
+ * and the last lesson she wrote in pins itself. Off a lesson the pad opens on
+ * the pinned page and says which one it is, so a thought on the train goes
+ * into the right notebook instead of being lost or landing somewhere random.
+ * On a lesson nothing changes at all: that lesson's own page still wins. */
+function pinnedKey(){
+  try {
+    var k = prefs().pinned;
+    if (!k || typeof k !== 'string') return null;
+    var p = k.split('/');
+    if (p.length !== 3 || !COURSES[p[0]]) return null;   // a class she no longer has
+    return k;
+  } catch (e) { return null; }
+}
+function setPinned(k){
+  try { var pr = prefs(); pr.pinned = k || ''; save(); } catch (e) {}
+  try { if (typeof window.__mnPlace === 'function') window.__mnPlace(); } catch (e) {}
+  return k || null;
+}
+function lessonKey(){
   try {
     if (typeof view === 'object' && view && view.name === 'section' && view.courseId)
       return view.courseId + '/' + view.chId + '/' + view.secId;
   } catch (e) {}
   return null;
+}
+function secKey(){
+  var k = lessonKey();
+  if (k) return k;
+  return pinnedKey();
 }
 function padKey(k){ return 'pad_' + String(k || '').replace(/[^a-zA-Z0-9_/-]/g, '_'); }
 
@@ -66454,6 +66941,9 @@ function wideOn(){
    reversible in More -> Layout. One deliberate consequence: this is also the
    layout her existing marks were drawn in, so they line up again. */
 function wantSide(){
+  // side mode works by MOVING the lesson over; there is no lesson to move on
+  // any other screen, so the notebook simply docks there
+  if (!lessonKey()) return null;
   if (placement() === 'bottom') return null;
   var g = sideGeom();
   if (g) return g;
@@ -66543,6 +67033,9 @@ function loadStrokes(k){
 }
 function persist(){
   if (!curKey) return;
+  // the page she last wrote on is the one she means when she opens the pad
+  // somewhere else - no setting to find, it just follows her
+  try { if (lessonKey() === curKey && strokes.length) { var pr = prefs(); if (pr.pinned !== curKey) { pr.pinned = curKey; } } } catch (e) {}
   try { if (typeof gannoSaveStrokes === 'function') gannoSaveStrokes(padKey(curKey), strokes); } catch (e) {}
   try {
     if (!store.padNotes) store.padNotes = {};
@@ -68632,7 +69125,11 @@ function loadSection(k){
   paintUndo();
   if (taEl) taEl.value = draftGet(k);
   var w = dock && dock.querySelector('#mn-where');
-  if (w) w.textContent = k ? secTitle(k) : '';
+  if (w) {
+    var away = !lessonKey() && !!k;
+    w.textContent = k ? ((away ? '\ud83d\udccc ' : '') + secTitle(k)) : '';
+    w.title = away ? 'Pinned page \u2014 writing here from anywhere' : '';
+  }
   syncFormulaTab();                 // a maths class gains the tab, others lose it
   if (isOpen) { sizeSvg(); redraw(); paintList(); if (tab === 'form') paintFormulas(); }
   paintBadge();
@@ -68918,6 +69415,8 @@ window.__notesPanel = {
                               count: pageCount(), inkPages: inkPages() }; },
   splitSessions: function(){ return splitSessions(); },
   paper: function(){ return paperId(); },
+  pin: function(k){ return setPinned(k); },
+  pinned: function(){ return pinnedKey(); },
   /* HER HANDWRITING, FOR ANY SECTION, without opening it. `ink` says how much
      is there; `inkPage` draws one page of it. Both read the per-page storage
      slot directly, so nothing about the open notebook changes. */
@@ -68989,16 +69488,24 @@ fab.addEventListener('click', function(){ if (isOpen) doMinimize(); else setOpen
 
 function place(){
   try {
+    var onLesson = !!lessonKey() && !!document.querySelector('.my-notes, .lesson');
     var k = secKey();
-    var onLesson = !!k && !!document.querySelector('.my-notes, .lesson');
     if (!fab.isConnected) document.body.appendChild(fab);
-    var want = onLesson ? 'flex' : 'none';
+    /* Everywhere she can write: a lesson, or anywhere at all once a page is
+       pinned. Not over a full-screen writing surface of its own - the free
+       notebooks have their own pen - and not over a modal that owns the
+       screen. */
+    var blocked = false;
+    try { blocked = (view && (view.name === 'notebook')) || !!document.querySelector('.modal-bg, .v2-modal-bg'); } catch (e) {}
+    var show = !!k && !blocked;
+    var want = show ? 'flex' : 'none';
     if (fab.style.display !== want) fab.style.display = want;
-    if (!onLesson) { if (isOpen) setOpen(false); return; }
+    if (!show) { if (isOpen) setOpen(false); return; }
     if (k !== curKey) loadSection(k);
     else paintBadge();
   } catch (e) {}
 }
+window.__mnPlace = place;
 if (typeof window.render === 'function' && !window.render.__mnWrapped) {
   var _appRender = window.render;
   var wrapped = function(){

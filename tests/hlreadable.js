@@ -117,7 +117,8 @@ const THEMES = ['arcade','architect','aurora','boldstudy','brightblocks','butter
      'worst "' + worst.x1.t + '" at ' + worst.x1.r + ':1');
   ok('and four bands stacked on the same words are just as readable', worst.x4.r >= 4.5,
      'worst "' + worst.x4.t + '" at ' + worst.x4.r + ':1');
-  ok('stacking does not darken the band at all', same.every(s => s.drift <= 0.35),
+  // .every() is true of an empty list: state there was something to measure
+  ok('stacking does not darken the band at all', same.length > 0 && same.every(s => s.drift <= 0.35),
      same.map(s=>s.t+' '+s.one+'->'+s.four).join(', '));
   ok('no page errors', errs.length===0, errs.slice(0,2).join('|'));
   for (const f of F) console.log((f.pass?'PASS ':'FAIL ')+f.n+(f.x?'  '+f.x:''));

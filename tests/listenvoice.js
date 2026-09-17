@@ -149,6 +149,37 @@ async function boot(browser, mode) {
   ok('no audio was generated on an unconfigured site', off.seen.clips.length === 0, off.seen.clips.length);
   ok('no page errors on the fallback path', off.errs.length === 0, off.errs.slice(0, 3));
 
+  /* ---- her switch: off means off, and off costs nothing ---- */
+  const S = await boot(browser, 'on');
+  const C = await S.p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    const o = { defaults: { mode: window.__neuralVoice.mode(), voice: window.__neuralVoice.voice(), count: window.__neuralVoice.voices.length } };
+    showMoreSheet(); await w(300);
+    const row = document.querySelector('.more-sheet [data-act="listen-voice"]');
+    o.row = row ? row.textContent.trim() : null;
+    if (row) row.click(); await w(400);
+    const sheet = document.querySelector('.listen-sheet');
+    o.opened = !!sheet;
+    sheet.querySelector('[data-act="v-sage"]').click(); await w(400);
+    o.picked = window.__neuralVoice.voice();
+    document.querySelector('.listen-sheet [data-act="mode-off"]').click(); await w(400);
+    o.mode = window.__neuralVoice.mode();
+    document.querySelector('.listen-sheet [data-close]')?.click(); await w(200);
+    let spoke = 0; const s0 = window.speechSynthesis.speak.bind(window.speechSynthesis);
+    window.speechSynthesis.speak = function (u) { spoke++; return s0(u); };
+    go({ name: 'section', courseId: 'C959', chId: 'ch4', secId: 's1' }); await w(2500);
+    document.querySelector('[data-audio-toggle]').click(); await w(2000);
+    o.spoke = spoke; o.recorded = !!window.__listenSession;
+    return o;
+  });
+  const clipsWhileOff = S.seen.clips.length;
+  ok('it starts on "recorded when available", in Nova', C.defaults.mode === 'auto' && C.defaults.voice === 'nova' && C.defaults.count >= 6, C.defaults);
+  ok('the More menu shows the current voice', /listen voice/i.test(C.row || '') && /nova/i.test(C.row || ''), C.row);
+  ok('the picker opens and a voice can be chosen', C.opened === true && C.picked === 'sage', [C.opened, C.picked]);
+  ok('turning it off sticks', C.mode === 'off', C.mode);
+  ok('with it off Listen uses the device voice', C.spoke > 0 && C.recorded === false, C);
+  ok('and generates no audio at all, so it costs nothing', clipsWhileOff === 0, clipsWhileOff);
+
   console.log('listenvoice: ' + pass + '/' + (pass + fail) + ' passed');
   await browser.close();
   process.exit(fail ? 1 : 0);
