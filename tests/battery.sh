@@ -69,6 +69,7 @@ run writeanywhere writeanywhere.js 1
 run resetnotes resetnotes.js 1
 run homefold homefold.js 1
 run classfold classfold.js 1
+run everycourse everycourse.js 1
 run pretestkeep pretestkeep.js 1
 run listenvoice listenvoice.js 1
 run entities entities.js 1
