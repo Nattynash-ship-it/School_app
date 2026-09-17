@@ -66,6 +66,7 @@ run syncall syncall.js 1
 run classnotes classnotes.js 1
 run inkmerge inkmerge.js 1
 run writeanywhere writeanywhere.js 1
+run resetnotes resetnotes.js 1
 run pretestkeep pretestkeep.js 1
 run listenvoice listenvoice.js 1
 run entities entities.js 1

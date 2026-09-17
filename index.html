@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.595">
+<meta name="app-build" content="18.596">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -47366,7 +47366,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
           // Pen marks now live in their own per-page slots, so clear those too.
           var _keys = (typeof window.__inkKeys === 'function') ? window.__inkKeys().slice() : [];
           _keys.forEach(function(k){
-            if (k.split('_').indexOf(cid) >= 0) {
+            /* Two key shapes. The pen's annotation layer keys a page
+               "section_C959_ch1_s1"; the notebook pad keys it "pad_C959/ch4/s1".
+               Splitting on "_" finds the first and never the second, so the
+               notebook's own handwriting survived "Reset everything". */
+            if (k.split('_').indexOf(cid) >= 0 || k.indexOf('pad_' + cid + '/') === 0) {
               if (typeof window.__inkDrop === 'function') window.__inkDrop(k);
               if (store.gannoStrokes) delete store.gannoStrokes[k];
             }
@@ -47374,9 +47378,12 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         } catch(e){}
         if (store.gannoStrokes) {
           Object.keys(store.gannoStrokes).forEach(function(k){
-            if (k.split('_').indexOf(cid) >= 0) delete store.gannoStrokes[k];
+            if (k.split('_').indexOf(cid) >= 0 || k.indexOf('pad_' + cid + '/') === 0) delete store.gannoStrokes[k];
           });
         }
+        // recorded, so the other device carries it out too instead of merging
+        // her notes straight back on the next pull
+        try { if (window.__erase && window.__erase.mark) window.__erase.mark('courseNotes', cid); } catch(e){}
       }
       var core = null;
       try { if (typeof window.__resetCourseProgress === 'function') core = window.__resetCourseProgress(cid); } catch(e){}
@@ -62392,6 +62399,7 @@ function read(){
   if (!o || typeof o !== 'object') o = {};
   if (!o.pages || typeof o.pages !== 'object') o.pages = {};
   if (!o.courses || typeof o.courses !== 'object') o.courses = {};
+  if (!o.courseNotes || typeof o.courseNotes !== 'object') o.courseNotes = {};
   return o;
 }
 function write(o){
@@ -62511,6 +62519,11 @@ function absorb(remote){
   }
   var rp = remote.pages || {};
   for (k in rp) if ((rp[k] || 0) > (o.pages[k] || 0)) { o.pages[k] = rp[k]; changed = true; }
+  var rn = remote.courseNotes || {};
+  for (k in rn) if ((rn[k] || 0) > (o.courseNotes[k] || 0)) {
+    o.courseNotes[k] = rn[k]; changed = true;
+    if (applyCourseNotesMark(k, rn[k])) applied = true;
+  }
   var rc = remote.courses || {};
   for (k in rc) if ((rc[k] || 0) > (o.courses[k] || 0)) {
     o.courses[k] = rc[k]; changed = true;
@@ -62533,6 +62546,7 @@ function mark(kind, rk){
   var o = read(), now = Date.now();
   if (kind === 'page' && rk) o.pages[rk] = now;
   else if (kind === 'course' && rk) o.courses[rk] = now;
+  else if (kind === 'courseNotes' && rk) o.courseNotes[rk] = now;
   else if (KINDS[kind]) {
     o[kind] = now;
     if (kind === 'all') { o.scores = now; o.ink = now; o.pages = {}; }
@@ -62643,11 +62657,49 @@ function applyCourseMark(cid, T){
    If it has not, its copy still predates the reset however new the copy itself
    is - which is the case the old rule missed, because it only ever compared the
    COPY's timestamp against the mark and a copy pushed a second later passed. */
-function senderApplied(incoming, cid, mark){
+function senderApplied(incoming, cid, mark, kind){
   try {
-    var e = incoming && incoming.__erased;
-    return !!(e && e.courses && (e.courses[cid] || 0) >= mark);
+    var e = incoming && incoming.__erased, m = e && e[kind || 'courses'];
+    return !!(m && (m[cid] || 0) >= mark);
   } catch (err) { return false; }
+}
+/* "RESET EVERYTHING - ALSO NOTES & PEN MARKS", carried between devices.
+   Scores had an erase record from 18.589; the notes half of that reset had
+   none, so the other device merged her typed notes, highlights, bookmarks
+   and drafts straight back on the next pull. This is the notes twin of
+   applyCourseMark: anything written AFTER the erase is new and stays. A
+   bookmark or an unsent draft carries no time, so it goes. */
+var NOTE_LISTS = [['notes', 'createdAt'], ['textHL', 'ts']];
+function applyCourseNotesMark(cid, T){
+  var changed = false, pre = cid + '/';
+  try {
+    NOTE_LISTS.forEach(function(pair){
+      var m = store[pair[0]]; if (!m || typeof m !== 'object') return;
+      for (var k in m) {
+        if (k.indexOf(pre) !== 0 || !Array.isArray(m[k])) continue;
+        var keep = m[k].filter(function(x){ return x && ((x[pair[1]] || 0) >= T); });
+        if (keep.length !== m[k].length) { changed = true; if (keep.length) m[k] = keep; else delete m[k]; }
+      }
+    });
+  } catch (e) {}
+  try {
+    ['bookmarks', 'noteDrafts'].forEach(function(key){
+      var m = store[key]; if (!m || typeof m !== 'object') return;
+      for (var k in m) if (k.indexOf(pre) === 0) { delete m[k]; changed = true; }
+    });
+  } catch (e) {}
+  try {
+    var pn = store.padNotes || {}, keys = (typeof window.__inkKeys === 'function') ? window.__inkKeys().slice() : [];
+    for (var sk in pn) if (sk.indexOf(pre) === 0 && ((pn[sk].ts || 0) < T)) { delete pn[sk]; changed = true; }
+    keys.forEach(function(rk){
+      var mine = rk.indexOf('pad_' + pre) === 0 || rk.split('_').indexOf(cid) >= 0;
+      if (!mine) return;
+      var sec = rk.indexOf('pad_') === 0 ? rk.slice(4) : null;
+      if (sec && pn[sec] && (pn[sec].ts || 0) >= T) return;      // written after the erase
+      try { if (typeof window.__inkDrop === 'function') { window.__inkDrop(rk); changed = true; } } catch (e) {}
+    });
+  } catch (e) {}
+  return changed;
 }
 function stripResetCourses(incoming, when){
   var o = read(), marks = {}, any = false, cid;
@@ -62713,6 +62765,36 @@ function stripResetCourses(incoming, when){
   // class's milestones straight back. Ratings, unlocks and exam-taken are not
   // merged today; stripped anyway so that stays true if the merge ever grows.
   var keep = function(src){ if (!src || typeof src !== 'object') return src; var cp = {}; for (var k in src) if (!hit(String(k).split('/')[0])) cp[k] = src[k]; return cp; };
+  // the notes half: only for classes she reset "everything" on, by the age
+  // of each note, so a note written after the erase still arrives
+  var nmarks = {}, nany = false, ncid;
+  for (ncid in o.courseNotes) {
+    var nm = o.courseNotes[ncid];
+    if (!nm || senderApplied(incoming, ncid, nm, 'courseNotes')) continue;
+    nmarks[ncid] = nm; nany = true;
+  }
+  if (nany) {
+    var nstale = function(k, ts){ var mk = nmarks[String(k).split('/')[0]]; return mk !== undefined && (ts || 0) < mk; };
+    NOTE_LISTS.forEach(function(pair){
+      var src = out[pair[0]]; if (!src || typeof src !== 'object') return;
+      var cp = {};
+      for (var k in src) {
+        if (!Array.isArray(src[k]) || nmarks[String(k).split('/')[0]] === undefined) { cp[k] = src[k]; continue; }
+        var kept = src[k].filter(function(x){ return x && !nstale(k, x[pair[1]]); });
+        if (kept.length) cp[k] = kept;
+      }
+      out[pair[0]] = cp;
+    });
+    ['bookmarks', 'noteDrafts'].forEach(function(key){
+      var src = out[key]; if (!src || typeof src !== 'object') return;
+      var cp = {}; for (var k in src) if (nmarks[String(k).split('/')[0]] === undefined) cp[k] = src[k];
+      out[key] = cp;
+    });
+    if (out.padNotes && typeof out.padNotes === 'object') {
+      var pcp = {}; for (var pk in out.padNotes) if (!nstale(pk, (out.padNotes[pk] || {}).ts)) pcp[pk] = out.padNotes[pk];
+      out.padNotes = pcp;
+    }
+  }
   ['sectionRatings', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
   if (out.celebrated && typeof out.celebrated === 'object') {
     var cel = {}; for (var tier in out.celebrated) cel[tier] = keep(out.celebrated[tier]);
@@ -62897,7 +62979,7 @@ function sig(s){
     return JSON.stringify(o);
   } catch (e) { return null; }
 }
-function mergeInk(remoteInk, when){
+function mergeInk(remoteInk, when, remoteErased){
   var added = 0, pages = 0;
   if (!remoteInk) return { added: 0, pages: 0 };
   var E = window.__erase || null;
@@ -62906,6 +62988,23 @@ function mergeInk(remoteInk, when){
     if (!incoming || !incoming.length) continue;
     // Ink she cleared after this copy was taken must not come back with it.
     try { if (E && when && when < E.pageAt(rk)) continue; } catch (e) {}
+    /* THE SAME FLAW THE SCORES HAD (18.589), IN INK. A copy STAMPED after the
+       erase but still CARRYING the erased strokes passed the line above - the
+       other device pushes a second later and the page she cleared is back.
+       Every stroke carries the moment it was drawn, so each is judged on its
+       own age. A sender whose own erase record covers this page has already
+       applied it, and its strokes are post-erase by definition. */
+    try {
+      var pAt = E ? E.pageAt(rk) : 0;
+      if (pAt) {
+        var sp = remoteErased && remoteErased.pages && remoteErased.pages[rk];
+        var senderPageAt = Math.max(sp || 0, (remoteErased && remoteErased.ink) || 0, (remoteErased && remoteErased.all) || 0);
+        if (senderPageAt < pAt) {
+          incoming = incoming.filter(function(st){ return st && (((st._ts || st.ts) || 0) >= pAt); });
+          if (!incoming.length) continue;
+        }
+      }
+    } catch (e) {}
     var local = [];
     try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
     var seen = Object.create(null), i;
@@ -62985,7 +63084,7 @@ function applyRemote(snap){
   res.history = Math.max(0, (((store.quizHistory || []).length) || 0) - before);
   var inkOk = true;
   try { if (E && when && when < E.at('ink')) inkOk = false; } catch (e) {}
-  var ink = inkOk ? mergeInk(snap.ink, when) : { added: 0, pages: 0 };
+  var ink = inkOk ? mergeInk(snap.ink, when, snap.store && snap.store.__erased) : { added: 0, pages: 0 };
   res.ink = ink.added; res.pages = ink.pages;
   try { saveStore(); } catch (e) {}
   try { if (typeof render === 'function' && !(window.__midTask && window.__midTask())) render(); } catch (e) {}
