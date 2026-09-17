@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.596">
+<meta name="app-build" content="18.597">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -5332,6 +5332,20 @@ body[data-route="home"] #wb-fab, body[data-route="today"] #wb-fab { display: non
 .dash-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .dash-cat-label { font-size: 11px; font-weight: 800; letter-spacing: 0.09em; color: var(--accent); text-transform: uppercase; margin: 20px 0 2px; display: flex; align-items: center; gap: 7px; } .dash-cat-label::before { content: ''; width: 4px; height: 13px; border-radius: 2px; background: var(--accent); display: inline-block; }
 .dash-cat-sub { font-size: 11px; color: var(--text-4); margin-bottom: 8px; }
+details.dash-cat { margin: 10px 0 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 0 12px 4px; }
+details.dash-cat[open] { padding-bottom: 12px; }
+.dash-cat-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 11px 0; }
+.dash-cat-head::-webkit-details-marker { display: none; }
+.dash-cat-head .dash-cat-label { margin: 0; flex: 1 1 auto; min-width: 0; }
+.dash-cat-count { font-size: 11.5px; color: var(--text-3); white-space: nowrap; } .dash-cat-count b { color: var(--text); font-weight: 800; }
+.dash-cat-chev { font-size: 18px; color: var(--text-4); transition: transform .18s ease; line-height: 1; }
+details.dash-cat[open] .dash-cat-chev { transform: rotate(90deg); }
+details.dash-cat .dash-cat-sub { margin: -4px 0 10px; }
+details.dash-locked { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.dash-locked-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); padding: 6px 0; }
+.dash-locked-head::-webkit-details-marker { display: none; }
+details.dash-locked[open] .dash-cat-chev { transform: rotate(90deg); }
+details.dash-locked .dash-grid { margin-top: 6px; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
 .dash-card { position: relative; border-radius: 14px; }
 .dash-card .class-card { margin: 0; }
@@ -37065,11 +37079,43 @@ function renderHomeV3() {
   (cats[label] = cats[label] || { sub, items: [] }).items.push(cr);
  });
  const CAT_ORDER = ['WGU · B.S. COMPUTER SCIENCE', 'GLOBAL AI MASTERY', 'DATACAMP', 'CAREER PATH · DATA ENGINEERING', 'MICROSOFT POWER PLATFORM', 'MATHEMATICS', 'PHYSICS', 'AGENTIC & GEN AI', 'LANGUAGES', 'OTHER PRACTICE'];
- const catHtml = CAT_ORDER.filter(k => cats[k]).map(k => `
-  <div class="dash-cat-label">${k}</div>
-  <div class="dash-cat-sub">${cats[k].sub}</div>
-  <div class="dash-grid">${cats[k].items.map(dashCard).join('')}</div>
- `).join('');
+ /* NINE CATEGORY SECTIONS, 42 CARDS, 6,879px TALL. "There are way too many
+    sections and it's confusing and overwhelming ... leave the actual sections
+    of work there but combine anything that can be combined." Every course is
+    still here. Each category is now one row that opens - and the ones she is
+    actually working in are open already, with their live courses first, so
+    the screen starts with the work and the rest waits a tap away. Her own
+    opens and closes are remembered per category. */
+ const WORKING = { active: 0, inprogress: 1, paused: 2, notstarted: 3, mastered: 4, locked: 5 };
+ const openCats = (store.dashCatOpen && typeof store.dashCatOpen === 'object') ? store.dashCatOpen : {};
+ const catHtml = CAT_ORDER.filter(k => cats[k]).map(k => {
+  const items = cats[k].items.slice().sort((a, b) => (WORKING[dashStatus(a)] ?? 9) - (WORKING[dashStatus(b)] ?? 9));
+  // "active" here means what the card's badge means: hers and not passed -
+  // the same rule the ACTIVE badge uses, so the row never contradicts the cards
+  const hers = items.filter(c => { const st = dashStatus(c); return st !== 'locked' && st !== 'mastered'; });
+  const locked = items.filter(c => dashStatus(c) === 'locked');
+  const shown = items.filter(c => dashStatus(c) !== 'locked');
+  const chosen = openCats[k];
+  const searching = !!(store.homeSearch && store.homeSearch.trim());
+  const open = (chosen === true) || (chosen === undefined && hers.length > 0) || (filter !== 'all') || searching;
+  // not-yet-activated courses are not work: one line inside the fold, not a wall
+  const lockedHtml = locked.length ? `
+   <details class="dash-locked"${(filter === 'locked' || searching) ? ' open' : ''}>
+    <summary class="dash-locked-head">${locked.length} more not activated${shown.length ? '' : ' — tap to see them'}<span class="dash-cat-chev">›</span></summary>
+    <div class="dash-grid">${locked.map(dashCard).join('')}</div>
+   </details>` : '';
+  return `
+  <details class="dash-cat" data-cat="${esc(k)}"${open ? ' open' : ''}>
+   <summary class="dash-cat-head">
+    <span class="dash-cat-label">${k}</span>
+    <span class="dash-cat-count">${items.length} course${items.length === 1 ? '' : 's'}${hers.length ? ` · <b>${hers.length} active</b>` : ''}</span>
+    <span class="dash-cat-chev">›</span>
+   </summary>
+   <div class="dash-cat-sub">${cats[k].sub}</div>
+   ${shown.length ? `<div class="dash-grid">${shown.map(dashCard).join('')}</div>` : ''}
+   ${lockedHtml}
+  </details>`;
+ }).join('');
 
  content.innerHTML = `
   ${showBackup ? `
@@ -37115,13 +37161,11 @@ function renderHomeV3() {
    cardEl.style.display = hit ? '' : 'none';
    if (hit) visible++;
   });
-  content.querySelectorAll('.dash-grid').forEach(grid => {
-   const anyVisible = Array.prototype.some.call(grid.querySelectorAll('.dash-card'), c => c.style.display !== 'none');
-   grid.style.display = anyVisible ? '' : 'none';
-   const sub = grid.previousElementSibling;
-   const label = sub ? sub.previousElementSibling : null;
-   if (sub && sub.classList && sub.classList.contains('dash-cat-sub')) sub.style.display = anyVisible ? '' : 'none';
-   if (label && label.classList && label.classList.contains('dash-cat-label')) label.style.display = anyVisible ? '' : 'none';
+  content.querySelectorAll('.dash-cat, .dash-locked').forEach(cat => {
+   const anyVisible = Array.prototype.some.call(cat.querySelectorAll('.dash-card'), c => c.style.display !== 'none');
+   cat.style.display = anyVisible ? '' : 'none';
+   // a search is an ask to SEE the matches: open the folds that hold them
+   if (q && anyVisible) cat.open = true;
   });
   // "No matches" message for a search that hides everything.
   const nm = content.querySelector('.dash-nomatch');
@@ -37141,6 +37185,11 @@ function renderHomeV3() {
  // instantly shows every course again.
  if (store.homeSearch && store.homeSearch.trim()) applyLiveSearch(store.homeSearch);
  content.querySelector('[data-pick-classes]')?.addEventListener('click', showClassPicker);
+ content.querySelectorAll('details.dash-cat').forEach(d => d.addEventListener('toggle', () => {
+  if (!store.dashCatOpen || typeof store.dashCatOpen !== 'object') store.dashCatOpen = {};
+  store.dashCatOpen[d.getAttribute('data-cat')] = d.open;
+  saveStore();
+ }));
  content.querySelector('[data-continue]')?.addEventListener('click', () => { if (next) go({ name: 'section', courseId: next.courseId, chId: next.chId, secId: next.secId }); });
  content.querySelector('[data-notebooks]')?.addEventListener('click', () => go({ name: 'notebooks' }));
  content.querySelectorAll('[data-dash-activate]').forEach(b => b.addEventListener('click', e => {
