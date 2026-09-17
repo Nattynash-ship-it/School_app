@@ -81,7 +81,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('every course is still on the page', R.totalCards === R.courses, [R.totalCards, R.courses]);
   ok('the category she is working in starts open', wgu && wgu.open === true, wgu);
   ok('and its live courses come first', wgu && ['active', 'inprogress', 'paused'].includes(wgu.firstStatus), wgu && wgu.firstStatus);
-  ok('categories with nothing of hers start folded', R.cats.some(c => c.open === false) && R.cats.filter(c => !/active/.test(c.live || '')).every(c => c.open === false), R.cats.map(c => [c.cat.slice(0, 12), c.open]));
+  ok('categories with nothing of hers start folded', R.cats.length > 0 && R.cats.some(c => c.open === false) && R.cats.filter(c => !/active/.test(c.live || '')).every(c => c.open === false), R.cats.map(c => [c.cat.slice(0, 12), c.open]));
   ok('the row\'s count agrees with the cards\' badges', wgu && parseInt((wgu.live.match(/(\d+) active/) || [])[1], 10) === wgu.badgeActive, wgu && [wgu.live, wgu.badgeActive]);
   ok('not-yet-activated courses sit behind one line inside the fold, closed', wgu && wgu.lockedFold === true && wgu.lockedOpen === false && wgu.lockedCount === wgu.lockedCards, wgu);
   // 6,879px before. What remains is the blocks above the courses (~1,400px)

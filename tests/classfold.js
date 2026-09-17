@@ -81,7 +81,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     ok(cid + ': and keep the numbers they had', C.topNumsOk === true);
     ok(cid + ': every other chapter is here exactly once, inside a fold', C.totalCards === C.chapters && C.groups.reduce((a, g) => a + g.ids.length, 0) === C.chapters - C.unitIds.length, [C.totalCards, C.chapters, C.groups.map(g => g.ids.length)]);
     ok(cid + ': each fold holds only what belongs in it', C.wrong.length === 0, C.wrong);
-    ok(cid + ': the fold counts are honest', C.groups.every(g => g.n === g.ids.length + (g.hasFinal ? 1 : 0)), C.groups.map(g => [g.key, g.n, g.ids.length, g.hasFinal]));
+    ok(cid + ': the fold counts are honest', C.groups.length > 0 && C.groups.every(g => g.n === g.ids.length + (g.hasFinal ? 1 : 0)), C.groups.map(g => [g.key, g.n, g.ids.length, g.hasFinal]));
     // C959: 4,653 before, 7 units kept. D286: 5,700 before, and its TWENTY study
     // units stay as full cards by her instruction - so its floor is higher and
     // the fold's whole saving there is the 15 tool chapters (~1,500px).
