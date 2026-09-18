@@ -64,6 +64,17 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     o.releasedWhenQuiet = !canScrollX || getComputedStyle(pages).overflowX !== 'hidden';
     pages.scrollLeft = 40; fire();
     o.scrollableAfterRelease = !canScrollX || pages.scrollLeft === 40;
+    // 4b. "the page moves a little from side to side": zoomed, the browser may only
+    // pan vertically (pan-y); a clearly sideways drag pans across by hand
+    o.zoomedTouchAction = getComputedStyle(pages).touchAction;
+    pages.scrollLeft = 0; pages.scrollTop = 0; await w(300);
+    touch('touchstart', r.left+200, r.top+300); touch('touchmove', r.left+140, r.top+304); touch('touchmove', r.left+120, r.top+306); fire();
+    o.sidewaysDrag = pages.scrollLeft;
+    touch('touchend', r.left+120, r.top+306); await w(400);
+    pages.scrollLeft = 0; await w(50);
+    touch('touchstart', r.left+200, r.top+300); touch('touchmove', r.left+212, r.top+240); fire();
+    o.angledFlickX = pages.scrollLeft;
+    touch('touchend', r.left+212, r.top+240); await w(400);
     // 5. a dock wide enough that the page fits without zoom gets pure native
     // scrolling: no horizontal overflow possible at all, no JS in the loop.
     o.zoomedByDefault = document.getElementById('mn-pages').classList.contains('mn-zoomed');
@@ -93,6 +104,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   ok('the locked axis still scrolls', R.verticalKept);
   ok('lock released once the scroll is quiet', R.releasedWhenQuiet);
   ok('cross axis scrollable again after release', R.scrollableAfterRelease);
+  ok('zoomed: the browser itself only pans up and down (touch-action pan-y), so no sideways drift is possible', R.zoomedTouchAction === 'pan-y', R.zoomedTouchAction);
+  ok('a clearly sideways drag still pans across the wider page, from the finger', !R.canScrollX || R.sidewaysDrag >= 60, 'scrollLeft ' + R.sidewaysDrag);
+  ok('an angled upward flick does not move the page sideways at all', R.angledFlickX === 0, 'scrollLeft ' + R.angledFlickX);
   ok('narrow dock is zoomed by default (the common case this fix targets)', R.zoomedByDefault);
   ok('a dock wide enough to fit drops out of zoom', R.unzoomedAtWideDock);
   ok('unzoomed: pure native vertical-only scrolling, no JS lock needed', R.nativeVerticalOnly);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.604">
+<meta name="app-build" content="18.605">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -67809,7 +67809,13 @@ css.textContent = [
      .mn-zoomed class (toggled in sizeSvg) opens both axes just for that. */
   '#mn-pages{flex:1 1 auto; overflow-y:auto; overflow-x:hidden; touch-action:pan-y; overscroll-behavior:contain;',
   '  background:var(--bg-2); -webkit-overflow-scrolling:touch;}',
-  '#mn-pages.mn-zoomed{overflow-x:auto; touch-action:pan-x pan-y;}',
+  /* "When scrolling, the page moves a little from side to side - unrealistic
+     of real pages." Even zoomed, a finger scrolls the paper UP AND DOWN ONLY:
+     the browser is never allowed to pan sideways (pan-y), so an angled flick
+     cannot drift. Moving across the wider page is a deliberate sideways drag,
+     done in wireScroll. overflow-x stays auto so that drag (and a trackpad)
+     can still set scrollLeft. */
+  '#mn-pages.mn-zoomed{overflow-x:auto; touch-action:pan-y;}',
   /* PAPER, PAINTED ONCE. --surface is opaque in 37 of the 38 themes - measured
      - so in all of those the three stacked tint layers composite to exactly
      the top one and the base colour beneath is never seen. Painting one flat
@@ -69595,16 +69601,20 @@ function wireScroll(){
     keepL = pagesEl.scrollLeft; keepT = pagesEl.scrollTop;
   }, { passive: true });
   pagesEl.addEventListener('touchmove', function(e){
-    if (!held || axis || !zoomed() || !(e.touches && e.touches[0])) return;
-    var dx = Math.abs(e.touches[0].clientX - sx);
-    var dy = Math.abs(e.touches[0].clientY - sy);
+    if (!held || !zoomed() || !(e.touches && e.touches[0]) || e.touches.length > 1) return;
+    var t0 = e.touches[0];
+    /* A SIDEWAYS DRAG PANS ACROSS. The browser only ever pans up and down
+       (touch-action: pan-y), so the page can never drift sideways under a
+       vertical flick. A gesture that is clearly sideways - twice as far
+       across as down - moves the page across by hand, from the finger. */
+    if (axis === 'x') { pagesEl.scrollLeft = keepL + (sx - t0.clientX); return; }
+    if (axis) return;
+    var dx = Math.abs(t0.clientX - sx);
+    var dy = Math.abs(t0.clientY - sy);
     if (dx < 6 && dy < 6) return;               // not committed yet
-    axis = (dy >= dx) ? 'y' : 'x';
-    // one correction, right now, then the cross-axis is switched off for the
-    // rest of the gesture - nothing left to fight the momentum on every tick
-    if (axis === 'y') { pagesEl.scrollLeft = keepL; pagesEl.style.overflowX = 'hidden'; }
-    else { pagesEl.scrollTop = keepT; pagesEl.style.overflowY = 'hidden'; }
-    locked = true;
+    axis = (dx > dy * 2 && dx >= 10) ? 'x' : 'y';
+    if (axis === 'y') { pagesEl.scrollLeft = keepL; pagesEl.style.overflowX = 'hidden'; locked = true; }
+    else { pagesEl.scrollTop = keepT; pagesEl.scrollLeft = keepL + (sx - t0.clientX); }
   }, { passive: true });
   /* The finger lifting does not end the scroll: iOS carries it on as
      momentum, so the cross-axis stays switched off until that momentum
