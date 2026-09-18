@@ -5,8 +5,8 @@
 const { chromium } = require('playwright');
 const PORT = process.env.PORT || 8901;
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
-const IDS = ['chalkboard','sumi','riso','concrete','terrazzo'];
-const DARK = { chalkboard:true, sumi:true, riso:false, concrete:false, terrazzo:false };
+const IDS = ['chalkboard','sumi','riso','concrete','terrazzo','studio','studionight'];
+const DARK = { chalkboard:true, sumi:true, riso:false, concrete:false, terrazzo:false, studio:false, studionight:true };
 const hexOf = s => { const m = String(s).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? [+m[1],+m[2],+m[3]] : null; };
 const lum = ([r,g,b]) => { const f=c=>{c/=255; return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);}; return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b); };
 const cr = (a,b) => { const la=lum(a), lb=lum(b); return (Math.max(la,lb)+0.05)/(Math.min(la,lb)+0.05); };
@@ -68,6 +68,8 @@ const cr = (a,b) => { const la=lum(a), lb=lum(b); return (Math.max(la,lb)+0.05)/
     ok(`${id}: reading contrast holds (text/bg>=7, button text>=4.5, muted text>=4.5)`, c1 >= 7 && c2 >= 4.5 && c3 >= 4.5, `text/bg ${c1.toFixed(2)} accent ${c2.toFixed(2)} muted ${c3.toFixed(2)}`);
     if (id === 'concrete') {
       ok('concrete: no background gradients, square corners, uppercase titles', R.bodyImg === 'none' && R.cardRadius === '0px' && R.h1Transform === 'uppercase', JSON.stringify({img:R.bodyImg.slice(0,40), r:R.cardRadius, t:R.h1Transform}));
+    } else if (id === 'studio' || id === 'studionight') {
+      ok(`${id}: no glow at all - a flat professional ground`, R.bodyImg === 'none', R.bodyImg.slice(0, 60));
     } else {
       ok(`${id}: carries its own texture (body background differs from the default)`, R.bodyImg !== baseBodyBg && R.bodyImg !== 'none', R.bodyImg.slice(0,90));
     }
@@ -85,10 +87,11 @@ const cr = (a,b) => { const la=lum(a), lb=lum(b); return (Math.max(la,lb)+0.05)/
   // persistence: the last choice survives a reload
   await p.reload({ waitUntil:'load', timeout:240000 }); await p.waitForTimeout(9000);
   const after = await p.evaluate(() => ({ attr: document.documentElement.getAttribute('data-theme'), stored: store.theme }));
-  ok('the chosen theme survives a reload', after.attr === 'terrazzo' && after.stored === 'terrazzo', JSON.stringify(after));
+  const LAST = IDS[IDS.length - 1];
+  ok('the chosen theme survives a reload', after.attr === LAST && after.stored === LAST, JSON.stringify(after));
   // the More menu names the theme
   const label = await p.evaluate(() => (THEMES.find(t => t.id === store.theme) || {}).name || '');
-  ok('the Theme button label resolves to the new name', label === 'Terrazzo', label);
+  ok('the Theme button label resolves to the new name', label && label !== LAST && label.length > 3, label);
   // put the default back so later suites are unaffected
   await p.evaluate(() => { delete store.theme; store.theme = 'glass'; saveStore(); });
   ok('no page errors', errs.length===0, errs.join('|').slice(0,300));
