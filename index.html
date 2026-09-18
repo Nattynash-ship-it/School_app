@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.600">
+<meta name="app-build" content="18.601">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -67503,6 +67503,10 @@ css.textContent = [
   '#mn-x{width:32px; height:32px; flex:0 0 auto; margin-left:auto; border-radius:8px; cursor:pointer;',
   '  font-size:16px; background:transparent; color:var(--text-3); font-family:inherit;',
   '  border:1px solid var(--border-strong,var(--border));}',
+  /* along the bottom on a portrait iPad the tool row (536px) is wider than the
+     dock's room for it (464-530px), and the last tools hung past the edge;
+     let the row wrap to a second line instead */
+  '#mn-dock:not(.mn-side) #mn-tools{flex-wrap:wrap; row-gap:4px;}',
   '#mn-where{flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;',
   '  color:var(--text-4); max-width:26vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}',
 
@@ -68850,13 +68854,14 @@ function deletePage(n){
   if (onIt.length && typeof confirm === 'function' &&
       !confirm('Delete page ' + n + ' and the ' + onIt.length + ' stroke' + (onIt.length === 1 ? '' : 's') + ' on it? Pages below move up. (Undo brings it back.)')) return false;
   var removed = onIt.concat(below.removed), added = below.added;
-  if (removed.length) logOp({ op: 'erase', removed: removed, added: added, prevH: pageH });
-  else logOp({ op: 'erase', removed: [], added: [], prevH: pageH });
+  var op = { op: 'erase', removed: removed, added: added, prevH: pageH };
+  logOp(op);
   removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
   added.forEach(function(c){ strokes.push(c); });
   var pages = Math.max(1, pageCount() - 1);
   pageH = Math.max(pageHFor(), pages * PAGE_H);
   if (pageH > pages * PAGE_H && !lowestInk()) pageH = Math.max(PAGE0, pages * PAGE_H);
+  op.nextH = pageH;
   sizeSvg(); redraw(); persist(); paintBadge(); paintPageSoon();
   try { if (typeof toast === 'function') toast('Page ' + n + ' removed \u2014 Undo puts it back.'); } catch (e) {}
   gotoPage(Math.min(n, pageCount()));
@@ -68866,10 +68871,12 @@ function insertPage(n){
   n = Math.max(1, Math.min(pageCount() + 1, n | 0));
   if (pageCount() >= MAX_PAGES) { try { if (typeof toast === 'function') toast('This notebook is at its ' + MAX_PAGES + '-page limit'); } catch (e) {} return false; }
   var mv = movePagesFrom(n, PAGE_H);
-  logOp({ op: 'erase', removed: mv.removed, added: mv.added, prevH: pageH });
+  var op = { op: 'erase', removed: mv.removed, added: mv.added, prevH: pageH };
+  logOp(op);
   mv.removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
   mv.added.forEach(function(c){ strokes.push(c); });
   pageH = Math.max(pageHFor(), (pageCount() + 1) * PAGE_H);
+  op.nextH = pageH;
   sizeSvg(); redraw(); persist(); paintBadge(); paintPageSoon();
   try { if (typeof toast === 'function') toast('A blank page is now page ' + n + ' \u2014 Undo takes it out.'); } catch (e) {}
   gotoPage(n);
@@ -68917,6 +68924,8 @@ function applyOp(op, dir){                 // dir: 'undo' | 'redo'
     else if (at === -1) { op.s._ts = Date.now(); strokes.splice(Math.min(op.i, strokes.length), 0, op.s); }
   } else if (op.op === 'erase') {
     var added = op.added || [];
+    // a page insert or delete journals the page height on both sides of it
+    if (op.prevH != null) { pageH = (dir === 'undo') ? op.prevH : (op.nextH || pageH); sizeSvg(); }
     if (dir === 'undo') {
       // the fragments the cut made go away, the original strokes come back
       added.forEach(function(f){ var k = strokes.indexOf(f); if (k !== -1) strokes.splice(k, 1); });
@@ -69515,6 +69524,18 @@ function paintBadge(){
 }
 
 /* ---------- open / close ---------- */
+/* The page label. It was written only when the page CHANGED, and the very
+   first open happens on a page that was already current before the dock
+   existed, so the label came up blank - on a lesson, and from Home where it
+   is the one thing saying which notebook the pen is in. */
+function paintWhere(k){
+  var w = dock && dock.querySelector('#mn-where');
+  if (!w) return;
+  if (k === undefined) k = curKey;
+  var away = !lessonKey() && !!k;
+  w.textContent = k ? ((away ? '\ud83d\udccc ' : '') + secTitle(k)) : '';
+  w.title = away ? 'Pinned page \u2014 writing here from anywhere' : '';
+}
 function loadSection(k){
   if (k !== curKey) { past = []; future = []; eraseBatch = null; }   // the journal is per section
   curKey = k;
@@ -69522,12 +69543,7 @@ function loadSection(k){
   pageH = pageHFor();
   paintUndo();
   if (taEl) taEl.value = draftGet(k);
-  var w = dock && dock.querySelector('#mn-where');
-  if (w) {
-    var away = !lessonKey() && !!k;
-    w.textContent = k ? ((away ? '\ud83d\udccc ' : '') + secTitle(k)) : '';
-    w.title = away ? 'Pinned page \u2014 writing here from anywhere' : '';
-  }
+  paintWhere(k);
   syncFormulaTab();                 // a maths class gains the tab, others lose it
   applySkin();                      // this class's notebook look
   if (isOpen) { sizeSvg(); redraw(); paintList(); if (tab === 'form') paintFormulas(); }
@@ -69731,7 +69747,7 @@ function setOpen(next){
       document.documentElement.style.setProperty('--mn-h', dockH() + 'px');
     }
     holdPlace(keep);
-    if (curKey !== secKey()) loadSection(secKey());
+    if (curKey !== secKey()) loadSection(secKey()); else paintWhere();
     /* loadSection is skipped when the section has not changed, and the very
        first open builds the dock AFTER that call - so the tab has to be
        settled here too, or a maths class opens without its Formulas tab. */
