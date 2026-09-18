@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.602">
+<meta name="app-build" content="18.603">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -31352,7 +31352,7 @@ function gannoInit() {
  applyLessonTextSize();
  // Apply persisted font setting (system | serif | rounded | classic | mono | readable | dyslexic)
  applyFont();
- gannoBuildToolbar(); gannoEnsureSvg(); gannoSetActive(true); // toolbar shown by default; the lesson ✏ button toggles annotation off/on
+ gannoBuildToolbar(); gannoEnsureSvg(); gannoSetActive(!!(typeof store === 'object' && store && store.gannoOn)); // on only if she turned the pencil on last time; the lesson's pencil button toggles it
  gannoRender(gannoGetStrokes(ganno.routeKey), null);
  // Document-level pen listeners — these never block touch/mouse
  document.addEventListener('pointerdown', gannoDocPointerDown, true);
@@ -62622,6 +62622,225 @@ try {
 } catch (e) {}
 })();
 
+
+
+(function proChrome(){
+/* A PROFESSIONAL CHROME (18.603). Six things she asked for, in one layer:
+   1. one line-icon set in the chrome - nav, rail, brand bar, lesson top bar,
+      the lesson's buttons, the tool column, the More menu - no emoji as icons
+   2. a trimmed header: the brand row leaves lesson pages, and the pen toolbar
+      appears only when the pencil button is tapped
+   3. one button family: primary and quiet, one corner radius
+   4. the greeting is a small, plain subtitle - no emoji, gone on lessons
+   5. one card surface: one background, one border, one shadow
+   6. the Study Arcade and Back up banners leave Home for the More menu
+   Content (lessons, questions, the notebook paper) is untouched. */
+if (typeof document === 'undefined' || window.__proChrome) return;
+window.__proChrome = true;
+
+var P = {
+  home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M9.75 20v-5.5h4.5V20"/>',
+  review:'<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.8 4.2v4.6h-4.6"/>',
+  focus:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  plan:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.75h17"/><path d="M8 3.5v3M16 3.5v3"/><path d="M8.5 14h3M8.5 17.25h7"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 20.5 20.5"/>',
+  notes:'<path d="M5 4.5h9.5L19 9v10.5H5z"/><path d="M14.25 4.5V9H19"/><path d="M8.25 13h7.5M8.25 16.25h5"/>',
+  stats:'<path d="M4 20h16"/><rect x="6" y="12" width="3.2" height="5.5" rx="1"/><rect x="10.4" y="8" width="3.2" height="9.5" rx="1"/><rect x="14.8" y="4.5" width="3.2" height="13" rx="1"/>',
+  more:'<circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  palette:'<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><path d="M12 21c-1.6 0-2.2-1-2.2-2s.6-2 2.2-2h2.6a3.2 3.2 0 0 0 0-6.4"/>',
+  settings:'<path d="M4 7h9M18 7h2M4 12h2M11 12h9M4 17h9M18 17h2"/><circle cx="15.5" cy="7" r="2"/><circle cx="8.5" cy="12" r="2"/><circle cx="15.5" cy="17" r="2"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  pen:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"/>',
+  bookmark:'<path d="M6 3h12v18l-6-4-6 4z"/>',
+  bookmarkon:'<path d="M6 3h12v18l-6-4-6 4z" fill="currentColor"/>',
+  note:'<path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/>',
+  back:'<path d="M15 6l-6 6 6 6"/>',
+  zap:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  volume:'<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/>',
+  play:'<path d="M7 5v14l11-7z"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  pause:'<path d="M8 5v14M16 5v14"/>',
+  calculator:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8"/><path d="M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+  sparkles:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
+  mindmap:'<circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M6.6 7.4 10 10.2M17.4 7.4 14 10.2M6.6 16.6 10 13.8M17.4 16.6 14 13.8"/>',
+  bulb:'<path d="M9 18h6"/><path d="M10 21h4"/><path d="M8.5 14.5A6 6 0 1 1 15.5 14.5c-.7.6-1.5 1.7-1.5 3.5h-4c0-1.8-.8-2.9-1.5-3.5z"/>',
+  notebook:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v18"/><path d="M12 8h4M12 12h4"/>',
+  gamepad:'<rect x="2.5" y="7" width="19" height="11" rx="4"/><path d="M7 11v3M5.5 12.5h3"/><path d="M15.5 12h.01M18 13.5h.01"/>',
+  download:'<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 18h16"/>',
+  upload:'<path d="M12 14V4M8 8l4-4 4 4M4 18h16"/>',
+  columns:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
+  check:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12l3 3 5-6"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  eraser:'<path d="M7 20h10"/><path d="M4.5 14.5 13 6a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-6.5 6.5H9z"/>',
+  trash:'<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+  file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'
+};
+function ic(name){ return '<svg class="pc-ic" aria-hidden="true" viewBox="0 0 24 24">' + (P[name] || P.more) + '</svg>'; }
+var EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2200}-\u{22FF}\u{2700}-\u{27BF}\u{2900}-\u{297F}]/gu;
+
+/* replace the text of an element with an icon, keeping any child elements (badges, labels) */
+function setIcon(el, name){
+  if (!el) return;
+  if (el.getAttribute('data-pc') === name) return;
+  el.setAttribute('data-pc', name);
+  var kids = Array.prototype.slice.call(el.childNodes);
+  for (var i = 0; i < kids.length; i++) {
+    var n = kids[i];
+    if (n.nodeType === 3) el.removeChild(n);
+    else if (n.nodeType === 1 && n.classList && n.classList.contains('pc-ic')) el.removeChild(n);
+  }
+  el.insertAdjacentHTML('afterbegin', ic(name));
+}
+/* a row like "✦ Theme: Glass": the leading glyphs become an icon, the words stay */
+function iconRow(btn, name){
+  if (!btn || btn.getAttribute('data-pc')) return;
+  var t = null;
+  for (var i = 0; i < btn.childNodes.length; i++) if (btn.childNodes[i].nodeType === 3 && btn.childNodes[i].textContent.trim()) { t = btn.childNodes[i]; break; }
+  if (t) t.textContent = t.textContent.replace(/^[^\p{L}\p{N}]+/u, ' ');
+  btn.setAttribute('data-pc', name);
+  btn.insertAdjacentHTML('afterbegin', ic(name));
+}
+var NAV = { home:'home', review:'review', focus:'focus', plan:'plan', notebooks:'notes', search:'search', dashboard:'stats', more:'more', today:'home', planner:'plan', calendar:'plan', flashcards:'review' };
+var MORE = { theme:'palette', dashboard:'stats', width:'columns', 'study-modes':'sparkles', 'defer-answers':'check', pdf:'file', 'listen-voice':'volume', export:'download', 'email-backup':'mail', import:'upload', goal:'focus', 'wipe-annotations':'eraser', 'reset-scores':'review', clear:'trash', arcade:'gamepad', backup:'download' };
+
+function swap(){
+  try {
+    var q = function(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+    q('.brand-nav-btn').forEach(function(b){ var k = b.getAttribute('data-go') || b.getAttribute('data-act'); var ico = b.querySelector('.nav-ico'); if (ico && NAV[k]) setIcon(ico, NAV[k]); });
+    q('.side-rail-btn').forEach(function(b){ var k = b.getAttribute('data-rail-go') || b.getAttribute('data-rail-act'); var ico = b.querySelector('.nav-ico'); if (ico && NAV[k] && !ico.querySelector('svg')) setIcon(ico, NAV[k]); });
+    setIcon(document.querySelector('.brand-icon-btn[data-act="quickadd"]'), 'plus');
+    setIcon(document.querySelector('.brand-icon-btn[data-act="theme"]'), 'palette');
+    setIcon(document.querySelector('.brand-icon-btn[data-act="overflow"]'), 'settings');
+    setIcon(document.getElementById('nav-hamburger'), 'menu');
+    setIcon(document.querySelector('.top-bar .actions [data-anno]'), 'pen');
+    setIcon(document.querySelector('.top-bar .actions [data-jump]'), 'list');
+    var bm = document.querySelector('.top-bar .actions [data-bookmark]');
+    if (bm) { var on = /★/.test(bm.textContent) || bm.getAttribute('data-on') === '1'; setIcon(bm, on ? 'bookmarkon' : 'bookmark'); }
+    setIcon(document.querySelector('.top-bar .actions [data-note]'), 'note');
+    var chev = document.querySelector('.top-bar .back .nav-back-chev'); if (chev) setIcon(chev, 'back');
+    else { var bk = document.querySelector('.top-bar .back'); if (bk && !bk.querySelector('svg') && /^[\s‹<]+$/.test(bk.textContent)) setIcon(bk, 'back'); }
+    var fz = document.querySelector('.focus-btn > span:first-child'); if (fz) setIcon(fz, 'zap');
+    var au = document.querySelector('.audio-btn .audio-icon'); if (au) { var t = au.textContent.trim(); setIcon(au, t === '■' ? 'stop' : (t === '⏸' ? 'pause' : 'volume')); }
+    var qz = document.querySelector('.quiz-jump-btn > span:first-child'); if (qz) setIcon(qz, 'play');
+    setIcon(document.getElementById('calc-fab'), 'calculator');
+    setIcon(document.querySelector('.aih-fab'), 'sparkles');
+    setIcon(document.getElementById('eli5-fab'), 'bulb');
+    setIcon(document.getElementById('pod-fab'), 'mic');
+    setIcon(document.getElementById('mm-fab'), 'mindmap');
+    setIcon(document.getElementById('mn-fab'), 'notebook');
+    setIcon(document.getElementById('tt-toggle'), 'plus');
+    // the greeting: words only, no emoji
+    var g = document.querySelector('.brand-greeting');
+    if (g && !g.getAttribute('data-pc')) { g.textContent = g.textContent.replace(EMOJI, '').replace(/\s{2,}/g, ' ').trim(); g.setAttribute('data-pc', '1'); }
+    // the More menu, when it is open
+    var th = document.querySelector('.pomo-sheet [data-act="theme"]');
+    if (th) q('.pomo-sheet .pomo-btn').forEach(function(b){ if (!th.parentElement.contains(b)) return; var k = b.getAttribute('data-act') || ''; var nm = MORE[k] || (/sync/i.test(b.textContent) ? 'review' : 'more'); iconRow(b, nm); });
+    // Home: the continue row, the notebooks row, the stat chips
+    q('.dash-continue').forEach(function(b){ iconRow(b, b.classList.contains('dash-notebooks') ? 'notebook' : 'play'); });
+    q('.dash-stat').forEach(function(b){ var t = b.getAttribute('title') || ''; iconRow(b, /Level/i.test(t) ? 'zap' : /Question/i.test(t) ? 'check' : /Minute/i.test(t) ? 'focus' : /Flashcard/i.test(t) ? 'notes' : /streak/i.test(t) ? 'zap' : 'more'); });
+  } catch (e) {}
+}
+
+/* the More menu gains the two rows that left Home */
+function moreRows(){
+  try {
+    var theme = document.querySelector('.pomo-sheet [data-act="theme"]');
+    if (!theme || theme.parentElement.querySelector('[data-act="arcade"]')) return;
+    var card = theme.parentElement;
+    var mk = function(act, label){
+      var b = document.createElement('button'); b.className = 'pomo-btn'; b.setAttribute('data-act', act);
+      b.setAttribute('style', 'width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px;');
+      b.textContent = label; return b;
+    };
+    var a = mk('arcade', 'Study Arcade — Blitz, Survival, Daily Mix');
+    var bk = mk('backup', 'Back up my study progress');
+    card.insertBefore(bk, theme); card.insertBefore(a, bk);
+    var closeSheet = function(){ try { var x = card.querySelector('[data-close]'); if (x) x.click(); } catch (e) {} };
+    a.addEventListener('click', function(){ closeSheet(); try { if (typeof window.__openArcade === 'function') window.__openArcade(); } catch (e) {} });
+    bk.addEventListener('click', function(){ closeSheet(); try { if (typeof exportData === 'function') exportData(); } catch (e) {} });
+  } catch (e) {}
+}
+try {
+  if (typeof showMoreSheet === 'function' && !showMoreSheet.__pc) {
+    var _more = showMoreSheet;
+    showMoreSheet = function(){
+      var r = _more.apply(this, arguments);
+      try {
+        moreRows(); swap();
+        // other modules add their rows after this one, on their own timers: watch the sheet while it is open
+        var sh = document.querySelector('.pomo-sheet');
+        if (sh && typeof MutationObserver === 'function') {
+          var mo = new MutationObserver(function(){ try { swap(); } catch (e) {} });
+          mo.observe(sh, { childList: true, subtree: true });
+          setTimeout(function(){ try { mo.disconnect(); } catch (e) {} }, 8000);
+        }
+      } catch (e) {}
+      return r; };
+    showMoreSheet.__pc = true;
+  }
+} catch (e) {}
+try {
+  if (typeof render === 'function' && !render.__pc) {
+    var _r = render;
+    render = function(){ var o = _r.apply(this, arguments); try { swap(); } catch (e) {} return o; };
+    render.__pc = true;
+  }
+} catch (e) {}
+/* the pencil is a choice that lasts: turned on once, it is on at the next launch too */
+try {
+  if (typeof gannoSetActive === 'function' && !gannoSetActive.__pc) {
+    var _ga = gannoSetActive;
+    gannoSetActive = function(on){ var r = _ga.apply(this, arguments); try { if (store.gannoOn !== !!on) { store.gannoOn = !!on; saveStore(); } } catch (e) {} return r; };
+    gannoSetActive.__pc = true;
+  }
+} catch (e) {}
+setTimeout(swap, 300); setTimeout(swap, 1500);
+setInterval(swap, 2000);       // the tool column's buttons arrive on their own schedules
+
+var css = document.createElement('style');
+css.id = 'pro-chrome-css';
+css.textContent = [
+  /* 1. icons */
+  '.pc-ic{width:1.05em;height:1.05em;display:inline-block;vertical-align:-0.18em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;}',
+  '.brand-nav-btn .nav-ico .pc-ic{width:17px;height:17px;vertical-align:-3px;}',
+  '.brand-icon-btn .pc-ic,#nav-hamburger .pc-ic{width:18px;height:18px;vertical-align:-4px;}',
+  '.top-bar .actions .icon-btn .pc-ic{width:19px;height:19px;}',
+  '.top-bar .back .pc-ic{width:18px;height:18px;vertical-align:-4px;}',
+  '#tool-tray .tt-item .pc-ic{width:22px;height:22px;}',
+  '#tt-toggle .pc-ic{width:22px;height:22px;}',
+  '.pomo-btn .pc-ic{width:18px;height:18px;margin-right:9px;}',
+  '.focus-btn .pc-ic,.audio-btn .pc-ic,.quiz-jump-btn .pc-ic{width:15px;height:15px;vertical-align:-3px;}',
+  '.dash-continue .pc-ic{width:18px;height:18px;margin-right:8px;}',
+  '.dash-stat .pc-ic{width:14px;height:14px;margin-right:5px;}',
+  /* the nav row stays one row on a phone */
+  '@media (max-width:520px){ .brand-nav{flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;} .brand-nav::-webkit-scrollbar{display:none;} .brand-nav-btn{padding:7px 8px !important;flex:0 0 auto;} }',
+  /* 2. the header on a lesson: the brand row goes, the nav stays; the pen toolbar only where it applies */
+  /* the pen toolbar lives in this row, so the row itself stays: the logo,
+     greeting and action buttons go, and the row folds away with the toolbar */
+  'body[data-route="section"] .brand-row-top > .brand-logo, body[data-route="section"] .brand-row-top > .brand-actions{display:none !important;}',
+  'body[data-route="section"] .brand-row-top{padding:0 !important;min-height:0 !important;}',
+  'body[data-route="section"] .brand-row-top:has(.ganno-bar.collapsed){display:none !important;}',
+  'body:not([data-route="section"]) .ganno-bar{display:none !important;}',
+  /* 3. one button family: one radius; primary is solid accent, quiet is a bordered surface */
+  ':root{--r-btn:10px;}',
+  '.pomo-btn,.btn,button.primary,.v2-pill,.focus-btn,.audio-btn,.quiz-jump-btn,.read-font-btn,.dash-continue,.brand-icon-btn,#nav-hamburger,.brand-nav-btn,.v2-modal-input,.dash-search,.dash-filter,.class-filter,.dash-pick{border-radius:var(--r-btn) !important;}',
+  '.dash-continue{background:var(--accent) !important;color:var(--accent-text,#fff) !important;border:1px solid transparent !important;box-shadow:none !important;font-weight:700;}',
+  '.dash-continue.dash-notebooks{background:var(--surface) !important;color:var(--text) !important;border:1px solid var(--border-strong) !important;}',
+  '.pomo-btn:not(.primary):not(.danger){background:var(--surface-2) !important;color:var(--text) !important;border:1px solid var(--border-strong) !important;background-image:none !important;}',
+  '.pomo-btn.primary{background:var(--accent) !important;color:var(--accent-text,#fff) !important;border:1px solid transparent !important;}',
+  /* 4. the greeting: a small plain subtitle */
+  '.brand-greeting{font-size:11.5px !important;opacity:.72;font-weight:500;letter-spacing:.01em;}',
+  /* 5. one card surface */
+  '.card,.v2-card,.today-card,.hub-card,.pw-card,.class-card,.dash-card,#burst-card,.proj-card,.nb-cover{background:var(--surface) !important;background-image:none !important;border:1px solid var(--border) !important;box-shadow:var(--shadow-card) !important;border-radius:14px !important;}',
+  '.dash-stats{background:var(--surface);border:1px solid var(--border);border-radius:14px;}',
+  /* 6. the two banners leave Home */
+  '#arcade-cta,.backup-banner{display:none !important;}'
+].join('\n');
+(document.head || document.documentElement).appendChild(css);
+})();
 
 (function eraseLedger(){
 /* AN ERASE SHE ASKED FOR HAS TO STAY ERASED.

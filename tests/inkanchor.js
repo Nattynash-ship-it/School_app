@@ -4,7 +4,7 @@
 // box, which does not move when content is inserted inside it, so every stroke
 // below the insertion was left behind by exactly the inserted height.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8901/index.html';
+const B = 'http://127.0.0.1:' + (process.env.PORT || 8901) + '/index.html';
 const TOL = 6;              // px; sub-line drift is invisible and acceptable
 let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, console.log('FAIL ' + n + ' ' + (d || ''))); };
@@ -15,6 +15,10 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   await page.goto(B, { waitUntil: 'networkidle' });
+  // the pen layer starts off since 18.603 and the pencil button turns it on; turn it on
+  // before the lesson opens, as it is for her once she has chosen it (the choice persists)
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => { try { gannoSetActive(true); } catch (e) {} });
   await page.goto(B + '#lesson/D687/ch1/s1', { waitUntil: 'networkidle' });
   await page.waitForTimeout(3500);
 
