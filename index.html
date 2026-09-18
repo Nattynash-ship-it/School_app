@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.601">
+<meta name="app-build" content="18.602">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -986,6 +986,17 @@
 [data-theme="terrazzo"] .brand-title, [data-theme="terrazzo"] .screen-title {
  font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Avenir Next", system-ui, -apple-system, sans-serif; font-weight: 800;
 }
+
+
+/* ============ STUDIO (18.602): the professional pair - neutral surfaces, one accent, no glow ============ */
+[data-theme="studio"] { --bg: #f4f5f8; --bg-2: #f9fafc; --surface: #ffffff; --surface-2: #f1f3f6; --surface-3: #e3e7ee; --surface-glass: rgba(255,255,255,0.92); --border: rgba(15,23,42,0.10); --border-strong: rgba(15,23,42,0.24); --text: #0f172a; --text-2: #1e293b; --text-3: #475569; --text-4: #64748b; --text-5: #94a3b8; --accent: #4f46e5; --accent-2: #6366f1; --accent-bg: #e0e7ff; --accent-text: #ffffff; --accent-grad: linear-gradient(135deg, #4f46e5 0%, #4f46e5 100%); --secondary: #0f766e; --secondary-2: #14b8a6; --secondary-bg: #ccfbf1; --secondary-grad: linear-gradient(135deg, #0f766e 0%, #0f766e 100%); --warning: #a16207; --warning-bg: #fef3c7; --danger: #b91c1c; --danger-bg: #fee2e2; --success: #15803d; --success-bg: #dcfce7; --code-bg: #0f172a; --code-text: #e2e8f0; --highlight: rgba(79,70,229,0.16); --note-bg: #eef2ff; --note-border: #4f46e5; --shadow: 0 1px 2px rgba(15,23,42,0.06); --shadow-strong: 0 8px 24px rgba(15,23,42,0.10); --shadow-card: 0 1px 2px rgba(15,23,42,0.05), 0 1px 0 rgba(15,23,42,0.04); --radius: 10px; --radius-sm: 8px; }
+[data-theme="studio"] { --avatar-body-top: #a5b4fc; --avatar-body-bot: #4f46e5; --avatar-belly-top: #ffffff; --avatar-belly-bot: #e0e7ff; --avatar-beak: #f59e0b; --avatar-bg-1: rgba(79,70,229,0.10); --avatar-bg-2: rgba(15,118,110,0.08); }
+[data-theme="studio"] body { background-image: none; }
+[data-theme="studio"] h1, [data-theme="studio"] h2, [data-theme="studio"] h3, [data-theme="studio"] .screen-title { letter-spacing: -0.01em; }
+[data-theme="studionight"] { --bg: #0f1115; --bg-2: #14171c; --surface: #191d23; --surface-2: #1f242c; --surface-3: #2a313b; --surface-glass: rgba(25,29,35,0.92); --border: rgba(255,255,255,0.08); --border-strong: rgba(255,255,255,0.18); --text: #e6e9ef; --text-2: #cfd4dc; --text-3: #9aa3b2; --text-4: #7d8695; --text-5: #525a67; --accent: #818cf8; --accent-2: #a5b4fc; --accent-bg: #26295a; --accent-text: #0b0d2a; --accent-grad: linear-gradient(135deg, #818cf8 0%, #818cf8 100%); --secondary: #2dd4bf; --secondary-2: #5eead4; --secondary-bg: #113b37; --secondary-grad: linear-gradient(135deg, #2dd4bf 0%, #2dd4bf 100%); --warning: #fbbf24; --warning-bg: #3a2c10; --danger: #f87171; --danger-bg: #3a1a1a; --success: #4ade80; --success-bg: #12301d; --code-bg: #0b0d11; --code-text: #e6e9ef; --highlight: rgba(129,140,248,0.22); --note-bg: rgba(129,140,248,0.10); --note-border: #818cf8; --shadow: 0 1px 2px rgba(0,0,0,0.4); --shadow-strong: 0 10px 28px rgba(0,0,0,0.5); --shadow-card: 0 1px 2px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.03); --radius: 10px; --radius-sm: 8px; }
+[data-theme="studionight"] { --avatar-body-top: #a5b4fc; --avatar-body-bot: #6366f1; --avatar-belly-top: #e6e9ef; --avatar-belly-bot: #cfd4dc; --avatar-beak: #fbbf24; --avatar-bg-1: rgba(129,140,248,0.14); --avatar-bg-2: rgba(45,212,191,0.08); }
+[data-theme="studionight"] body { background-image: none; }
+[data-theme="studionight"] h1, [data-theme="studionight"] h2, [data-theme="studionight"] h3, [data-theme="studionight"] .screen-title { letter-spacing: -0.01em; }
 
  /* ============ AVATAR COLOR PER THEME ============ */
  /* The owl mascot uses CSS vars so each theme gives it personality */
@@ -5080,6 +5091,8 @@ html { scroll-behavior: smooth; }
 .theme-preview.theme-riso { background: linear-gradient(135deg, #f6f3ec 0%, #ff48b0 52%, #0069a8 100%); }
 .theme-preview.theme-concrete { background: linear-gradient(135deg, #e6e7e3 0%, #cfd0ca 48%, #141414 76%, #1a3fe8 100%); }
 .theme-preview.theme-terrazzo { background: linear-gradient(135deg, #f8f4ee 0%, #137c74 44%, #e8674f 74%, #e0a93a 100%); }
+.theme-preview.theme-studio { background: linear-gradient(135deg, #f4f5f8 0%, #e3e7ee 55%, #4f46e5 100%); }
+.theme-preview.theme-studionight { background: linear-gradient(135deg, #0f1115 0%, #2a313b 55%, #818cf8 100%); }
 
 /* ==================== STICKERS ==================== */
 .ganno-tool[data-tool="sticker"] { order: 8; font-size: 19px; line-height: 1; }
@@ -5740,6 +5753,36 @@ body.nav-collapsed.has-rail #app { margin-left: 0 !important; }
 body.nav-collapsed.has-rail .ganno-bar { margin-left: 0 !important; }
 body.nav-collapsed .dash-side { display: none !important; }
 body.nav-collapsed .dash-wrap { grid-template-columns: 1fr !important; }
+/* A PHONE IS ONE COLUMN. The railed shell's !important column rule outranked
+   the 720px rule below it, so a phone kept the 230px sidebar beside a 160px
+   main column and every card broke one word per line. On a phone the
+   sidebar is a drawer behind the menu button; the top nav row already carries
+   every screen. */
+@media (max-width: 720px) {
+  .v2-shell, .v2-shell-railed { grid-template-columns: 1fr !important; }
+  .v2-sidebar { display: none !important; }
+  .home-rail { display: none !important; }
+  body.phone-nav-open .v2-sidebar { display: flex !important; position: fixed; left: 0; top: 0; bottom: 0; width: min(86vw, 330px); z-index: 70;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; box-shadow: 8px 0 30px rgba(0,0,0,.28); background: var(--surface, var(--bg-2)); }
+  body.phone-nav-open #phone-nav-scrim { display: block; }
+  #phone-nav-scrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.38); z-index: 69; }
+  /* the lesson's title row: the three buttons wrap under the title instead of running off the edge */
+  .focus-btn, .audio-btn, .quiz-jump-btn { padding: 6px 10px !important; font-size: 13px !important; }
+  /* wide tables (definitions, truth tables) scroll inside the page instead of widening it */
+  .screen-with-header table, .lesson table { display: block; width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; box-sizing: border-box; }
+  #arcade-cta { flex-wrap: wrap; }
+  /* the calendar: a square 60px cell forced seven columns to 444px; on a phone the cells give */
+  .v2-cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .v2-cal-cell { aspect-ratio: auto; min-height: 44px; padding: 4px; }
+  /* a code block inside a callout row sized itself to its longest line (a flex
+     child's min-width is its content); let it shrink and scroll instead */
+  .lesson .callout > div, .lesson .lb-pre-wrap, .lesson .callout pre { min-width: 0; max-width: 100%; }
+  /* a lesson row laid out as an inline grid (icon 26px | 1fr): the 1fr item's
+     min-width is its content, so a wide code block widened the whole page */
+  .lesson [style*="grid-template-columns"] > *, .lesson .callout > div > * { min-width: 0; }
+  .dash-search { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+}
+.screen-with-header > div:has(> h1):has(> .quiz-jump-btn), .screen-with-header > div:has(> h1):has(> .focus-btn) { flex-wrap: wrap; row-gap: 8px; }
 #nav-hamburger { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
   border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
   font-size: 18px; cursor: pointer; flex: 0 0 auto; margin-right: 8px; transition: background 0.12s; }
@@ -15794,6 +15837,8 @@ function showHandwritingSettings() {
 
 // ==================== THEME PICKER ====================
 const THEMES = [
+  { id: 'studio', name: 'Studio', desc: 'Clean white & slate · one indigo accent, no glow' },
+  { id: 'studionight', name: 'Studio Night', desc: 'Graphite & indigo · the same calm, in the dark' },
   { id: 'owl', name: 'Night Owl', desc: 'Aubergine & owl gradient · gold → orange → purple' },
   { id: 'cartoon', name: 'Cartoon', desc: 'From Vela · purple & paper, bold outlines, serif' },
   { id: 'quest', name: 'Quest', desc: 'Purple & gold · streaks, levels, momentum' },
@@ -38878,8 +38923,31 @@ function getQuestions(courseId, chId, secId) {
     var bar=document.querySelector('.brand-bar'); if(!bar) return false;
     if(!document.getElementById('nav-hamburger')){
       var b=document.createElement('button'); b.id='nav-hamburger'; b.title='Show/hide menu'; b.setAttribute('aria-label','Toggle menu'); b.textContent='\u2630';
-      b.addEventListener('click', function(){ store.navHidden=!store.navHidden; try{saveStore();}catch(e){} applyNavState(); });
+      b.addEventListener('click', function(){
+        // on a phone the button opens the sidebar as a drawer; on anything wider it hides or shows the column
+        if (window.innerWidth <= 720) {
+          if (!document.querySelector('.v2-sidebar')) {      // no sidebar on this screen: the menu lives on Home
+            try { go({ name: 'home' }); } catch(e) {}
+            setTimeout(function(){ if (document.querySelector('.v2-sidebar')) document.body.classList.add('phone-nav-open'); }, 350);
+            return;
+          }
+          document.body.classList.toggle('phone-nav-open'); return;
+        }
+        store.navHidden=!store.navHidden; try{saveStore();}catch(e){} applyNavState(); });
       bar.insertBefore(b, bar.firstChild);
+      try {
+        if (!document.getElementById('phone-nav-scrim')) {
+          var scrim=document.createElement('div'); scrim.id='phone-nav-scrim';
+          scrim.addEventListener('click', function(){ document.body.classList.remove('phone-nav-open'); });
+          document.body.appendChild(scrim);
+        }
+        // choosing anything in the drawer closes it
+        document.addEventListener('click', function(ev){
+          if (!document.body.classList.contains('phone-nav-open')) return;
+          var sb=document.querySelector('.v2-sidebar'); if (!sb || !sb.contains(ev.target)) return;
+          if (ev.target.closest('button, a, [data-go], [data-nav], .v2-sb-item')) setTimeout(function(){ document.body.classList.remove('phone-nav-open'); }, 60);
+        }, true);
+      } catch(e){}
     }
     return true;
   }
@@ -70046,7 +70114,8 @@ var tray = null, toggle = null, hintShown = false;
    have told her the page HAS notes was hidden with it. Nothing disappears now
    until she puts it away herself, and then she knows where it went. */
 function isOpen(){
-  try { return localStorage.getItem(KEY) !== '0'; } catch (e) { return true; }
+  // never chosen: open on a wide screen, folded to one button on a phone
+  try { var v = localStorage.getItem(KEY); if (v === null) return !(window.innerWidth < 700); return v !== '0'; } catch (e) { return true; }
 }
 function setOpen(on){
   try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {}
@@ -70066,6 +70135,13 @@ function tools(){
 }
 
 var CSS = [
+/* the notebook has its own tools: while it is open the tray steps aside, so
+   nothing sits over the paper. And when the tray is unfolded on a wide screen
+   the full-width screens keep a gutter for it, so it never covers text. The
+   lesson is left alone: its ink is anchored to the column's width. */
+'body.mn-open #tool-tray{display:none !important;}',
+'@media (min-width:700px){ body.tt-open #app > .v2-shell .v2-main{padding-right:84px !important;}',
+'  body.tt-open #app > div:not(.v2-shell):not(.app){padding-right:72px; box-sizing:border-box;} }',
 '#tool-tray{position:fixed; right:14px; bottom:88px; z-index:46;',
 '  display:flex; flex-direction:column-reverse; align-items:flex-end; gap:8px;}',
 /* Inside the tray a button is just a button - its own fixed corner is gone.
@@ -70148,6 +70224,7 @@ function paint(){
     var open = isOpen();
     tray.classList.toggle('tt-shut', !open);
     tray.classList.toggle('tt-empty', live === 0);
+    document.body.classList.toggle('tt-open', open && live > 0);
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     toggle.setAttribute('aria-label', open ? 'Fold the study tools away'
                                            : ('Study tools (' + live + ')'));

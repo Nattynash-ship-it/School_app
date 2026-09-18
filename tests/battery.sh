@@ -76,6 +76,7 @@ run syncskip syncskip.js 1
 run plandates plandates.js 1
 run padpages padpages.js 1
 run ipadnotes ipadnotes.js 3
+run layout layout.js 3
 run pretestkeep pretestkeep.js 1
 run listenvoice listenvoice.js 1
 run entities entities.js 1
