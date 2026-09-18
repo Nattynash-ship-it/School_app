@@ -80,9 +80,11 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('Cornell still draws its cue column and its labels',
      S.cornell.margins === PG && S.cornell.labels === 5 * PG && S.cornell.rules > 20 * PG,
      PG + ' pages, ' + JSON.stringify(S.cornell));
-  ok('wide ruled has a line every 11/32 in and a margin, and no Cornell labels',
-     S.wide.rules > 20 * PG && S.wide.margins === PG && S.wide.labels === 0,
+  ok('wide ruled has a line every 11/32 in, NO left margin rule (her request: Cornell only), and no Cornell labels',
+     S.wide.rules > 20 * PG && S.wide.margins === 0 && S.wide.labels === 0,
      PG + ' pages, ' + JSON.stringify(S.wide));
+  ok('college and narrow ruled have no left margin rule either',
+     S.college.margins === 0 && S.narrow.margins === 0, JSON.stringify({ college: S.college.margins, narrow: S.narrow.margins }));
   ok('college ruled fits more lines on the page than wide ruled',
      S.college.rules > S.wide.rules, S.college.rules + ' vs ' + S.wide.rules);
   ok('narrow ruled fits more again', S.narrow.rules > S.college.rules,
