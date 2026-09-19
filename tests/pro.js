@@ -63,8 +63,22 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
       emojiRows: rows.filter(r => EMOJI.test(rowText(r))).length,
       offenders: rows.filter(r => !r.querySelector('svg.pc-ic') || EMOJI.test(rowText(r))).map(r => ({ act: r.getAttribute('data-act'), pc: r.getAttribute('data-pc'), svg: !!r.querySelector('svg.pc-ic'), txt: rowText(r).trim().slice(0, 30) })),
       radii: radii(['.pomo-sheet .pomo-btn']) };
+    /* THE GEAR MENU - the long Settings & Data sheet. The suite only ever
+       looked at the nav's More sheet, so this one kept its emoji. */
+    document.querySelectorAll('.pomo-sheet').forEach(x => x.remove());
+    showOverflowMenu(); await w(1500);
+    const gs = [...document.querySelectorAll('.pomo-sheet')].filter(x => x.isConnected);
+    const gsheet = gs[gs.length - 1];
+    const grows = gsheet ? [...gsheet.querySelectorAll('.pomo-btn')] : [];
+    out.gear = { rows: grows.length,
+      iconed: grows.filter(r => r.querySelector('svg.pc-ic')).length,
+      emojiRows: grows.filter(r => EMOJI.test(rowText(r))).length,
+      markers: grows.filter(r => /^\s*(Aa|\u{1D400}|\u{1F171})\s/u.test(rowText(r))).length,
+      offenders: grows.filter(r => !r.querySelector('svg.pc-ic') || EMOJI.test(rowText(r))).map(r => ({ act: r.getAttribute('data-act'), txt: rowText(r).trim().slice(0, 30) })) };
+    document.querySelectorAll('.pomo-sheet').forEach(x => x.remove());
+    showMoreSheet(); await w(1400);
     let opened = false;
-    try { const a = sheet.querySelector('[data-act="arcade"]'); a.click(); await w(700); opened = !document.querySelector('.pomo-sheet [data-act="theme"]') && !!(document.body.innerText.match(/Blitz|Survival|Arcade/)); } catch (e) {}
+    try { const a = document.querySelector('.pomo-sheet [data-act="arcade"]'); a.click(); await w(1200); opened = !document.querySelector('.pomo-sheet [data-act="theme"]') && !!(document.body.innerText.match(/Blitz|Survival|Arcade/)); } catch (e) {}
     out.arcadeOpens = opened;
     document.querySelectorAll('.pomo-sheet, .arc-menu, [class*="arcade"]').forEach(x => { try { if (x.id !== 'arcade-cta') x.remove(); } catch (e) {} });
     return out;
@@ -81,6 +95,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('6. the Study Arcade and Back up banners are off Home', !R.homeBanners.arcade && !R.homeBanners.backup, R.homeBanners);
   ok('6. the More menu has Study Arcade and Back up rows, every row iconed, none with emoji', R.more.arcade && R.more.backup && R.more.iconed === R.more.rows && R.more.emojiRows === 0, R.more);
   ok('6. the Study Arcade row opens the arcade', R.arcadeOpens, R.arcadeOpens);
+  ok('1. the gear menu is iced too: every row an icon, no emoji, no letter markers', R.gear.rows >= 15 && R.gear.iconed === R.gear.rows && R.gear.emojiRows === 0 && R.gear.markers === 0, R.gear);
   ok('no page errors', errs.length === 0, errs.slice(0, 3));
   await browser.close();
   console.log(`pro: ${pass}/${pass + fail} passed`);

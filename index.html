@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.607">
+<meta name="app-build" content="18.608">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -62996,7 +62996,10 @@ var P = {
   mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   eraser:'<path d="M7 20h10"/><path d="M4.5 14.5 13 6a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-6.5 6.5H9z"/>',
   trash:'<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
-  file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'
+  file:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  type:'<path d="M5 19h14"/><path d="M8.2 15.5 12 5l3.8 10.5"/><path d="M9.6 12h4.8"/>',
+  bold:'<path d="M7.5 5h5.2a3.4 3.4 0 0 1 0 6.8H7.5z"/><path d="M7.5 11.8h6a3.6 3.6 0 0 1 0 7.2h-6z"/>',
+  sliders:'<path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h8M16 17h4"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="17" r="2"/>'
 };
 function ic(name){ return '<svg class="pc-ic" aria-hidden="true" viewBox="0 0 24 24">' + (P[name] || P.more) + '</svg>'; }
 var EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2200}-\u{22FF}\u{2700}-\u{27BF}\u{2900}-\u{297F}]/gu;
@@ -63014,17 +63017,36 @@ function setIcon(el, name){
   }
   el.insertAdjacentHTML('afterbegin', ic(name));
 }
-/* a row like "✦ Theme: Glass": the leading glyphs become an icon, the words stay */
+/* A row like "✦ Theme: Glass": the leading glyphs become an icon, the words stay.
+   Some rows mark themselves with LETTERS rather than a symbol - "Aa Text size",
+   a mathematical bold A for the font, a boxed B for the weight - and a letter
+   survives the strip below, so those are named outright. And a row whose module
+   rewrites its own label (the weight toggle rewrites it on every tap) loses the
+   icon with it, so a row missing its icon is iced again rather than skipped. */
+var STRIP = {
+  'text-size': /^\s*Aa\s+/u,
+  'font-picker': /^\s*[\u{1D400}A]\s+/u,
+  'boldtext-toggle': /^\s*[\u{1F171}\u{1D401}B]\s+/u
+};
 function iconRow(btn, name){
-  if (!btn || btn.getAttribute('data-pc')) return;
+  if (!btn) return;
+  if (btn.getAttribute('data-pc') === name && btn.querySelector('svg.pc-ic')) return;
   var t = null;
   for (var i = 0; i < btn.childNodes.length; i++) if (btn.childNodes[i].nodeType === 3 && btn.childNodes[i].textContent.trim()) { t = btn.childNodes[i]; break; }
-  if (t) t.textContent = t.textContent.replace(/^[^\p{L}\p{N}]+/u, ' ');
+  if (t) {
+    var txt = t.textContent.replace(/^[^\p{L}\p{N}]+/u, ' ');
+    var act = btn.getAttribute('data-act') || '';
+    if (STRIP[act]) txt = txt.replace(STRIP[act], ' ');
+    t.textContent = txt;
+  }
   btn.setAttribute('data-pc', name);
+  var old = btn.querySelector(':scope > svg.pc-ic');
+  if (old) old.remove();
   btn.insertAdjacentHTML('afterbegin', ic(name));
 }
 var NAV = { home:'home', review:'review', focus:'focus', plan:'plan', notebooks:'notes', search:'search', dashboard:'stats', more:'more', today:'home', planner:'plan', calendar:'plan', flashcards:'review' };
-var MORE = { theme:'palette', dashboard:'stats', width:'columns', 'study-modes':'sparkles', 'defer-answers':'check', pdf:'file', 'listen-voice':'volume', export:'download', 'email-backup':'mail', import:'upload', goal:'focus', 'wipe-annotations':'eraser', 'reset-scores':'review', clear:'trash', arcade:'gamepad', backup:'download', 'device-sync':'review' };
+var MORE = { theme:'palette', dashboard:'stats', width:'columns', 'study-modes':'sparkles', 'defer-answers':'check', pdf:'file', 'listen-voice':'volume', export:'download', 'email-backup':'mail', import:'upload', goal:'focus', 'wipe-annotations':'eraser', 'reset-scores':'review', clear:'trash', arcade:'gamepad', backup:'download', 'device-sync':'review',
+  'cloud-sync':'review', 'sync-help':'bulb', 'force-update':'review', 'find-notes':'search', 'repair-notes':'notes', 'text-size':'type', 'font-picker':'type', 'hub-skin':'palette', handwriting:'pen', 'bulk-diff':'sliders', 'custom-courses':'notebook', flagged:'bookmark', momentum:'zap', 'boldtext-toggle':'bold', 'diag-report':'more' };
 
 function swap(){
   try {
@@ -63142,6 +63164,9 @@ try {
     }).observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 } catch (e) {}
+/* A tap can rewrite a row's own label - the weight toggle does - so sweep
+   again just after one, rather than waiting for the slow heartbeat. */
+try { document.addEventListener('click', function(){ [0, 160, 420].forEach(function(ms){ setTimeout(swap, ms); }); }, true); } catch (e) {}
 setTimeout(swap, 300); setTimeout(swap, 1500);
 setInterval(swap, 2000);       // the tool column's buttons arrive on their own schedules
 
