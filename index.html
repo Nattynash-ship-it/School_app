@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.605">
+<meta name="app-build" content="18.606">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -19612,9 +19612,16 @@ function renderChapter(courseId, chId) {
  // correct/attempted, so pairing the percentage with the pool size read as a
  // contradiction — "24/38 · 100%" looked like 63% mislabelled. The pool size is
  // already stated as "N q" at the start of the same line.
- const _scoreLine = (_m.total && _m.attempted)
-   ? `${_m.correct}/${_m.attempted} right · ${Math.round(_m.accuracy * 100)}%`
-   : '';
+ /* Her rounds, not a blended lifetime figure: the best round she has had -
+    which a retake can only raise - and, when the last round was a different
+    one, its own true score beside it. */
+ const _scoreLine = (_m.total && _m.best)
+   ? (`best round ${_m.best.correct}/${_m.best.asked} · ${_m.best.pct}%` +
+      ((_m.last && _m.last.ts !== _m.best.ts)
+        ? ` · last ${_m.last.correct}/${_m.last.asked} · ${_m.last.pct}%` : ''))
+   : ((_m.total && _m.attempted)
+       ? `${_m.correct}/${_m.attempted} answered · ${Math.round(_m.accuracy * 100)}%`
+       : '');
  return `
  <div class="chapter-item${complete ? ' complete' : ''}${_locked ? ' locked-sec' : ''}" data-section="${s.id}"${_locked ? ' data-locked="1"' : ''}${complete ? ' style="background:linear-gradient(90deg, rgba(94,234,212,0.10), transparent 60%); border-left:3px solid var(--accent);"' : (_locked ? ' style="opacity:0.55;"' : '')}>
  <div class="chapter-num"${complete ? ' style="color:var(--accent); font-weight:700;"' : ''}>${_locked ? '🔒' : (complete ? '✓' : '§ ' + (i + 1))}</div>
@@ -19858,6 +19865,7 @@ function renderSection(courseId, chId, secId) {
        try {
          store.quizHistory = (store.quizHistory || []).filter(h => !(h && h.courseId === courseId && h.chId === chId && h.secId === secId));
          if (store.sectionRatings) delete store.sectionRatings[key(courseId, chId, secId)];
+         if (store.sectionBest) delete store.sectionBest[courseId + '/' + chId + '/' + secId];
          if (typeof saveStore === 'function') { saveStore(); if (saveStore.flushNow) saveStore.flushNow(); }
          if (typeof toast === 'function') toast('Test score reset — shows as never taken');
        } catch (e) {}
@@ -20976,7 +20984,7 @@ function renderQuiz(v) {
  anyGraded = true;
  const cId = qq._cid || courseId, ch = qq._chId || chId, sec = qq._secId || secId;
  if (!store.quizHistory) store.quizHistory = [];
- store.quizHistory.push({ courseId: cId, chId: ch, secId: sec, qId: qq.id, topic: qq.topic, correct: !!a.correct, confidence: null, ts: Date.now() });
+ store.quizHistory.push({ courseId: cId, chId: ch, secId: sec, qId: qq.id, topic: qq.topic, correct: !!a.correct, confidence: null, ts: Date.now(), rid: (finished && finished.started) || 0 });
  try { onAnswerGraded(!!a.correct, qq); } catch (e) {}
  if (!a.correct && qq.kind !== 'code') {
  try { addQuestionToFlashcards(qq, cId, ch, sec); } catch (e) {}
@@ -21101,7 +21109,7 @@ function renderQuiz(v) {
  const qCid = q._cid || courseId;
  const qChId = q._chId || chId;
  const qSecId = q._secId || secId;
- store.quizHistory.push({ courseId: qCid, chId: qChId, secId: qSecId, qId: q.id, topic: q.topic, correct, confidence: confNum, ts: Date.now() });
+ store.quizHistory.push({ courseId: qCid, chId: qChId, secId: qSecId, qId: q.id, topic: q.topic, correct, confidence: confNum, ts: Date.now(), rid: (quizState && quizState.started) || 0 });
       // Auto-add missed questions to flashcards — automatic, no manual step needed
       if (!correct && q.kind !== 'code') { setTimeout(function(){ try { addQuestionToFlashcards(q, qCid, qChId, qSecId); } catch (e) {} }, 0); }
         if (store.quizHistory.length > 5000) store.quizHistory = store.quizHistory.slice(-5000);
@@ -27904,6 +27912,7 @@ function submitExamSim(timedOut) {
  // Also record into quizHistory
  if (!store.quizHistory) store.quizHistory = [];
  store.quizHistory.push({
+ rid: (examState && (examState.sessionId || examState.started)) || 0,
  courseId: examState.courseId,
  chId: q._chId,
  secId: q._secId,
@@ -28575,6 +28584,17 @@ function mergeIntoStore(incoming) {
  });
  store[key] = Object.keys(byId).map(k => byId[k]);
  });
+ /* A section's best round is a high-water mark, so the higher one wins - the
+    same rule on one device and across two. */
+ if (incoming.sectionBest && typeof incoming.sectionBest === 'object') {
+ store.sectionBest = store.sectionBest || {};
+ for (const k of Object.keys(incoming.sectionBest)) {
+ const inc = incoming.sectionBest[k], cur = store.sectionBest[k];
+ if (!inc) continue;
+ if (!cur || (inc.pct || 0) > (cur.pct || 0) ||
+     ((inc.pct || 0) === (cur.pct || 0) && (inc.asked || 0) > (cur.asked || 0))) store.sectionBest[k] = inc;
+ }
+ }
  // Project status — the later milestone wins
  if (incoming.projectStatus && typeof incoming.projectStatus === 'object') {
  store.projectStatus = store.projectStatus || {};
@@ -37764,6 +37784,61 @@ function _sectionsWithHistory() {
   return set;
 }
 
+/* A ROUND IS A SITTING, AND EACH KEEPS ITS OWN TRUE SCORE.
+ *
+ * "Can we have all the percentages showing how much it is per round... I'd like
+ * the accurate score for the round every time."  The section line used to show
+ * one blended figure: every distinct question she had ever answered, counted on
+ * its most recent answer. Two wrong in a round of 25 therefore did not read as
+ * 92% - it moved a lifetime average by a point, which is what "how is that 88%"
+ * was about.
+ *
+ * Now every answer is stamped with the round it was given in, and a round's
+ * score is simply what she got right out of what that round asked. Answers
+ * recorded before round stamps existed are grouped the only way they can be:
+ * a run with no 45-minute break in it.
+ */
+var ROUND_GAP = 45 * 60 * 1000;
+function roundsFromHistory(sorted) {
+  var out = [], cur = null, prev = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    var h = sorted[i], ts = h.ts || 0, rid = h.rid || 0, fresh;
+    if (!cur) fresh = true;
+    else if (rid || cur.rid) fresh = (rid !== cur.rid);   // stamped: a new stamp is a new round
+    else fresh = (ts - prev) > ROUND_GAP;                 // unstamped: a break ends the sitting
+    if (fresh) { cur = { rid: rid, asked: 0, correct: 0, ts: ts, pct: 0 }; out.push(cur); }
+    cur.asked++; if (h.correct) cur.correct++; cur.ts = ts;
+    prev = ts;
+  }
+  for (var j = 0; j < out.length; j++) out[j].pct = out[j].asked ? Math.round(100 * out[j].correct / out[j].asked) : 0;
+  return out;
+}
+function pickBestRound(list) {
+  var b = null;
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    if (!b || r.pct > b.pct || (r.pct === b.pct && r.asked > b.asked)) b = r;
+  }
+  return b;
+}
+/* THE HIGHER SCORE STANDS. "Even if I take it again, the higher score will be
+   used." A retake can raise a section's score and can never lower it. The best
+   round is kept in the store rather than recomputed from history alone, so
+   trimming old answers - the history is capped - cannot quietly take back a
+   score she earned. A class reset clears it; a sync keeps whichever is higher. */
+function rememberBestRound(ck, r) {
+  var cur = null;
+  try { cur = (store.sectionBest || {})[ck] || null; } catch (e) {}
+  var better = r && (!cur || r.pct > cur.pct || (r.pct === cur.pct && (r.asked || 0) > (cur.asked || 0)));
+  if (!better) return cur;
+  var win = { correct: r.correct, asked: r.asked, pct: r.pct, ts: r.ts };
+  try {
+    if (!store.sectionBest) store.sectionBest = {};
+    store.sectionBest[ck] = win;
+    if (typeof saveStore === 'function') saveStore();
+  } catch (e) {}
+  return win;
+}
 function sectionMastery(courseId, chId, secId) {
   const stamp = _rdyStamp();
   if (stamp !== _rdyKey) { _rdyCache = {}; _rdyKey = stamp; }
@@ -37822,7 +37897,7 @@ function sectionMastery(courseId, chId, secId) {
       const vals = Object.keys(seen).map(k => seen[k]);
       hAtt = vals.length; hCor = vals.filter(x => x.correct).length;
     } catch (e) {}
-    const empty = { total: 0, attempted: hAtt, correct: hCor,
+    const empty = { total: 0, attempted: hAtt, correct: hCor, best: null, last: null, rounds: 0,
                     accuracy: hAtt ? hCor / hAtt : 0, coverage: 0,
                     freshness: 1, readiness: null, passed: true, passFull: false,
                     passAttempt: false, bestAttempt: 0, need: 0, days: 0 };
@@ -37877,32 +37952,28 @@ function sectionMastery(courseId, chId, secId) {
 
   // B) One strong sitting: a single session covering most of the section at >=90%.
   //    Guarded so a lucky 3-question run can't "pass" a 25-question section.
-  let bestAttempt = 0;
-  const GAP = 45 * 60 * 1000; // a new sitting starts after a 45-min break
   const minRun = Math.max(5, Math.ceil(0.8 * target));
   const sorted = hist.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  let run = [];
-  const flushRun = () => {
-    if (run.length >= minRun) {
-      const sc = run.filter(x => x.correct).length / run.length;
-      if (sc > bestAttempt) bestAttempt = sc;
-    }
-    run = [];
-  };
-  for (const h of sorted) {
-    if (run.length && ((h.ts || 0) - (run[run.length - 1].ts || 0)) > GAP) flushRun();
-    run.push(h);
-  }
-  flushRun();
-  const passAttempt = bestAttempt >= passBar();
+  /* A stray one-off answer is not a round, and must not become the score of a
+     section: a round counts once it asked at least five questions (or the whole
+     pool, when the pool is smaller than that). */
+  const minRound = Math.min(5, total);
+  const allRounds = roundsFromHistory(sorted);
+  const rounds = allRounds.filter(r => r.asked >= minRound);
+  const last = rounds.length ? rounds[rounds.length - 1] : null;
+  const best = rememberBestRound(ck, pickBestRound(rounds));
+  const bestAttempt = best ? best.pct / 100 : 0;
+  const passAttempt = !!(best && (best.asked || 0) >= minRun && bestAttempt >= passBar());
 
   const passed = passFull || passAttempt;
   // Passing means ready — but it can still go stale.
-  const base = passed ? 1 : Math.min(1, accuracy / passBar()) * coverage;
+  // readiness leans on her best round too, so a bad retake can never pull it down
+  const base = passed ? 1 : Math.min(1, (best ? best.pct / 100 : accuracy) / passBar()) * coverage;
   const readiness = Math.max(0, Math.min(1, base * freshness));
 
   const out = { total, target, attempted, correct, accuracy, coverage, freshness, readiness,
-                passed, passFull, passAttempt, bestAttempt, need, days };
+                passed, passFull, passAttempt, bestAttempt, need, days,
+                best, last, rounds: rounds.length };
   _rdyCache[ck] = out;
   return out;
 }
@@ -37912,7 +37983,8 @@ function sectionStatus(courseId, chId, secId) {
   const m = sectionMastery(courseId, chId, secId);
   if (!m.total || !m.attempted) return 'untouched';
   if (m.passed) return 'mastered';
-  if (m.accuracy >= 0.70) return 'good';
+  // her best round, not a lifetime average - the same number the row shows
+  if (m.best ? m.best.pct >= 70 : m.accuracy >= 0.70) return 'good';
   return 'practiced';
 }
 
@@ -38012,7 +38084,7 @@ function unlockSectionAnyway(courseId, chId, secId) {
 function showLockSheet(courseId, chId, secId) {
   const prev = prevSectionOf(courseId, chId, secId);
   const pm = prev ? sectionMastery(courseId, prev.chId, prev.secId) : null;
-  const pct = pm && pm.total ? Math.round(100 * pm.accuracy) : 0;
+  const pct = pm ? (pm.best ? pm.best.pct : (pm.total ? Math.round(100 * pm.accuracy) : 0)) : 0;
   const done = pm ? pm.attempted : 0;
   const tot = pm ? (pm.target || pm.total) : 0;
   const need = pm ? pm.need : 0;
@@ -41351,6 +41423,7 @@ function getQuestions(courseId, chId, secId) {
          both of them cleared now lives here, and the other calls this. */
       var pre = function(obj){ if (!obj) return; Object.keys(obj).forEach(function(k){ if (k === cid || k.indexOf(cid + '/') === 0) delete obj[k]; }); };
       pre(store.sectionRatings);
+      pre(store.sectionBest);
       pre(store.unlockOverride);
       if (store.examTaken && store.examTaken[cid]) delete store.examTaken[cid];
       if (store.celebrated) { pre(store.celebrated.sections); pre(store.celebrated.chapters); pre(store.celebrated.courses); }
@@ -43171,6 +43244,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       store.examSessions = [];
       store.pretests = {};
       if (store.sectionRatings) store.sectionRatings = {};
+      if (store.sectionBest) store.sectionBest = {};
       if (store.knowtProgress) store.knowtProgress = {};
       if (store.recentSections) store.recentSections = [];
       if (store.projectStatus) store.projectStatus = {};
@@ -45441,9 +45515,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     }
     var left = m.total - m.attempted;
     if (left > 0) out.push(chip(left+' question'+(left===1?'':'s')+' never answered', true));
-    var acc = Math.round(100*m.accuracy);
-    if (acc < pb) out.push(chip('accuracy '+acc+'% — pass bar is '+pb+'%', true));
-    else out.push(chip('accuracy '+acc+'% ✓ — now cover every question in one sweep', false));
+    var acc = m.best ? m.best.pct : Math.round(100*m.accuracy);
+    if (acc < pb) out.push(chip('best round '+acc+'% — pass bar is '+pb+'%', true));
+    else out.push(chip('best round '+acc+'% ✓ — now cover every question in one sweep', false));
     if (m.freshness < 1) out.push(chip('stale — '+Math.round(m.days)+' days since practice', false));
     return out;
   }
@@ -47630,6 +47704,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         prefixDelete(store.flashcards, cid);
         prefixDelete(store.userFlashcards, cid);
         prefixDelete(store.sectionRatings, cid);
+        prefixDelete(store.sectionBest, cid);
         prefixDelete(store.unlockOverride, cid);
         if (store.celebrated) { prefixDelete(store.celebrated.sections, cid); prefixDelete(store.celebrated.chapters, cid); prefixDelete(store.celebrated.courses, cid); }
         try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch(e){}
@@ -62875,7 +62950,7 @@ var LKEY = 'sh_erased_v1';       // fast, synchronous copy
 var DKEY = 'erased';             // durable copy, in the backup's own database
 var KINDS = { all: 1, scores: 1, ink: 1 };
 // What "reset my scores & progress" clears; an older copy keeps everything else.
-var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1,
+var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1, sectionBest: 1,
                    knowtProgress: 1, recentSections: 1, projectStatus: 1 };
 
 var _rc = null;                  // the parsed record; re-parsing it on every stroke save was the cost
@@ -63243,7 +63318,7 @@ function applyCourseMark(cid, T){
   // what the class-page reset also clears: ratings, unlocks, exam-taken, celebrations
   try {
     var drop = function(obj){ if (!obj) return; for (var k in obj) if (k === cid || k.indexOf(cid + '/') === 0) { delete obj[k]; changed = true; } };
-    drop(store.sectionRatings); drop(store.unlockOverride);
+    drop(store.sectionRatings); drop(store.sectionBest); drop(store.unlockOverride);
     if (store.examTaken && store.examTaken[cid]) { delete store.examTaken[cid]; changed = true; }
     if (store.celebrated) { drop(store.celebrated.sections); drop(store.celebrated.chapters); drop(store.celebrated.courses); }
   } catch (e) {}
@@ -63396,7 +63471,7 @@ function stripResetCourses(incoming, when){
       out.padNotes = pcp;
     }
   }
-  ['sectionRatings', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
+  ['sectionRatings', 'sectionBest', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
   if (out.celebrated && typeof out.celebrated === 'object') {
     var cel = {}; for (var tier in out.celebrated) cel[tier] = keep(out.celebrated[tier]);
     out.celebrated = cel;
