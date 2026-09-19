@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.605">
+<meta name="app-build" content="18.607">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -19612,9 +19612,16 @@ function renderChapter(courseId, chId) {
  // correct/attempted, so pairing the percentage with the pool size read as a
  // contradiction — "24/38 · 100%" looked like 63% mislabelled. The pool size is
  // already stated as "N q" at the start of the same line.
- const _scoreLine = (_m.total && _m.attempted)
-   ? `${_m.correct}/${_m.attempted} right · ${Math.round(_m.accuracy * 100)}%`
-   : '';
+ /* Her rounds, not a blended lifetime figure: the best round she has had -
+    which a retake can only raise - and, when the last round was a different
+    one, its own true score beside it. */
+ const _scoreLine = (_m.total && _m.best)
+   ? (`best round ${_m.best.correct}/${_m.best.asked} · ${_m.best.pct}%` +
+      ((_m.last && _m.last.ts !== _m.best.ts)
+        ? ` · last ${_m.last.correct}/${_m.last.asked} · ${_m.last.pct}%` : ''))
+   : ((_m.total && _m.attempted)
+       ? `${_m.correct}/${_m.attempted} answered · ${Math.round(_m.accuracy * 100)}%`
+       : '');
  return `
  <div class="chapter-item${complete ? ' complete' : ''}${_locked ? ' locked-sec' : ''}" data-section="${s.id}"${_locked ? ' data-locked="1"' : ''}${complete ? ' style="background:linear-gradient(90deg, rgba(94,234,212,0.10), transparent 60%); border-left:3px solid var(--accent);"' : (_locked ? ' style="opacity:0.55;"' : '')}>
  <div class="chapter-num"${complete ? ' style="color:var(--accent); font-weight:700;"' : ''}>${_locked ? '🔒' : (complete ? '✓' : '§ ' + (i + 1))}</div>
@@ -19858,6 +19865,7 @@ function renderSection(courseId, chId, secId) {
        try {
          store.quizHistory = (store.quizHistory || []).filter(h => !(h && h.courseId === courseId && h.chId === chId && h.secId === secId));
          if (store.sectionRatings) delete store.sectionRatings[key(courseId, chId, secId)];
+         if (store.sectionBest) delete store.sectionBest[courseId + '/' + chId + '/' + secId];
          if (typeof saveStore === 'function') { saveStore(); if (saveStore.flushNow) saveStore.flushNow(); }
          if (typeof toast === 'function') toast('Test score reset — shows as never taken');
        } catch (e) {}
@@ -20976,7 +20984,7 @@ function renderQuiz(v) {
  anyGraded = true;
  const cId = qq._cid || courseId, ch = qq._chId || chId, sec = qq._secId || secId;
  if (!store.quizHistory) store.quizHistory = [];
- store.quizHistory.push({ courseId: cId, chId: ch, secId: sec, qId: qq.id, topic: qq.topic, correct: !!a.correct, confidence: null, ts: Date.now() });
+ store.quizHistory.push({ courseId: cId, chId: ch, secId: sec, qId: qq.id, topic: qq.topic, correct: !!a.correct, confidence: null, ts: Date.now(), rid: (finished && finished.started) || 0 });
  try { onAnswerGraded(!!a.correct, qq); } catch (e) {}
  if (!a.correct && qq.kind !== 'code') {
  try { addQuestionToFlashcards(qq, cId, ch, sec); } catch (e) {}
@@ -21101,7 +21109,7 @@ function renderQuiz(v) {
  const qCid = q._cid || courseId;
  const qChId = q._chId || chId;
  const qSecId = q._secId || secId;
- store.quizHistory.push({ courseId: qCid, chId: qChId, secId: qSecId, qId: q.id, topic: q.topic, correct, confidence: confNum, ts: Date.now() });
+ store.quizHistory.push({ courseId: qCid, chId: qChId, secId: qSecId, qId: q.id, topic: q.topic, correct, confidence: confNum, ts: Date.now(), rid: (quizState && quizState.started) || 0 });
       // Auto-add missed questions to flashcards — automatic, no manual step needed
       if (!correct && q.kind !== 'code') { setTimeout(function(){ try { addQuestionToFlashcards(q, qCid, qChId, qSecId); } catch (e) {} }, 0); }
         if (store.quizHistory.length > 5000) store.quizHistory = store.quizHistory.slice(-5000);
@@ -27904,6 +27912,7 @@ function submitExamSim(timedOut) {
  // Also record into quizHistory
  if (!store.quizHistory) store.quizHistory = [];
  store.quizHistory.push({
+ rid: (examState && (examState.sessionId || examState.started)) || 0,
  courseId: examState.courseId,
  chId: q._chId,
  secId: q._secId,
@@ -28575,6 +28584,17 @@ function mergeIntoStore(incoming) {
  });
  store[key] = Object.keys(byId).map(k => byId[k]);
  });
+ /* A section's best round is a high-water mark, so the higher one wins - the
+    same rule on one device and across two. */
+ if (incoming.sectionBest && typeof incoming.sectionBest === 'object') {
+ store.sectionBest = store.sectionBest || {};
+ for (const k of Object.keys(incoming.sectionBest)) {
+ const inc = incoming.sectionBest[k], cur = store.sectionBest[k];
+ if (!inc) continue;
+ if (!cur || (inc.pct || 0) > (cur.pct || 0) ||
+     ((inc.pct || 0) === (cur.pct || 0) && (inc.asked || 0) > (cur.asked || 0))) store.sectionBest[k] = inc;
+ }
+ }
  // Project status — the later milestone wins
  if (incoming.projectStatus && typeof incoming.projectStatus === 'object') {
  store.projectStatus = store.projectStatus || {};
@@ -29359,7 +29379,16 @@ function gannoApplyOp(op, direction) {   // direction: 'undo' | 'redo'
  if (direction === 'undo') takeOut([{ s: op.s, i: 0 }]);
  else addBack([{ s: op.s, i: (op.i != null ? op.i : strokes.length) }]);
  } else if (op.op === 'erase') {
- if (direction === 'undo') addBack(op.removed); else takeOut(op.removed);
+ /* An op may also have ADDED strokes - tidying a line replaces it with a
+    levelled copy - so undo takes those out again and redo puts them back. */
+ var add = op.added || [];
+ if (direction === 'undo') {
+ add.forEach(function(x){ var at = strokes.indexOf(x); if (at !== -1) strokes.splice(at, 1); });
+ addBack(op.removed);
+ } else {
+ takeOut(op.removed);
+ add.forEach(function(x){ if (strokes.indexOf(x) === -1) { try { x._ts = Date.now(); } catch (e) {} strokes.push(x); } });
+ }
  }
  gannoSaveStrokes(ganno.routeKey, strokes);
  gannoRender(strokes, null);
@@ -30222,6 +30251,240 @@ function gannoPointerMove(e) {
  }
 }
 
+
+(function tidyInk(){
+/* NEATER WRITING, WITHOUT REWRITING IT.
+ *
+ * "As I write, format the text to look formatted and aligned." What can honestly
+ * be done offline is the part that makes handwriting look untidy in the first
+ * place: a line that drifts up or down as the hand travels across the page, a
+ * baseline that ends up sitting between two rules instead of on one, and the
+ * small shake in every stroke. So a beat after the pen stops, the line just
+ * written is levelled, dropped onto the nearest rule, and de-shaken. The letters
+ * stay hers; only the posture is tidied. It is ONE Undo step.
+ *
+ * Deliberate limits, so it can never make a mess of her page:
+ *   - a tilt past 7 degrees is a drawing or a diagram, not a drifting line of
+ *     writing, and is left exactly alone
+ *   - a group taller than about one and a half rules is not a line of writing
+ *     either, and is left alone
+ *   - the snap is refused past half a rule, so a line can never be dragged onto
+ *     a DIFFERENT rule than the one she wrote against
+ *
+ * What is NOT possible here: turning handwriting into typed text. That needs a
+ * recognition model on the device, and this app has none; guessing at letters
+ * would be worse than leaving them as they are.
+ */
+if (window.__tidy) return;
+function envelope(pts){
+  var minX = Infinity, maxX = -Infinity, i;
+  for (i = 0; i < pts.length; i++) { if (pts[i].x < minX) minX = pts[i].x; if (pts[i].x > maxX) maxX = pts[i].x; }
+  var span = maxX - minX;
+  if (!(span > 0)) return [];
+  var n = Math.max(2, Math.min(8, Math.floor(span / 18) || 2));
+  var best = new Array(n);
+  for (i = 0; i < pts.length; i++) {
+    var b = Math.min(n - 1, Math.floor((pts[i].x - minX) / span * n));
+    if (!best[b] || pts[i].y > best[b].y) best[b] = { x: pts[i].x, y: pts[i].y };
+  }
+  var out = [];
+  for (i = 0; i < n; i++) if (best[i]) out.push(best[i]);
+  return out;
+}
+function fitLine(pts){
+  var n = pts.length; if (n < 2) return null;
+  var sx = 0, sy = 0, sxx = 0, sxy = 0, i;
+  for (i = 0; i < n; i++) { sx += pts[i].x; sy += pts[i].y; sxx += pts[i].x * pts[i].x; sxy += pts[i].x * pts[i].y; }
+  var d = n * sxx - sx * sx;
+  if (Math.abs(d) < 1e-6) return null;
+  var m = (n * sxy - sx * sy) / d;
+  return { m: m, b: (sy - m * sx) / n };
+}
+function smooth(pts, k){
+  if (!pts || pts.length < 5 || !k) return pts;
+  var out = [pts[0]], i;
+  for (i = 1; i < pts.length - 1; i++) {
+    var a = pts[i - 1], c = pts[i], e = pts[i + 1];
+    var o = { x: c.x + k * ((a.x + e.x) / 2 - c.x), y: c.y + k * ((a.y + e.y) / 2 - c.y) };
+    if (c.p != null) o.p = c.p;
+    out.push(o);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+function bounds(list){
+  var lo = Infinity, hi = -Infinity, i, j;
+  for (i = 0; i < list.length; i++) { var p = list[i].points || [];
+    for (j = 0; j < p.length; j++) { if (p[j].y < lo) lo = p[j].y; if (p[j].y > hi) hi = p[j].y; } }
+  return { lo: lo, hi: hi };
+}
+var MAX_TILT = 7 * Math.PI / 180;
+/* Below these it is already straight enough, and nudging it again on every pass
+   would mean her writing never stops moving under her. */
+var MIN_TILT = 0.5 * Math.PI / 180, MIN_DROP = 1;
+window.__tidy = {
+  MAX_TILT: MAX_TILT, smooth: smooth, fitLine: fitLine, envelope: envelope, bounds: bounds,
+  midY: function(s){ var b = bounds([s]); return (b.lo + b.hi) / 2; },
+  /* Level, de-shake, THEN look at where the baseline actually landed and drop
+     it onto the rule. Measuring before de-shaking left the line a couple of
+     units shy of the rule, so a second pass moved it again - writing that never
+     quite stops moving. One pass now settles it. */
+  run: function(list, ruleYs, gap, k){
+    var all = [], i, j, pp;
+    for (i = 0; i < list.length; i++) { pp = list[i].points || [];
+      for (j = 0; j < pp.length; j++) all.push(pp[j]); }
+    if (all.length < 6) return null;
+    var env = envelope(all), fit = env.length >= 2 ? fitLine(env) : null;
+    var ang = (fit && isFinite(fit.m)) ? Math.atan(fit.m) : 0;
+    if (!isFinite(ang)) ang = 0;
+    if (Math.abs(ang) > MAX_TILT) return null;      // a drawing, not a drifting line
+    if (Math.abs(ang) < MIN_TILT) ang = 0;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (i = 0; i < all.length; i++) { var q = all[i];
+      if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+      if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y; }
+    var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    var cos = Math.cos(-ang), sin = Math.sin(-ang);
+    var out = list.map(function(st){
+      var pts = (st.points || []).map(function(p){
+        var x = p.x - cx, y = p.y - cy;
+        var o = { x: cx + x * cos - y * sin, y: cy + x * sin + y * cos };
+        if (p.p != null) o.p = p.p;
+        return o;
+      });
+      pts = smooth(pts, k);
+      var c = {}; for (var kk in st) if (kk !== 'points') c[kk] = st[kk];
+      c.points = pts; c._ts = Date.now();
+      return c;
+    });
+    var dy = 0;
+    if (ruleYs && ruleYs.length && gap) {
+      var all2 = [], m, n;
+      for (m = 0; m < out.length; m++) { var p2 = out[m].points;
+        for (n = 0; n < p2.length; n++) all2.push(p2[n]); }
+      var env2 = envelope(all2), fit2 = env2.length >= 2 ? fitLine(env2) : null;
+      var base = (fit2 && isFinite(fit2.m)) ? (fit2.m * cx + fit2.b) : maxY;
+      var near = null, t;
+      for (t = 0; t < ruleYs.length; t++)
+        if (near === null || Math.abs(ruleYs[t] - base) < Math.abs(near - base)) near = ruleYs[t];
+      if (near !== null && Math.abs(near - base) <= gap * 0.45) dy = near - base;
+      if (Math.abs(dy) < MIN_DROP) dy = 0;
+    }
+    if (!ang && !dy) return null;                   // already straight, already on the line
+    if (dy) for (i = 0; i < out.length; i++) for (j = 0; j < out[i].points.length; j++) out[i].points[j].y += dy;
+    return out;
+  },
+  /* What to do to one line of writing: how far to level it, how far to drop it. */
+  plan: function(list, ruleYs, gap){
+    var all = [], i, j;
+    for (i = 0; i < list.length; i++) { var p = list[i].points || [];
+      for (j = 0; j < p.length; j++) all.push(p[j]); }
+    if (all.length < 6) return null;
+    var env = envelope(all);
+    var fit = env.length >= 2 ? fitLine(env) : null;
+    var ang = (fit && isFinite(fit.m)) ? Math.atan(fit.m) : 0;
+    if (!isFinite(ang)) ang = 0;
+    /* Past this the hand was not drifting - it was drawing. Leave the whole
+       group alone rather than level it a little and sit it on a rule. */
+    if (Math.abs(ang) > MAX_TILT) return null;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (i = 0; i < all.length; i++) { var q = all[i];
+      if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+      if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y; }
+    var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    var base = (fit && isFinite(fit.m)) ? (fit.m * cx + fit.b) : maxY;
+    var dy = 0;
+    if (ruleYs && ruleYs.length && gap) {
+      var near = null, k;
+      for (k = 0; k < ruleYs.length; k++)
+        if (near === null || Math.abs(ruleYs[k] - base) < Math.abs(near - base)) near = ruleYs[k];
+      if (near !== null && Math.abs(near - base) <= gap * 0.45) dy = near - base;
+    }
+    if (Math.abs(ang) < MIN_TILT) ang = 0;
+    if (Math.abs(dy) < MIN_DROP) dy = 0;
+    if (!ang && !dy) return null;
+    return { ang: ang, cx: cx, cy: cy, dy: dy };
+  },
+  /* The same plan applied to one stroke: a copy, so Undo still holds the original. */
+  apply: function(st, plan, k){
+    var cos = Math.cos(-plan.ang), sin = Math.sin(-plan.ang);
+    var pts = (st.points || []).map(function(p){
+      var x = p.x - plan.cx, y = p.y - plan.cy;
+      var o = { x: plan.cx + x * cos - y * sin, y: plan.cy + x * sin + y * cos + plan.dy };
+      if (p.p != null) o.p = p.p;
+      return o;
+    });
+    pts = smooth(pts, k);
+    var c = {}; for (var kk in st) if (kk !== 'points') c[kk] = st[kk];
+    c.points = pts; c._ts = Date.now();
+    return c;
+  },
+  /* One line of writing at a time, out of the strokes just made.
+     Sorted by where each word SITS - its baseline - and each word judged
+     against the word before it, because a line of writing drifts as the hand
+     travels. Two earlier attempts were wrong in instructive ways: grouping on
+     the absolute height split a drifting line in half and levelled the halves
+     against each other, and sorting left-to-right interleaved the words of
+     every line she had just written into one another. */
+  groups: function(list, lineH){
+    var base = function(s){ return window.__tidy.bounds([s]).hi; };
+    var sorted = list.slice().sort(function(a, b){ return base(a) - base(b); });
+    var out = [], cur = null, prev = 0, i;
+    for (i = 0; i < sorted.length; i++) {
+      var y = base(sorted[i]);
+      if (!cur || Math.abs(y - prev) > lineH) { cur = { m: y, list: [] }; out.push(cur); }
+      cur.list.push(sorted[i]); prev = y;
+    }
+    return out;
+  }
+};
+
+/* ---- the same tidy, on a lesson page ---- */
+/* A lesson has no ruling to sit on, so there it levels and de-shakes only. */
+var gq = [], gt = 0;
+window.__gannoTidySoon = function(st){
+  try {
+    if (!(store.padPrefs && store.padPrefs.tidy)) return;
+    if (!st || st.type === 'highlighter' || !st.points || st.points.length < 4) return;
+    if (gq.indexOf(st) === -1) gq.push(st);
+    if (gt) clearTimeout(gt);
+    gt = setTimeout(window.__gannoTidyNow, 800);
+  } catch (e) {}
+};
+window.__gannoTidyNow = function(){
+  gt = 0;
+  try {
+    if (typeof ganno !== 'object' || !ganno || ganno.drawing) { gq = []; return 0; }
+    var arr = gannoGetStrokes(ganno.routeKey) || [];
+    var q = gq.filter(function(s){ return arr.indexOf(s) !== -1; });
+    gq = [];
+    if (!q.length) return 0;
+    var H = 26;                                  // about one line of lesson text
+    var groups = window.__tidy.groups(q, H);
+    var removed = [], added = [], g, i;
+    for (g = 0; g < groups.length; g++) {
+      var list = groups[g].list, b = window.__tidy.bounds(list);
+      if (b.hi - b.lo > H * 2.4) continue;
+      var fixed = window.__tidy.run(list, null, 0, 0.35);
+      if (!fixed) continue;
+      for (i = 0; i < list.length; i++) {
+        var at = arr.indexOf(list[i]);
+        if (at === -1) continue;
+        removed.push({ s: list[i], i: at });
+        added.push(fixed[i]);
+      }
+    }
+    if (!removed.length) return 0;
+    try { if (typeof gannoLogOp === 'function') gannoLogOp({ op: 'erase', removed: removed, added: added }); } catch (e) {}
+    removed.forEach(function(r){ var at = arr.indexOf(r.s); if (at !== -1) arr.splice(at, 1); });
+    added.forEach(function(c){ arr.push(c); });
+    gannoSaveStrokes(ganno.routeKey, arr);
+    gannoRender(arr, null);
+    return added.length;
+  } catch (e) { return 0; }
+};
+})();
+
 function gannoPointerUp(e) {
  ganno._capInv = null; // release stroke transform snapshot
  ganno._rectCache = null; // next stroke re-reads the rect (scroll/zoom may have changed)
@@ -30310,6 +30573,7 @@ function gannoPointerUp(e) {
  strokes.push(c);
  gannoLogOp({ op: 'draw', s: c, i: strokes.length - 1 });
  gannoSaveStrokes(ganno.routeKey, strokes);
+ try { if (window.__gannoTidySoon) window.__gannoTidySoon(c); } catch (e) {}
  // INCREMENTAL COMMIT: finalize the existing live path in place (O(1)) instead
  // of rebuilding every stroke. Falls back to a full render for shapes/tables.
  if ((c.type === 'pen' || c.type === 'highlighter') && ganno.liveEl && (ganno.liveEl.parentNode === ganno.svg || (ganno.liveEl.__hlWrap && ganno.liveEl.__hlWrap.parentNode)) && c.points && c.points.length >= 2) {
@@ -37764,6 +38028,61 @@ function _sectionsWithHistory() {
   return set;
 }
 
+/* A ROUND IS A SITTING, AND EACH KEEPS ITS OWN TRUE SCORE.
+ *
+ * "Can we have all the percentages showing how much it is per round... I'd like
+ * the accurate score for the round every time."  The section line used to show
+ * one blended figure: every distinct question she had ever answered, counted on
+ * its most recent answer. Two wrong in a round of 25 therefore did not read as
+ * 92% - it moved a lifetime average by a point, which is what "how is that 88%"
+ * was about.
+ *
+ * Now every answer is stamped with the round it was given in, and a round's
+ * score is simply what she got right out of what that round asked. Answers
+ * recorded before round stamps existed are grouped the only way they can be:
+ * a run with no 45-minute break in it.
+ */
+var ROUND_GAP = 45 * 60 * 1000;
+function roundsFromHistory(sorted) {
+  var out = [], cur = null, prev = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    var h = sorted[i], ts = h.ts || 0, rid = h.rid || 0, fresh;
+    if (!cur) fresh = true;
+    else if (rid || cur.rid) fresh = (rid !== cur.rid);   // stamped: a new stamp is a new round
+    else fresh = (ts - prev) > ROUND_GAP;                 // unstamped: a break ends the sitting
+    if (fresh) { cur = { rid: rid, asked: 0, correct: 0, ts: ts, pct: 0 }; out.push(cur); }
+    cur.asked++; if (h.correct) cur.correct++; cur.ts = ts;
+    prev = ts;
+  }
+  for (var j = 0; j < out.length; j++) out[j].pct = out[j].asked ? Math.round(100 * out[j].correct / out[j].asked) : 0;
+  return out;
+}
+function pickBestRound(list) {
+  var b = null;
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    if (!b || r.pct > b.pct || (r.pct === b.pct && r.asked > b.asked)) b = r;
+  }
+  return b;
+}
+/* THE HIGHER SCORE STANDS. "Even if I take it again, the higher score will be
+   used." A retake can raise a section's score and can never lower it. The best
+   round is kept in the store rather than recomputed from history alone, so
+   trimming old answers - the history is capped - cannot quietly take back a
+   score she earned. A class reset clears it; a sync keeps whichever is higher. */
+function rememberBestRound(ck, r) {
+  var cur = null;
+  try { cur = (store.sectionBest || {})[ck] || null; } catch (e) {}
+  var better = r && (!cur || r.pct > cur.pct || (r.pct === cur.pct && (r.asked || 0) > (cur.asked || 0)));
+  if (!better) return cur;
+  var win = { correct: r.correct, asked: r.asked, pct: r.pct, ts: r.ts };
+  try {
+    if (!store.sectionBest) store.sectionBest = {};
+    store.sectionBest[ck] = win;
+    if (typeof saveStore === 'function') saveStore();
+  } catch (e) {}
+  return win;
+}
 function sectionMastery(courseId, chId, secId) {
   const stamp = _rdyStamp();
   if (stamp !== _rdyKey) { _rdyCache = {}; _rdyKey = stamp; }
@@ -37822,7 +38141,7 @@ function sectionMastery(courseId, chId, secId) {
       const vals = Object.keys(seen).map(k => seen[k]);
       hAtt = vals.length; hCor = vals.filter(x => x.correct).length;
     } catch (e) {}
-    const empty = { total: 0, attempted: hAtt, correct: hCor,
+    const empty = { total: 0, attempted: hAtt, correct: hCor, best: null, last: null, rounds: 0,
                     accuracy: hAtt ? hCor / hAtt : 0, coverage: 0,
                     freshness: 1, readiness: null, passed: true, passFull: false,
                     passAttempt: false, bestAttempt: 0, need: 0, days: 0 };
@@ -37877,32 +38196,28 @@ function sectionMastery(courseId, chId, secId) {
 
   // B) One strong sitting: a single session covering most of the section at >=90%.
   //    Guarded so a lucky 3-question run can't "pass" a 25-question section.
-  let bestAttempt = 0;
-  const GAP = 45 * 60 * 1000; // a new sitting starts after a 45-min break
   const minRun = Math.max(5, Math.ceil(0.8 * target));
   const sorted = hist.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  let run = [];
-  const flushRun = () => {
-    if (run.length >= minRun) {
-      const sc = run.filter(x => x.correct).length / run.length;
-      if (sc > bestAttempt) bestAttempt = sc;
-    }
-    run = [];
-  };
-  for (const h of sorted) {
-    if (run.length && ((h.ts || 0) - (run[run.length - 1].ts || 0)) > GAP) flushRun();
-    run.push(h);
-  }
-  flushRun();
-  const passAttempt = bestAttempt >= passBar();
+  /* A stray one-off answer is not a round, and must not become the score of a
+     section: a round counts once it asked at least five questions (or the whole
+     pool, when the pool is smaller than that). */
+  const minRound = Math.min(5, total);
+  const allRounds = roundsFromHistory(sorted);
+  const rounds = allRounds.filter(r => r.asked >= minRound);
+  const last = rounds.length ? rounds[rounds.length - 1] : null;
+  const best = rememberBestRound(ck, pickBestRound(rounds));
+  const bestAttempt = best ? best.pct / 100 : 0;
+  const passAttempt = !!(best && (best.asked || 0) >= minRun && bestAttempt >= passBar());
 
   const passed = passFull || passAttempt;
   // Passing means ready — but it can still go stale.
-  const base = passed ? 1 : Math.min(1, accuracy / passBar()) * coverage;
+  // readiness leans on her best round too, so a bad retake can never pull it down
+  const base = passed ? 1 : Math.min(1, (best ? best.pct / 100 : accuracy) / passBar()) * coverage;
   const readiness = Math.max(0, Math.min(1, base * freshness));
 
   const out = { total, target, attempted, correct, accuracy, coverage, freshness, readiness,
-                passed, passFull, passAttempt, bestAttempt, need, days };
+                passed, passFull, passAttempt, bestAttempt, need, days,
+                best, last, rounds: rounds.length };
   _rdyCache[ck] = out;
   return out;
 }
@@ -37912,7 +38227,8 @@ function sectionStatus(courseId, chId, secId) {
   const m = sectionMastery(courseId, chId, secId);
   if (!m.total || !m.attempted) return 'untouched';
   if (m.passed) return 'mastered';
-  if (m.accuracy >= 0.70) return 'good';
+  // her best round, not a lifetime average - the same number the row shows
+  if (m.best ? m.best.pct >= 70 : m.accuracy >= 0.70) return 'good';
   return 'practiced';
 }
 
@@ -38012,7 +38328,7 @@ function unlockSectionAnyway(courseId, chId, secId) {
 function showLockSheet(courseId, chId, secId) {
   const prev = prevSectionOf(courseId, chId, secId);
   const pm = prev ? sectionMastery(courseId, prev.chId, prev.secId) : null;
-  const pct = pm && pm.total ? Math.round(100 * pm.accuracy) : 0;
+  const pct = pm ? (pm.best ? pm.best.pct : (pm.total ? Math.round(100 * pm.accuracy) : 0)) : 0;
   const done = pm ? pm.attempted : 0;
   const tot = pm ? (pm.target || pm.total) : 0;
   const need = pm ? pm.need : 0;
@@ -41351,6 +41667,7 @@ function getQuestions(courseId, chId, secId) {
          both of them cleared now lives here, and the other calls this. */
       var pre = function(obj){ if (!obj) return; Object.keys(obj).forEach(function(k){ if (k === cid || k.indexOf(cid + '/') === 0) delete obj[k]; }); };
       pre(store.sectionRatings);
+      pre(store.sectionBest);
       pre(store.unlockOverride);
       if (store.examTaken && store.examTaken[cid]) delete store.examTaken[cid];
       if (store.celebrated) { pre(store.celebrated.sections); pre(store.celebrated.chapters); pre(store.celebrated.courses); }
@@ -43171,6 +43488,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       store.examSessions = [];
       store.pretests = {};
       if (store.sectionRatings) store.sectionRatings = {};
+      if (store.sectionBest) store.sectionBest = {};
       if (store.knowtProgress) store.knowtProgress = {};
       if (store.recentSections) store.recentSections = [];
       if (store.projectStatus) store.projectStatus = {};
@@ -45441,9 +45759,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     }
     var left = m.total - m.attempted;
     if (left > 0) out.push(chip(left+' question'+(left===1?'':'s')+' never answered', true));
-    var acc = Math.round(100*m.accuracy);
-    if (acc < pb) out.push(chip('accuracy '+acc+'% — pass bar is '+pb+'%', true));
-    else out.push(chip('accuracy '+acc+'% ✓ — now cover every question in one sweep', false));
+    var acc = m.best ? m.best.pct : Math.round(100*m.accuracy);
+    if (acc < pb) out.push(chip('best round '+acc+'% — pass bar is '+pb+'%', true));
+    else out.push(chip('best round '+acc+'% ✓ — now cover every question in one sweep', false));
     if (m.freshness < 1) out.push(chip('stale — '+Math.round(m.days)+' days since practice', false));
     return out;
   }
@@ -47630,6 +47948,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         prefixDelete(store.flashcards, cid);
         prefixDelete(store.userFlashcards, cid);
         prefixDelete(store.sectionRatings, cid);
+        prefixDelete(store.sectionBest, cid);
         prefixDelete(store.unlockOverride, cid);
         if (store.celebrated) { prefixDelete(store.celebrated.sections, cid); prefixDelete(store.celebrated.chapters, cid); prefixDelete(store.celebrated.courses, cid); }
         try { if (window.__erase && window.__erase.mark) window.__erase.mark('course', cid); } catch(e){}
@@ -59137,7 +59456,8 @@ function wire(){
     btn.setAttribute('data-act', 'diag-report');
     btn.className = exp.className || '';
     btn.setAttribute('style', exp.getAttribute('style') || 'width:100%;');
-    btn.textContent = '\u{1FA7A} Copy diagnostic report (for Claude)';
+    // no emoji: the chrome carries line icons, and this row is iced like the rest
+    btn.textContent = 'Copy diagnostic report (for Claude)';
     btn.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); copyReport(); });
     exp.parentNode.insertBefore(btn, exp.nextSibling);
   } catch (e) {}
@@ -62704,7 +63024,7 @@ function iconRow(btn, name){
   btn.insertAdjacentHTML('afterbegin', ic(name));
 }
 var NAV = { home:'home', review:'review', focus:'focus', plan:'plan', notebooks:'notes', search:'search', dashboard:'stats', more:'more', today:'home', planner:'plan', calendar:'plan', flashcards:'review' };
-var MORE = { theme:'palette', dashboard:'stats', width:'columns', 'study-modes':'sparkles', 'defer-answers':'check', pdf:'file', 'listen-voice':'volume', export:'download', 'email-backup':'mail', import:'upload', goal:'focus', 'wipe-annotations':'eraser', 'reset-scores':'review', clear:'trash', arcade:'gamepad', backup:'download' };
+var MORE = { theme:'palette', dashboard:'stats', width:'columns', 'study-modes':'sparkles', 'defer-answers':'check', pdf:'file', 'listen-voice':'volume', export:'download', 'email-backup':'mail', import:'upload', goal:'focus', 'wipe-annotations':'eraser', 'reset-scores':'review', clear:'trash', arcade:'gamepad', backup:'download', 'device-sync':'review' };
 
 function swap(){
   try {
@@ -62736,8 +63056,13 @@ function swap(){
     var g = document.querySelector('.brand-greeting');
     if (g && !g.getAttribute('data-pc')) { g.textContent = g.textContent.replace(EMOJI, '').replace(/\s{2,}/g, ' ').trim(); g.setAttribute('data-pc', '1'); }
     // the More menu, when it is open
-    var th = document.querySelector('.pomo-sheet [data-act="theme"]');
-    if (th) q('.pomo-sheet .pomo-btn').forEach(function(b){ if (!th.parentElement.contains(b)) return; var k = b.getAttribute('data-act') || ''; var nm = MORE[k] || (/sync/i.test(b.textContent) ? 'review' : 'more'); iconRow(b, nm); });
+    /* Every row of every open menu sheet. Scoping this to the sheet that holds
+       the Theme row looked tidier and was wrong: other modules inject their own
+       rows through their own observers, and when an older sheet was still in
+       the document the scope landed on it and iced nothing. */
+    q('.pomo-sheet .pomo-btn[data-act], .pomo-card .pomo-btn[data-act]').forEach(function(b){
+      iconRow(b, MORE[b.getAttribute('data-act') || ''] || 'more');
+    });
     // Home: the continue row, the notebooks row, the stat chips
     q('.dash-continue').forEach(function(b){ iconRow(b, b.classList.contains('dash-notebooks') ? 'notebook' : 'play'); });
     q('.dash-stat').forEach(function(b){ var t = b.getAttribute('title') || ''; iconRow(b, /Level/i.test(t) ? 'zap' : /Question/i.test(t) ? 'check' : /Minute/i.test(t) ? 'focus' : /Flashcard/i.test(t) ? 'notes' : /streak/i.test(t) ? 'zap' : 'more'); });
@@ -62771,12 +63096,7 @@ try {
       try {
         moreRows(); swap();
         // other modules add their rows after this one, on their own timers: watch the sheet while it is open
-        var sh = document.querySelector('.pomo-sheet');
-        if (sh && typeof MutationObserver === 'function') {
-          var mo = new MutationObserver(function(){ try { swap(); } catch (e) {} });
-          mo.observe(sh, { childList: true, subtree: true });
-          setTimeout(function(){ try { mo.disconnect(); } catch (e) {} }, 8000);
-        }
+        [0, 120].forEach(function(ms){ setTimeout(function(){ try { swap(); } catch (e) {} }, ms); });
       } catch (e) {}
       return r; };
     showMoreSheet.__pc = true;
@@ -62795,6 +63115,31 @@ try {
     var _ga = gannoSetActive;
     gannoSetActive = function(on){ var r = _ga.apply(this, arguments); try { if (store.gannoOn !== !!on) { store.gannoOn = !!on; saveStore(); } } catch (e) {} return r; };
     gannoSetActive.__pc = true;
+  }
+} catch (e) {}
+/* A MENU ROW IS ICED THE MOMENT IT IS INSERTED.
+   Other modules add their own rows through their own observers, on their own
+   schedules - the sync row lands a third of a second after the menu opens. No
+   ladder of timers can be right about that; chasing it left a row showing an
+   emoji for the first half-second. This watches for the insertion itself and
+   ices that row in the same turn, and it is cheap because it only ever looks
+   at the nodes an insertion actually added. */
+try {
+  if (typeof MutationObserver === 'function') {
+    var ice = function(b){ try { iconRow(b, MORE[b.getAttribute('data-act') || ''] || 'more'); } catch (e) {} };
+    new MutationObserver(function(recs){
+      for (var r = 0; r < recs.length; r++) {
+        var ad = recs[r].addedNodes || [];
+        for (var i = 0; i < ad.length; i++) {
+          var n = ad[i];
+          if (!n || n.nodeType !== 1) continue;
+          try {
+            if (n.matches && n.matches('.pomo-btn[data-act]')) ice(n);
+            if (n.querySelectorAll) Array.prototype.forEach.call(n.querySelectorAll('.pomo-btn[data-act]'), ice);
+          } catch (e) {}
+        }
+      }
+    }).observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 } catch (e) {}
 setTimeout(swap, 300); setTimeout(swap, 1500);
@@ -62875,7 +63220,7 @@ var LKEY = 'sh_erased_v1';       // fast, synchronous copy
 var DKEY = 'erased';             // durable copy, in the backup's own database
 var KINDS = { all: 1, scores: 1, ink: 1 };
 // What "reset my scores & progress" clears; an older copy keeps everything else.
-var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1,
+var SCORE_KEYS = { quizHistory: 1, examSessions: 1, pretests: 1, sectionRatings: 1, sectionBest: 1,
                    knowtProgress: 1, recentSections: 1, projectStatus: 1 };
 
 var _rc = null;                  // the parsed record; re-parsing it on every stroke save was the cost
@@ -63243,7 +63588,7 @@ function applyCourseMark(cid, T){
   // what the class-page reset also clears: ratings, unlocks, exam-taken, celebrations
   try {
     var drop = function(obj){ if (!obj) return; for (var k in obj) if (k === cid || k.indexOf(cid + '/') === 0) { delete obj[k]; changed = true; } };
-    drop(store.sectionRatings); drop(store.unlockOverride);
+    drop(store.sectionRatings); drop(store.sectionBest); drop(store.unlockOverride);
     if (store.examTaken && store.examTaken[cid]) { delete store.examTaken[cid]; changed = true; }
     if (store.celebrated) { drop(store.celebrated.sections); drop(store.celebrated.chapters); drop(store.celebrated.courses); }
   } catch (e) {}
@@ -63396,7 +63741,7 @@ function stripResetCourses(incoming, when){
       out.padNotes = pcp;
     }
   }
-  ['sectionRatings', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
+  ['sectionRatings', 'sectionBest', 'unlockOverride', 'examTaken'].forEach(function(key){ if (out[key]) out[key] = keep(out[key]); });
   if (out.celebrated && typeof out.celebrated === 'object') {
     var cel = {}; for (var tier in out.celebrated) cel[tier] = keep(out.celebrated[tier]);
     out.celebrated = cel;
@@ -67359,6 +67704,64 @@ function inkShown(c){
 }
 function isCornell(){ return paper().kind === 'cornell'; }
 
+/* TIDY WRITING, in the notebook. Off until she turns it on, in the paper
+   picker. See the tidyInk module for what it does and what it refuses to do. */
+function tidyOn(){ try { return !!prefs().tidy; } catch (e) { return false; } }
+function setTidy(on){
+  try { prefs().tidy = !!on; save(); } catch (e) {}
+  try { if (typeof toast === 'function')
+    toast(on ? 'Tidy writing on \u2014 each line is levelled onto the rule as you go'
+             : 'Tidy writing off \u2014 your lines are left exactly as written'); } catch (e) {}
+}
+/* Every writing rule on the page a given y falls on. */
+function ruleYsAt(y){
+  var P = paper(), gap = P.gap, top = Math.floor(y / PAGE_H) * PAGE_H, out = [], a;
+  if (P.kind === 'cornell') {
+    var headY = top + HEAD_H, sumY = top + PAGE_H - SUM_H;
+    for (a = headY + gap; a < sumY - 4; a += gap) out.push(a);
+    for (a = sumY + gap; a < top + PAGE_H - 6; a += gap) out.push(a);
+  } else if (P.kind === 'ruled') {
+    for (a = top + gap * 2; a < top + PAGE_H - 6; a += gap) out.push(a);
+  } else if (P.kind === 'grid' || P.kind === 'dots') {
+    for (a = top + gap; a < top + PAGE_H; a += gap) out.push(a);
+  }
+  return out;                                   // blank paper: nothing to sit on
+}
+var tidyTimer = 0, tidyQueue = [];
+function tidySoon(st){
+  if (!tidyOn() || !st || st.type !== 'pen' || !st.points || st.points.length < 4) return;
+  if (tidyQueue.indexOf(st) === -1) tidyQueue.push(st);
+  if (tidyTimer) clearTimeout(tidyTimer);
+  tidyTimer = setTimeout(tidyNow, 800);         // a beat after the pen stops
+}
+function tidyNow(){
+  tidyTimer = 0;
+  var q = tidyQueue.filter(function(s){ return strokes.indexOf(s) !== -1; });
+  tidyQueue = [];
+  if (!q.length || drawing) return 0;
+  var gap = ruleGap(), T = window.__tidy;
+  if (!T) return 0;
+  var groups = T.groups(q, gap * 0.8), removed = [], added = [], g, i;
+  for (g = 0; g < groups.length; g++) {
+    var list = groups[g].list, b = T.bounds(list);
+    if (b.hi - b.lo > gap * 1.6) continue;      // a diagram, not a line of writing
+    var fixed = T.run(list, ruleYsAt((b.lo + b.hi) / 2), gap, 0.35);
+    if (!fixed) continue;
+    for (i = 0; i < list.length; i++) {
+      var at = strokes.indexOf(list[i]);
+      if (at === -1) continue;
+      removed.push({ s: list[i], i: at });
+      added.push(fixed[i]);
+    }
+  }
+  if (!removed.length) return 0;
+  logOp({ op: 'erase', removed: removed, added: added });
+  removed.forEach(function(r){ var at = strokes.indexOf(r.s); if (at !== -1) strokes.splice(at, 1); });
+  added.forEach(function(c){ strokes.push(c); });
+  redraw(); persist(); paintBadge();
+  return added.length;
+}
+
 var MINH = 200, MAXH = 620;     // dock height in CSS px
 var ANIM = 240;
 
@@ -68377,12 +68780,17 @@ function paperSwatch(P){
 function openPaperPop(anchor){
   openPop(anchor, 'paper', 'Paper', function(pop){
     var cur = paperId();
-    var l1 = document.createElement('div'); l1.className = 'mn-pop-label'; l1.textContent = 'Ruling'; pop.appendChild(l1);
     PAPERS.forEach(function(P){
       pop.appendChild(sizeRow(paperSwatch(P), P.name + ' \u2014 ' + P.note, P.id === cur, function(){
         closePop(); setPaper(P.id);
       }));
     });
+    var l0 = document.createElement('div'); l0.className = 'mn-pop-label'; l0.textContent = 'Writing'; pop.appendChild(l0);
+    var tRow = sizeRow(mk('span', 'mn-dot mn-dot-pg', null),
+      'Tidy writing \u2014 level each line onto the rule', tidyOn(), function(){ closePop(); setTidy(!tidyOn()); });
+    tRow.setAttribute('data-tidy', tidyOn() ? 'on' : 'off');
+    pop.appendChild(tRow);
+    var l1b = document.createElement('div'); l1b.className = 'mn-pop-label'; l1b.textContent = 'Ruling'; l1b.style.marginTop = '8px'; pop.appendChild(l1b);
     var curS = skinId();
     var l2 = document.createElement('div'); l2.className = 'mn-pop-label'; l2.textContent = 'Notebook skin'; l2.style.marginTop = '8px'; pop.appendChild(l2);
     SKINS.forEach(function(S){
@@ -69482,6 +69890,7 @@ function wireInk(){
     if (live && live.points.length >= 2) {
       strokes.push(live);
       logOp({ op: 'draw', s: live, i: strokes.length - 1 });
+      tidySoon(live);
       if (grewIfNeeded()) redraw();               // rebuilds everything anyway
       else {
         /* The pen is up: swap the cheap in-flight line for the real
@@ -70133,6 +70542,12 @@ window.__notesPanel = {
   limits: function(){ return { headroom: HEADROOM, max: MAX_PAGES, start: PAGE0 / PAGE_H, pageH: PAGE_H,
                               count: pageCount(), inkPages: inkPages() }; },
   splitSessions: function(){ return splitSessions(); },
+  tidy: function(){ return tidyOn(); },
+  setTidy: function(on){ setTidy(on); return tidyOn(); },
+  tidyNow: function(){ return tidyNow(); },
+  tidyQueue: function(st){ tidySoon(st); },
+  ruleYs: function(y){ return ruleYsAt(y || 0); },
+  ruleGap: function(){ return ruleGap(); },
   reloadInk: function(){ if (!curKey) return 0; strokes = loadStrokes(curKey); pageH = pageHFor(); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); return strokes.length; },
   paper: function(){ return paperId(); },
   pin: function(k){ return setPinned(k); },

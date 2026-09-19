@@ -49,10 +49,20 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     go({ name: 'home' }); await w(1200);
     out.penBarBackHome = bar();
     // More menu
-    showMoreSheet(); await w(500);
-    const sheet = document.querySelector('.pomo-sheet');
+    /* The menu is composed by several modules - each adds its own rows on its
+       own schedule - so read the one she is actually looking at, once it has
+       settled, not every sheet the document happens to still hold. */
+    showMoreSheet(); await w(1200);
+    const sheets = [...document.querySelectorAll('.pomo-sheet')].filter(x => x.isConnected && getComputedStyle(x).display !== 'none');
+    const sheet = sheets[sheets.length - 1] || null;
+    out.sheetCount = sheets.length;
     const rows = sheet ? [...sheet.querySelectorAll('.pomo-btn[data-act]')] : [];
-    out.more = { rows: rows.length, arcade: rows.some(r => r.getAttribute('data-act') === 'arcade'), backup: rows.some(r => r.getAttribute('data-act') === 'backup'), iconed: rows.filter(r => r.querySelector('svg.pc-ic')).length, emojiRows: rows.filter(r => EMOJI.test([...r.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(''))).length, radii: radii(['.pomo-sheet .pomo-btn']) };
+    const rowText = r => [...r.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+    out.more = { rows: rows.length, arcade: rows.some(r => r.getAttribute('data-act') === 'arcade'), backup: rows.some(r => r.getAttribute('data-act') === 'backup'),
+      iconed: rows.filter(r => r.querySelector('svg.pc-ic')).length,
+      emojiRows: rows.filter(r => EMOJI.test(rowText(r))).length,
+      offenders: rows.filter(r => !r.querySelector('svg.pc-ic') || EMOJI.test(rowText(r))).map(r => ({ act: r.getAttribute('data-act'), pc: r.getAttribute('data-pc'), svg: !!r.querySelector('svg.pc-ic'), txt: rowText(r).trim().slice(0, 30) })),
+      radii: radii(['.pomo-sheet .pomo-btn']) };
     let opened = false;
     try { const a = sheet.querySelector('[data-act="arcade"]'); a.click(); await w(700); opened = !document.querySelector('.pomo-sheet [data-act="theme"]') && !!(document.body.innerText.match(/Blitz|Survival|Arcade/)); } catch (e) {}
     out.arcadeOpens = opened;
