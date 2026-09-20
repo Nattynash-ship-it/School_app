@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.608">
+<meta name="app-build" content="18.609">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -2611,7 +2611,11 @@
   .scratch-tools { display: flex; gap: 6px; }
   .scratch-tool { padding: 5px 11px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; line-height: 1.2; }
   .scratch-tool.is-active { background: var(--accent); color: var(--accent-text, #fff); border-color: var(--accent); }
-  .scratch-canvas { width: 100%; height: 44vh; display: block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; }
+  /* Height is a variable so the pad can be stepped taller from its own
+     toolbar: an 8-row table of working never fitted in 44vh on an iPad.
+     The split-screen rule below (>=1000px) is more specific and still
+     wins, so the side-by-side pad keeps its full-viewport height. */
+  .scratch-canvas { width: 100%; height: var(--scratch-h, 72vh); min-height: 300px; display: block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; }
  .quiz-actions button {
  flex: 1; padding: 12px;
  border-radius: 8px;
@@ -20586,9 +20590,20 @@ function rewardsPanelEl(){
 // only (touch ignored) so a resting palm can't leave marks. This canvas is its
 // own drawing surface — the page-wide annotation pen ignores it (see
 // gannoIsUiTarget) so the two never fight over the same strokes.
+// Three pad heights, stepped from the pad's own toolbar. A fresh device
+// starts on Tall: the old single 44vh height was too cramped to write a
+// worked solution on an iPad. The choice is remembered per device.
+const SCRATCH_SIZES = [['46vh', 'Standard'], ['72vh', 'Tall'], ['104vh', 'Full page']];
+function scratchSizeIdx() {
+ try { const i = SCRATCH_SIZES.findIndex(s => s[0] === store.scratchH); return i < 0 ? 1 : i; } catch (e) { return 1; }
+}
+function applyScratchSize(i) {
+ try { document.body.style.setProperty('--scratch-h', SCRATCH_SIZES[i][0]); } catch (e) {}
+}
 function mountScratchPad(hostEl, strokeStore, key) {
  if (!hostEl || !strokeStore) return;
  if (!Array.isArray(strokeStore[key])) strokeStore[key] = [];
+ applyScratchSize(scratchSizeIdx());
  hostEl.innerHTML =
  '<div class="scratch-head">' +
  '<span class="quiz-workspace-label"><span>✏️</span> Scratch space — work it out here</span>' +
@@ -20596,6 +20611,7 @@ function mountScratchPad(hostEl, strokeStore, key) {
  '<button type="button" class="scratch-tool is-active" data-tool="pen">✏️ Pencil</button>' +
  '<button type="button" class="scratch-tool" data-tool="erase">▯ Eraser</button>' +
  '<button type="button" class="scratch-tool" data-tool="clear">\u{1F5D1} Clear</button>' +
+ '<button type="button" class="scratch-tool" data-tool="size" title="Change how tall the scratch pad is">⤢ ' + SCRATCH_SIZES[scratchSizeIdx()][1] + '</button>' +
  '</div>' +
  '</div>' +
  '<canvas class="scratch-canvas"></canvas>';
@@ -20640,6 +20656,21 @@ function mountScratchPad(hostEl, strokeStore, key) {
  btn.addEventListener('click', () => {
  const tool = btn.getAttribute('data-tool');
  if (tool === 'clear') { strokeStore[key] = []; redraw(); return; }
+ if (tool === 'size') {
+ // Step to the next height. Shrinking never hides work: if there is ink
+ // below the shorter canvas we stop at the smallest height that still
+ // shows all of it, rather than cropping the page she just wrote on.
+ let want = (scratchSizeIdx() + 1) % SCRATCH_SIZES.length;
+ let deep = 0;
+ for (const st of strokes()) { if (st) for (const pt of st) { if (pt.y > deep) deep = pt.y; } }
+ const px = (v) => (parseFloat(v) / 100) * (window.innerHeight || 800);
+ while (deep + 8 > px(SCRATCH_SIZES[want][0]) && want < SCRATCH_SIZES.length - 1) want++;
+ try { store.scratchH = SCRATCH_SIZES[want][0]; saveStore(); } catch (e) {}
+ applyScratchSize(want);
+ btn.textContent = '⤢ ' + SCRATCH_SIZES[want][1];
+ requestAnimationFrame(() => { sizeCanvas(); redraw(); });
+ return;
+ }
  mode = (tool === 'erase') ? 'erase' : 'pen';
  hostEl.querySelectorAll('.scratch-tool[data-tool="pen"], .scratch-tool[data-tool="erase"]').forEach(b => b.classList.toggle('is-active', b.getAttribute('data-tool') === tool));
  cv.style.cursor = (mode === 'erase') ? 'cell' : 'crosshair';
