@@ -109,6 +109,7 @@ run ipadnotes ipadnotes.js 3
 run layout layout.js 3
 run pro pro.js 1
 run rounds rounds.js 1
+run secstatus secstatus.js 1
 run tidy tidy.js 1
 run pretestkeep pretestkeep.js 1
 run listenvoice listenvoice.js 1

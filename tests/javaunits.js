@@ -1,5 +1,5 @@
 // SECTION: Quizzes & content
-// Java (D286) unit quizzes, Units 1-18: every multiple-choice question carries a
+// Java (D286) unit quizzes, every unit: every multiple-choice question carries a
 // rationale for each wrong option (and none for the right one), the one repaired
 // answer key points where its own explanation says, and a live unit quiz shows
 // the rationale the moment a wrong option is submitted.
@@ -16,7 +16,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     const j = await fetch('/content-D286.json?probe=1').then(r => r.json());
     const Q = JSON.parse(j.q);
     const man = await fetch('/content-manifest.json?probe=1').then(r => r.json());
-    const secs = Object.keys(Q).filter(k => /^D286\/u(?:[1-9]|1[0-8])\//.test(k));   // Unit 19 is next in course order
+    const secs = Object.keys(Q).filter(k => /^D286\/u\d+\//.test(k));
     const out = { secs: secs.length, items: 0, build: j.build, fv: (man.fv || {}).D286, missing: [], badKeys: [], letters: [], short: [], echoes: [], fix: null };
     for (const sec of secs) {
       for (const it of Q[sec]) {
@@ -40,7 +40,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     out.fix = fx ? { correct: fx.correct, text: fx.options[fx.correct], keys: Object.keys(fx.distractors || {}).sort().join(',') } : null;
     return out;
   });
-  ok('Units 1-18 have their 216 quiz sections', R.secs === 216, R.secs);
+  ok('the 19 units have their 226 quiz sections', R.secs === 226, R.secs);
   ok('every multiple-choice question has rationales', R.missing.length === 0, { n: R.items, missing: R.missing.slice(0, 6) });
   ok('rationales cover exactly the wrong options', R.badKeys.length === 0, R.badKeys.slice(0, 6));
   ok('no rationale names an option by letter', R.letters.length === 0, R.letters.slice(0, 6));
