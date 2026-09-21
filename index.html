@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.616">
+<meta name="app-build" content="18.617">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -38396,7 +38396,13 @@ function sectionMastery(courseId, chId, secId) {
   const last = rounds.length ? rounds[rounds.length - 1] : null;
   const best = rememberBestRound(ck, pickBestRound(rounds));
   const bestAttempt = best ? best.pct / 100 : 0;
-  const passAttempt = !!(best && (best.asked || 0) >= minRun && bestAttempt >= passBar());
+  /* Any round that met the bar passes the section - not only the best round by
+     percentage. Her 6.5 row read "best round 11/11 · 100% · last 24/25 · 96%"
+     and still said good: the eleven-question round was the best by percentage
+     but too short to count, and the 24/25 round that did meet the bar was never
+     asked ("I redid the test and got a 96% and it only says good, not mastered"). */
+  const meetsBar = r => !!(r && (r.asked || 0) >= minRun && (r.pct || 0) / 100 >= passBar());
+  const passAttempt = rounds.some(meetsBar) || meetsBar(best);
 
   const passed = passFull || passAttempt;
   // Passing means ready — but it can still go stale.
