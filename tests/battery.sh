@@ -10,6 +10,11 @@ if ! node -e "require('playwright')" >/dev/null 2>&1; then
     if [ -d "$d/playwright" ]; then export NODE_PATH="$d${NODE_PATH:+:$NODE_PATH}"; break; fi
   done
 fi
+# The Netlify function suites import the pinned packages. A fresh container has
+# no node_modules, and fngate failed on import before a single check ran.
+if [ -f "$S/../package.json" ] && [ ! -d "$S/../node_modules/@anthropic-ai/sdk" ]; then
+  (cd "$S/.." && npm install --no-audit --no-fund --silent >/dev/null 2>&1) || echo "npm install failed - function suites may not import"
+fi
 # A SUITE THAT SAYS NOTHING HAS NOT PASSED.
 # This piped straight into tail, so $? was tail's status and never the test's,
 # and a suite that died printed a blank line that read exactly like a quiet
@@ -108,6 +113,7 @@ run fngate fngate.mjs 2
 run newcontent newcontent.js 1
 run wguqs wguqs.js 1
 run inkdouble inkdouble.js 2
+run figflow figflow.js 1
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"
   echo BATTERY_DONE

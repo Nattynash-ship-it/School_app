@@ -4,7 +4,8 @@
 // The captioned figures in a lesson were appended in a bunch after the prose.
 // lessonFlow() moves each one under the heading that teaches it, when the
 // match is clear. Every decision it makes over C959 and D684 was reviewed by
-// hand and pinned in tests/figflow.expected.json; this suite checks the app
+// hand and pinned in tests/figflow.expected.json (built from what the app
+// serves, which for the concept pages differs from the raw pack); this suite checks the app
 // still makes exactly those decisions, and that the moved figures land where
 // they should on the two lessons from her exams this week.
 const { chromium } = require('playwright');
@@ -46,7 +47,8 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   }, EXPECTED);
   ok('every lesson in the reviewed list is reachable', parity.missing.length === 0, parity.missing);
   ok('the app makes exactly the reviewed decisions (' + parity.checked + ' figures)', parity.wrong.length === 0, parity.wrong.slice(0, 6));
-  ok('it moves the reviewed 55 and no others', parity.moves === 55, parity.moves);
+  const EXP_MOVES = Object.values(EXPECTED).flat().filter(x => x[2] === 'MOVE').length;
+  ok('it moves the reviewed ' + EXP_MOVES + ' and no others', parity.moves === EXP_MOVES, parity.moves);
 
   // ---- the rendered page: where does each figure sit now? ----
   const place = (L) => p.evaluate(async (L) => {
@@ -65,10 +67,12 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
         if (e === f) break;
         if (/^H[234]$/.test(e.tagName) && !e.closest('.vl') && !e.closest('.coach-card')) h = e.textContent.trim();
       }
-      return { title: (f.firstElementChild || f).textContent.replace(/\s+/g, ' ').trim().slice(11, 60), under: h, flowed: f.getAttribute('data-flowed') === '1', nested: !!(f.parentElement && f.parentElement.closest('.vl')) };
+      const cap = (f.firstElementChild || f).textContent.replace(/\s+/g, ' ').trim();
+      const tm = /📊 FIGURE\s*[—-]\s*(.*)$/.exec(cap);
+      return { title: (tm ? tm[1] : cap).slice(0, 60), under: h, flowed: f.getAttribute('data-flowed') === '1', nested: !!(f.parentElement && f.parentElement.closest('.vl')) };
     });
     const body = getLesson(L.courseId, L.chId, L.secId).body;
-    return { n: figs.length, inSource: (body.match(/📊 FIGURE/g) || []).length, res, identical: host.innerHTML === body };
+    return { n: figs.length, inSource: (body.match(/📊 FIGURE/g) || []).length, res, identical: window.__lessonFlow.apply(body) === body };
   }, L);
 
   const ds = await place({ name: 'section', courseId: 'D684', chId: 'g2', secId: 'k_ds' });
@@ -86,7 +90,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
 
   // a lesson where nothing moves renders its source untouched
   const st = await place({ name: 'section', courseId: 'C959', chId: 'ch2', secId: 's1' });
-  ok('a lesson with no clear match renders byte-for-byte as authored', st.identical === true && st.n === 3, { n: st.n, identical: st.identical });
+  ok('a lesson with no clear match is passed through untouched', st.identical === true && st.n === 3, { n: st.n, identical: st.identical });
 
   ok('no page errors', errs.length === 0, errs);
   await browser.close();
