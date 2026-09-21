@@ -1,6 +1,20 @@
 #!/bin/bash
 S="$(cd "$(dirname "$0")" && pwd)"
 cd "$S" || exit 1
+# Playwright is a GLOBAL install on this image (/opt/node22/lib/node_modules),
+# which a bare require() cannot see. A fresh container therefore failed every
+# suite with MODULE_NOT_FOUND before a single assertion ran. Point node at it
+# unless the caller already has a working resolution.
+if ! node -e "require('playwright')" >/dev/null 2>&1; then
+  for d in /opt/node22/lib/node_modules /usr/lib/node_modules /usr/local/lib/node_modules; do
+    if [ -d "$d/playwright" ]; then export NODE_PATH="$d${NODE_PATH:+:$NODE_PATH}"; break; fi
+  done
+fi
+# The Netlify function suites import the pinned packages. A fresh container has
+# no node_modules, and fngate failed on import before a single check ran.
+if [ -f "$S/../package.json" ] && [ ! -d "$S/../node_modules/@anthropic-ai/sdk" ]; then
+  (cd "$S/.." && npm install --no-audit --no-fund --silent >/dev/null 2>&1) || echo "npm install failed - function suites may not import"
+fi
 # A SUITE THAT SAYS NOTHING HAS NOT PASSED.
 # This piped straight into tail, so $? was tail's status and never the test's,
 # and a suite that died printed a blank line that read exactly like a quiet
@@ -99,6 +113,7 @@ run fngate fngate.mjs 2
 run newcontent newcontent.js 1
 run wguqs wguqs.js 1
 run inkdouble inkdouble.js 2
+run figflow figflow.js 1
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"
   echo BATTERY_DONE

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.610">
+<meta name="app-build" content="18.612">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -19672,6 +19672,122 @@ function renderChapter(courseId, chId) {
 }
 
 // ==================== SECTION VIEW (LESSON) ====================
+// ==================== LESSON FLOW — a figure sits under its topic ====================
+// "The diagrams need to be directly under the topic to be associated, the
+//  information shouldn't be scattered everywhere, information needs to flow."
+// The captioned figures ("📊 FIGURE — ...") were appended to a lesson in a
+// bunch after the prose - three data-structure diagrams sat 2,000px below the
+// headings that teach them, and a stack/queue animation 5,500px below the
+// stack/queue section. Nothing ties a figure to a heading, so the caption is
+// matched against every heading and the prose under it, and the figure moves
+// to sit just after that heading's first paragraph.
+// A wrong move is worse than none, so the match must be clear: the best
+// heading needs a score of at least 2 and a lead of 1.25 over the runner-up.
+// Every decision this makes over C959 and D684 was reviewed by hand before it
+// shipped, and the test suite (tests/figflow.js) pins them.
+const LESSON_FLOW_STOP = new Set('the a an and or of to in on at by for with from as is are be this that these those its it into same one two three four five six how what why when where which who same different every each vs versus with without step steps figure per'.split(' '));
+function lessonFlowToks(t) {
+ t = String(t || '').replace(/<[^>]+>/g, ' ').toLowerCase().replace(/-/g, ' ').replace(/\//g, ' ');
+ const out = [];
+ const re = /[a-z][a-z0-9']+/g; let m;
+ while ((m = re.exec(t))) {
+ let w = m[0].replace(/^'+|'+$/g, '');
+ if (LESSON_FLOW_STOP.has(w) || w.length < 3) continue;
+ if (w.endsWith('ies')) w = w.slice(0, -3) + 'y';
+ else if (w.endsWith('es') && !w.endsWith('ses')) { const b = w.slice(0, -2); w = (b.endsWith('sh') || b.endsWith('ch') || b.endsWith('x')) ? b : w.slice(0, -1); }
+ else if (w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
+ out.push(w);
+ }
+ return out;
+}
+// [start, end) of every <div class="vl"> block, by counting div depth
+function lessonFlowVlRanges(body) {
+ const out = []; let i = 0;
+ for (;;) {
+ const st = body.indexOf('<div class="vl"', i);
+ if (st < 0) break;
+ const re = /<div\b|<\/div>/g; re.lastIndex = st;
+ let depth = 0, end = body.length, m;
+ while ((m = re.exec(body))) { depth += m[0].charAt(1) === '/' ? -1 : 1; if (depth === 0) { end = m.index + m[0].length; break; } }
+ out.push([st, end]); i = end;
+ }
+ return out;
+}
+function lessonFlowDecide(body) {
+ body = String(body || '');
+ const vl = lessonFlowVlRanges(body);
+ const inVl = (pos) => vl.some(r => pos >= r[0] && pos < r[1]);
+ // the prose without any figure or definition block
+ let plain = '', last = 0;
+ for (const r of vl) { plain += body.slice(last, r[0]); last = r[1]; }
+ plain += body.slice(last);
+ const parts = plain.split(/(<h[234][^>]*>[\s\S]*?<\/h[234]>)/);
+ const secs = [];
+ for (let k = 1; k < parts.length; k += 2) secs.push({ h: parts[k].replace(/<[^>]+>/g, '').trim(), text: parts[k + 1] || '' });
+ // the figures, by caption
+ const figs = [];
+ for (const r of vl) {
+ const t = body.slice(r[0], r[0] + 400).replace(/<[^>]+>/g, ' ');
+ const mm = /📊 FIGURE\s*[—-]\s*([^\n]{3,120}?)(?:\s{2,}|$)/.exec(t);
+ if (mm) figs.push({ start: r[0], end: r[1], title: mm[1].trim() });
+ }
+ if (!figs.length || !secs.length) return { figs: [], secs: secs.length, decisions: [] };
+ const st = secs.map(x => ({ h: x.h, ht: new Set(lessonFlowToks(x.h)), tt: new Set(lessonFlowToks(x.text.slice(0, 1500))) }));
+ const df = new Map();
+ for (const x of st) for (const w of new Set([...x.ht, ...x.tt])) df.set(w, (df.get(w) || 0) + 1);
+ const decisions = figs.map(f => {
+ const ft = new Set(lessonFlowToks(f.title).filter(w => df.has(w)));
+ const scores = st.map((x, i) => {
+ let sc = 0;
+ for (const w of ft) { const rare = df.get(w) <= 2; if (x.ht.has(w)) sc += rare ? 2 : 1; else if (x.tt.has(w)) sc += rare ? 1 : 0.25; }
+ return { sc, i };
+ });
+ scores.sort((a, b) => (b.sc - a.sc) || (b.i - a.i));
+ const best = scores[0], second = scores.length > 1 ? scores[1].sc : 0;
+ const ok = best.sc >= 2 && best.sc - second >= 1.25;
+ return { title: f.title, start: f.start, end: f.end, target: best.i, heading: secs[best.i].h, score: best.sc, second, move: ok };
+ });
+ return { figs, secs: secs.length, decisions, inVl };
+}
+function lessonFlow(body) {
+ try {
+ body = String(body || '');
+ if (body.indexOf('📊 FIGURE') < 0) return body;
+ const d = lessonFlowDecide(body);
+ const moves = d.decisions.filter(x => x.move);
+ if (!moves.length) return body;
+ // lift the moved figures out, remembering which heading each goes under
+ const byTarget = new Map();
+ let out = '', last = 0;
+ for (const f of d.decisions) {
+ if (!f.move) continue;
+ out += body.slice(last, f.start);
+ const html = body.slice(f.start, f.end).replace('<div class="vl"', '<div class="vl" data-flowed="1"');
+ if (!byTarget.has(f.target)) byTarget.set(f.target, []);
+ byTarget.get(f.target).push(html);
+ last = f.end;
+ }
+ out += body.slice(last);
+ // headings outside any block, in the same order the decision used
+ const vl = lessonFlowVlRanges(out);
+ const heads = [];
+ const re = /<h[234][^>]*>[\s\S]*?<\/h[234]>/g; let m;
+ while ((m = re.exec(out))) { if (!vl.some(r => m.index >= r[0] && m.index < r[1])) heads.push({ start: m.index, end: m.index + m[0].length }); }
+ if (heads.length !== d.secs) return body;                 // the shape changed under us - leave it alone
+ const targets = [...byTarget.keys()].sort((a, b) => b - a);   // last first, so earlier offsets stay valid
+ for (const ti of targets) {
+ const h = heads[ti];
+ const nextStart = ti + 1 < heads.length ? heads[ti + 1].start : out.length;
+ let at = h.end;
+ const pEnd = out.indexOf('</p>', h.end);
+ if (pEnd >= 0 && pEnd < nextStart) at = pEnd + 4;        // after the topic sentence
+ out = out.slice(0, at) + byTarget.get(ti).join('') + out.slice(at);
+ }
+ return out;
+ } catch (e) { return body; }
+}
+window.__lessonFlow = { decide: lessonFlowDecide, apply: lessonFlow };
+
 function renderSection(courseId, chId, secId) {
   const c = COURSES[courseId];
   /* SECTION_GUARD_V1 — recover gracefully from a stale/bad course, chapter, or section id */
@@ -19769,7 +19885,7 @@ function renderSection(courseId, chId, secId) {
  <ul style="margin-top: 8px;">${s.objectives.map(o => `<li>${esc(o)}</li>`).join('')}</ul>
  </div>` : ''}
 
- ${lesson ? `<div class="lesson-wrap"><div class="lesson">${lesson.body}</div></div>` :
+ ${lesson ? `<div class="lesson-wrap"><div class="lesson">${lessonFlow(lesson.body)}</div></div>` :
  `<div class="empty">
  <div class="ico">📖</div>
  <p>Lesson content coming soon.<br>Add it during your next study session.</p>
