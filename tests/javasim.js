@@ -47,9 +47,10 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     const pool = JSON.parse(j.q)['D286/oa_sim/sim'];
     const ids = new Set(pool.map(x => x.id));
     const q = pool.find(x => x.id === 'xw_d286_01');
-    return { paper: paper.length, fromPool: paper.every(x => ids.has(x.id)), found: !!q, hasCode: !!(q && /<pre><code>/.test(q.text)), opts: q ? q.options.length : 0 };
+    // a paper is 40 pool questions plus 10 generated 'fresh' ones (new every attempt)
+    return { paper: paper.length, fromPool: paper.every(x => ids.has(x.id) || x.fresh === true), found: !!q, hasCode: !!(q && /<pre><code>/.test(q.text)), opts: q ? q.options.length : 0 };
   });
-  ok('the sim deals a paper drawn from the pool', V.paper > 0 && V.fromPool, V);
+  ok('the sim deals a paper of pool questions plus fresh ones', V.paper > 0 && V.fromPool, V);
   ok('a new code-trace question sits in the pool with its code block', V.found && V.hasCode && V.opts === 4, V);
   ok('no page errors', errs.length === 0, errs);
   await browser.close();
