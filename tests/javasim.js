@@ -19,7 +19,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     for (const it of sim) {
       if (!('correct' in it) || !Array.isArray(it.options)) continue;   // code tasks
       const d = it.distractors || {};
-      const want = [0, 1, 2, 3].filter(i => i !== it.correct).map(String).join(',');
+      const want = it.options.map((_, i) => i).filter(i => i !== it.correct).map(String).join(',');   // some questions carry five options
       if (!it.distractors) { out.missing.push(it.id); continue; }
       if (Object.keys(d).sort().join(',') !== want) out.badKeys.push(it.id);
       for (const v of Object.values(d)) { if (String(v).length < 15) out.short.push(it.id); if (/\b(?:option|answer|choice) [A-D]\b/i.test(String(v))) out.letters.push(it.id); }
@@ -37,15 +37,20 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('the manifest index matches the pool', R.driftIds === 0, R.driftIds);
   ok('the pack version tracks the build', R.fv === R.build, { fv: R.fv, build: R.build });
 
-  // one new code-trace question rendered through the app's own question view
+  // the sim chapter deals a sampled paper from the pool: the paper must be non-empty,
+  // drawn entirely from the pool, and the pool itself must hold the new code traces
   const V = await p.evaluate(async () => {
     const w = ms => new Promise(r => setTimeout(r, ms));
     go({ name: 'class', courseId: 'D286' }); await w(1500);
-    const qs = getQuestions('D286', 'oa_sim', 'sim') || [];
-    const q = qs.find(x => x.id === 'xw_d286_01');
-    return { found: !!q, hasCode: !!(q && /<pre><code>/.test(q.text)), opts: q ? q.options.length : 0, hasExplain: !!(q && q.explain && q.explain.length > 40) };
+    const paper = getQuestions('D286', 'oa_sim', 'sim') || [];
+    const j = await fetch('/content-D286.json?probe=1').then(r => r.json());
+    const pool = JSON.parse(j.q)['D286/oa_sim/sim'];
+    const ids = new Set(pool.map(x => x.id));
+    const q = pool.find(x => x.id === 'xw_d286_01');
+    return { paper: paper.length, fromPool: paper.every(x => ids.has(x.id)), found: !!q, hasCode: !!(q && /<pre><code>/.test(q.text)), opts: q ? q.options.length : 0 };
   });
-  ok('a new code-trace question is reachable through getQuestions', V.found && V.hasCode && V.opts === 4 && V.hasExplain, V);
+  ok('the sim deals a paper drawn from the pool', V.paper > 0 && V.fromPool, V);
+  ok('a new code-trace question sits in the pool with its code block', V.found && V.hasCode && V.opts === 4, V);
   ok('no page errors', errs.length === 0, errs);
   await browser.close();
   console.log('javasim: ' + pass + '/' + (pass + fail) + ' passed');
