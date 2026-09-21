@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.609">
+<meta name="app-build" content="18.610">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -58635,6 +58635,24 @@ var BIG_SLOT = 60000;             // a page past this is expensive to repack
 var compacting = Object.create(null);   // rk -> a repack is already queued
 var cache = Object.create(null);
 var tail = Object.create(null);   // rk -> { n: strokes already written, last: <the nth stroke> }
+/* THE PACKED SLOT AND ITS LOG ARE TWO SEPARATE localStorage WRITES, and iOS
+   ends a backgrounded tab whenever it likes. A kill in between left the slot
+   already holding the strokes AND the log still holding them too, so the next
+   launch read the same writing twice - measured: a six-stroke word came back
+   as eleven strokes, and it stayed doubled on every launch after.
+   So the slot now carries a GENERATION, in the same entry as the strokes, and
+   every log line is stamped with the generation it was appended to. A log that
+   survives a repack carries the previous generation and is ignored; a log from
+   the current one is replayed exactly as before. Killed after the repack:
+   nothing is doubled. Killed before it: nothing is lost. */
+var gens = Object.create(null);   // rk -> generation held by the packed slot
+function unwrap(raw){
+  var v = unpack(raw);
+  if (v == null) return null;
+  if (Array.isArray(v)) return { g: 0, s: v };            // a slot from before the stamp
+  if (v && Array.isArray(v.s)) return { g: v.g || 0, s: v.s };
+  return null;
+}
 
 // Pencil coordinates arrive as long floats (203.34179687500003). Storing them
 // to a tenth of a pixel is a shift of at most 0.05px - invisible - and it
@@ -58704,8 +58722,17 @@ function readLog(rk){
   var out = [];
   var lines = raw.split('\n');
   for (var i = 0; i < lines.length; i++) {
-    if (!lines[i]) continue;
-    try { out.push(JSON.parse(lines[i])); } catch (e) {}
+    var ln = lines[i];
+    if (!ln) continue;
+    // "<generation>.<index>\t<stroke json>", or bare json from an older build.
+    // JSON.stringify escapes a tab inside a string, so a real tab only ever
+    // separates the stamp from the stroke.
+    var g = 0, at = -1, body = ln, tab = ln.indexOf('\t');
+    if (tab > 0) {
+      var m = /^(\d+)\.(\d+)$/.exec(ln.slice(0, tab));
+      if (m) { g = +m[1]; at = +m[2]; body = ln.slice(tab + 1); }
+    }
+    try { out.push({ g: g, at: at, s: JSON.parse(body) }); } catch (e) {}
   }
   return out;
 }
@@ -58723,9 +58750,32 @@ function index(){
 }
 function readInk(rk){
   if (cache[rk]) return cache[rk];
-  var v = unpack(localStorage.getItem(PREFIX + rk)) || [];
-  var extra = readLog(rk);
-  if (extra.length) v = v.concat(extra);
+  var w = unwrap(localStorage.getItem(PREFIX + rk));
+  var v = w ? w.s.slice() : [];
+  var gen = w ? w.g : 0;
+  gens[rk] = gen;
+  var extra = readLog(rk), seen = null, i, j;
+  for (i = 0; i < extra.length; i++) {
+    var e = extra[i];
+    if (e.at >= 0) {
+      // Stamped. A different generation means the slot was repacked after this
+      // line was written, so the slot already holds it.
+      if (e.g !== gen) continue;
+      if (e.at < v.length) continue;
+      v.push(e.s);
+    } else {
+      // Written before the stamp existed: keep the old behaviour, but never put
+      // back a stroke the packed slot already holds. This is what un-doubles a
+      // page that was already damaged before this build reached her.
+      if (seen === null) {
+        seen = Object.create(null);
+        for (j = 0; j < v.length; j++) { try { seen[json(v[j])] = 1; } catch (er) {} }
+      }
+      var k2 = null; try { k2 = json(e.s); } catch (er) {}
+      if (k2 !== null) { if (seen[k2]) continue; seen[k2] = 1; }
+      v.push(e.s);
+    }
+  }
   if (v.length) {
     cache[rk] = v;
     tail[rk] = { n: v.length, last: v[v.length - 1] };
@@ -58741,13 +58791,19 @@ function rewrite(rk, strokes){
       localStorage.removeItem(LOG + rk);
       delete cache[rk];
       delete tail[rk];
+      delete gens[rk];
       delete index()[rk];
       return;
     }
     cache[rk] = strokes;
-    var p = pack(strokes);
+    var gen = ((gens[rk] || 0) + 1) % 1000000;
+    var p = pack({ g: gen, s: strokes });
     if (p != null) {
       localStorage.setItem(PREFIX + rk, p);
+      // The generation is live the moment the slot is, so anything appended
+      // from here on is stamped with it - including a write that lands before
+      // the log below is cleared.
+      gens[rk] = gen;
       localStorage.removeItem(LOG + rk);
       index()[rk] = 1;
       tail[rk] = { n: strokes.length, last: strokes[strokes.length - 1] };
@@ -58778,8 +58834,8 @@ function writeInk(rk, strokes){
     if (!appended) { rewrite(rk, strokes); return; }
     // The stroke goes to the log FIRST and always - that is what makes it safe
     // to put the repack off until she stops writing.
-    var add = '';
-    for (var i = t.n; i < strokes.length; i++) add += json(strokes[i]) + '\n';
+    var add = '', g = gens[rk] || 0;
+    for (var i = t.n; i < strokes.length; i++) add += g + '.' + i + '\t' + json(strokes[i]) + '\n';
     var prev = localStorage.getItem(LOG + rk) || '';
     localStorage.setItem(LOG + rk, prev + add);
     cache[rk] = strokes;
@@ -58938,8 +58994,11 @@ try {
  * the page reads exactly as she wrote it.
  */
 function inkBucket(s){
+  // _ts is the field a stroke actually carries (gannoPointerUp sets it); s.ts
+  // was never set, so this key was missing the very guard its comment promises
+  // - the millisecond that stops two different strokes being merged.
   return (s.type || 'pen') + '|' + (s.color || '') + '|' + (s.width || 0) + '|' +
-         (s.ts || 0) + '|' + ((s.points && s.points.length) || 0);
+         (s._ts || s.ts || 0) + '|' + ((s.points && s.points.length) || 0);
 }
 function inkSameStroke(a, b){
   var pa = a && a.points, pb = b && b.points;
@@ -58996,9 +59055,12 @@ window.__inkRepair = function(){
   return r;
 };
 try {
-  if (store.inkDupSweep !== 2) {
+  // Bumped to 3: the sweep is once-per-value, so a page doubled AFTER the 2
+  // sweep ran was never going to be cleaned by it. This build closes the hole
+  // that doubled it and sweeps what the hole already left behind.
+  if (store.inkDupSweep !== 3) {
     var _r = inkRepairRun();
-    store.inkDupSweep = 2;
+    store.inkDupSweep = 3;
     try { saveStore(); } catch (e) {}
     if (_r.dropped) {
       try {

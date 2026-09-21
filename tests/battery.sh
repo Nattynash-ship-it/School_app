@@ -98,6 +98,7 @@ run codewrap codewrap.js 1
 run fngate fngate.mjs 2
 run newcontent newcontent.js 1
 run wguqs wguqs.js 1
+run inkdouble inkdouble.js 2
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"
   echo BATTERY_DONE
