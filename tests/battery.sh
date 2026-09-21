@@ -115,6 +115,7 @@ run wguqs wguqs.js 1
 run inkdouble inkdouble.js 2
 run figflow figflow.js 1
 run javasim javasim.js 1
+run javaunits javaunits.js 1
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"
   echo BATTERY_DONE
