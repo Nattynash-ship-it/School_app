@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "fix the notes issue where when refreshed the notes become distorted"
 // A page like hers - 200 mixed pen + highlighter strokes, saved - then FIVE
 // plain refreshes. Stroke count AND every stroke's on-screen position must be

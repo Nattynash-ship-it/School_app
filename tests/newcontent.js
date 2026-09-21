@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // The new chapters must be reachable, unlocked, and render: C959 OA practice,
 // D286 lab + PA build (code questions with a textarea), D684 OA/PA sims.
 const { chromium } = require('playwright');

@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // The notebook on an iPad, both ways round: an iPad Pro 11 profile (touch,
 // Safari UA, 2x), the Pencil as pen pointer events, a finger as touch events.
 // Engine is Chromium (WebKit is not installed here), so this is the closest
@@ -9,6 +10,7 @@
 //     skins and paper all work; the class notebook shows the page;
 //     the lesson annotation layer takes pen and refuses finger
 const { chromium, devices } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const B = 'http://127.0.0.1:' + (process.env.PORT || 8901) + '/index.html';
 let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, console.log('FAIL ' + n + ' ' + (d === undefined ? '' : JSON.stringify(d)))); };
@@ -116,7 +118,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     // reload: ink and the typed note are still there
     await p.reload({ waitUntil: 'load', timeout: 240000 }); await p.waitForTimeout(10000);
     const after = await p.evaluate(async ({ K, PK }) => { const w = ms => new Promise(r => setTimeout(r, ms)); const [c, ch, s] = K.split('/'); go({ name: 'section', courseId: c, chId: ch, secId: s }); await w(1500); window.__notesPanel.open(); await w(900); return { strokes: (gannoGetStrokes(PK) || []).length, typed: window.__notesPanel.typed(K).length, pad: window.__notesPanel.state().strokes }; }, { K, PK });
-    await p.screenshot({ path: `ipad-${label}.png` });
+    await p.screenshot({ path: scratch(`ipad-${label}.png`) });
     return { R, after };
   };
 

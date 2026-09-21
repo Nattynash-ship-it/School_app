@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // A class reset has to reset Review and Flashcards too.
 //
 // "The review and flash cards should also follow suit when a class is reset,

@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "Whenever I refresh or update the app this happens" - a photo of her Cornell
 // page with words written on top of themselves.
 //

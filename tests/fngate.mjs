@@ -1,3 +1,4 @@
+// SECTION: Gate
 // helper.mjs and tts.mjs must refuse a request without the gate cookie (401) and
 // let a validly signed cookie through to the next check (503: no API key set).
 import { gateConfig } from '../netlify/edge-functions/gate.js';

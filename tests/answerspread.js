@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SECTION: Quizzes & content
 // A practice section whose keyed answer sits in the same position almost every
 // time can be passed without reading it. Seven PORTFOLIO sections had the
 // answer at B in 66 of 70 questions, and 23 Korean sections were 10 out of 10

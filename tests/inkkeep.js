@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "The notes are still overlapping when there is a new update."
 //
 // Erased ink came back. The sync merges by union and had no record of a single

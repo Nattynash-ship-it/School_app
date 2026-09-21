@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // The lesson tools fold away, and typed notes can be a list.
 //
 // Six buttons were pinned separately down the right edge of every lesson, over

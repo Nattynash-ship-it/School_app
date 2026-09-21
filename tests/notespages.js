@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // The notes pad must always have somewhere left to write. It used to open with
 // exactly ONE page and add exactly one more per pull to the foot, so a long
 // session was spent pulling for paper. It now opens with three, keeps blank

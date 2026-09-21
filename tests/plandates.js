@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // "In the plan section please remove the due dates and the dates I would have
 // liked to meet for my courses." The class roadmap keeps its order and its
 // Passed ticks; per-class dates, date pickers, countdowns and target nags go.

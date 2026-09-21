@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SECTION: Quizzes & content
 // Finds options pasted in from an unrelated question.
 //
 // Signal: within one question set, an option string is the KEYED answer to question A and

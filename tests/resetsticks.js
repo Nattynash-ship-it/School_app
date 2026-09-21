@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // "Restet means never come back."
 //
 // A class reset already survived a STALE copy (one taken before the reset).

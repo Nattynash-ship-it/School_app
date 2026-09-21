@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // "I need this app turned into an apple app for my iPad": the install path is a
 // Home Screen web app, so these are the things iOS actually reads. A hand-edit
 // to the base64 manifest silently produced invalid JSON once - which iOS would

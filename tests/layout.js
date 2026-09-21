@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // Layout audit as a guard: across an iPad (both ways) and a phone, on every
 // main screen, nothing spills past the right edge, no text is clipped, no two
 // pieces of text sit on each other, and no floating control covers text -

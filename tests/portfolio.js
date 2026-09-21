@@ -1,8 +1,10 @@
+// SECTION: Boot & screens
 // Portfolio: the Correspondence Team chapter exists and renders as a real
 // project page (diagram, tables, numbered steps, callouts, 10 questions),
 // the duplicate chapters are gone, legacy projects have numbered steps and
 // no junk definitions table, and Home shows the new folder.
 const { chromium } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 (async () => {
   const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium' });
@@ -76,9 +78,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   ok('cheat sheet has a Correspondence Team entry with 7 cards and no "More ..." duplicates', R.cheat && R.cheat.cards === 7 && R.cheat.titles.length > 0 && !R.cheat.titles.some(t => /^More /.test(t)), JSON.stringify(R.cheat));
   ok('no page errors', errs.length===0, errs.join('|').slice(0,300));
   await p.evaluate(async () => { const w=ms=>new Promise(r=>setTimeout(r,ms)); go({name:'section', courseId:'PORTFOLIO', chId:'team', secId:'pa1'}); await w(900); });
-  await p.screenshot({ path: 'team-pa1.png', fullPage: false });
+  await p.screenshot({ path: scratch('team-pa1.png'), fullPage: false });
   await p.evaluate(async () => { const w=ms=>new Promise(r=>setTimeout(r,ms)); window.scrollTo(0, 900); await w(300); });
-  await p.screenshot({ path: 'team-pa1-steps.png' });
+  await p.screenshot({ path: scratch('team-pa1-steps.png') });
   await b.close();
   const bad=F.filter(f=>!f.pass);
   for (const f of F) console.log((f.pass?'PASS':'FAIL')+' '+f.n+(f.pass?'':' -> '+f.x));

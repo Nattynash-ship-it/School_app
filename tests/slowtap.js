@@ -1,3 +1,4 @@
+// SECTION: Study helper
 // "Everything is delaying - closing the notes, closing the calculator. What is
 //  the delay?"
 //

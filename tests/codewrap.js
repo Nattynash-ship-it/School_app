@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // Multi-line code questions must render as code blocks everywhere a stem is shown:
 // the section quiz (raw newlines), and the exam sim (authored <pre> must not show as tags).
 const { chromium } = require('playwright');

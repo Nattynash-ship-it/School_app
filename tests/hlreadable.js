@@ -1,3 +1,4 @@
+// SECTION: Lesson annotation & themes
 // "Whenever there is an update the highlighter becomes hard to read."
 //
 // Each band carried its own blend mode and its own translucency, so two bands

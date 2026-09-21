@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // The paper she writes on is a choice, and choosing it never moves her writing.
 //
 // The pad had one ruling - Cornell - and a draggable straightedge tool. The

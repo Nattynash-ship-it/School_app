@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // "I've been trying to take the pretest and it keeps resetting on me and
 //  resetting the questions"
 //

@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // "This requires so much space for a table" - a truth-table question (the
 // C959 logic style: f = (p∧¬q)∨(¬p∧q), an 8-row table) rendered with zero
 // table styling before, at whatever size the lesson-text zoom happened to be

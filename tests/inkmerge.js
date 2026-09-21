@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "Why are the notes like this" - a photo of one page carrying two lessons'
 // worth of writing, one laid over the other.
 //

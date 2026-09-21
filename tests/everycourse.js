@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // "do a run on everything, make sure everything is in place" - every course the
 // app knows, walked live, each activated for its visit (the app allows twelve
 // active at once, and a locked class opens an "activate first" modal instead

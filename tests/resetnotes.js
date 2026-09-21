@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // "Reset everything - also notes & pen marks" - and then the notes came back.
 //
 // The scores half of a class reset has had an erase record since 18.589. The

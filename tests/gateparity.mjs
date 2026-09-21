@@ -1,3 +1,4 @@
+// SECTION: Gate
 // The sync function must derive exactly the secret the edge gate derives.
 import { gateConfig } from '../netlify/edge-functions/gate.js';
 import fs from 'fs';

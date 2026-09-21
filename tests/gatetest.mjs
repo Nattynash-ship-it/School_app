@@ -1,3 +1,4 @@
+// SECTION: Gate
 // The gate, exercised the way Netlify's edge calls it: (Request, context).
 import gate, { cookieValid } from '../netlify/edge-functions/gate.js';
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});

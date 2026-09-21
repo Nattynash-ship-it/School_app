@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // A question must never show an escape code as text.
 //
 // "What are these characters" - a question read "WHILE (i &lt; 7)", five

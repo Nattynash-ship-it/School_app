@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // "Can you remove these very long truth table questions and replace them with
 //  more realistic WGU like questions for discrete math? It's also impossible to
 //  write all of the values in the very small scratch pad."

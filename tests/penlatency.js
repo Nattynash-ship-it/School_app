@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "The pencil and highlighter are delayed."
 //
 // Not the same as skipping: the ink arrives, it just arrives behind the nib.

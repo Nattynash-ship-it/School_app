@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Notebook: partial erase (only what the eraser passes over goes), the page
 // counter + jump list, and export-a-page-as-PNG.
 const { chromium } = require('playwright');

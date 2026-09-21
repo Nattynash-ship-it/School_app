@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "the page in the notes keeps shifting when I scroll": auto-grow used to fire
 // on the scroll event itself and rebuild every stroke; the axis lock ended at
 // touchend so momentum could drift sideways. Now: grow only after the scroll

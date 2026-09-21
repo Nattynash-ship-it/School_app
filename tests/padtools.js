@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "add a ruler and a highlighter to the notes as well"
 //
 // The highlighter is a wide translucent band that must never bury the writing,

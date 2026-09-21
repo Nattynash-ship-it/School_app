@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // New C959 OA/PA questions: shape, hydration, stratified/random draws.
 const { chromium } = require('playwright');
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
