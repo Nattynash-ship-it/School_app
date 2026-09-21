@@ -5,6 +5,8 @@
 // lessonFlow() moves each one under the heading that teaches it, when the
 // match is clear. Every decision it makes over C959 and D684 was reviewed by
 // hand and pinned in tests/figflow.expected.json (built from what the app
+// serves; the Java pages use DEFINITION / WORKED EXAMPLE callouts as topic
+// markers when a lesson has no headings at all — headed lessons are untouched)
 // serves, which for the concept pages differs from the raw pack); this suite checks the app
 // still makes exactly those decisions, and that the moved figures land where
 // they should on the two lessons from her exams this week.
@@ -91,6 +93,19 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   // a lesson where nothing moves renders its source untouched
   const st = await place({ name: 'section', courseId: 'C959', chId: 'ch2', secId: 's1' });
   ok('a lesson with no clear match is passed through untouched', st.identical === true && st.n === 3, { n: st.n, identical: st.identical });
+
+  // a Java lesson with no headings: the figure follows the DEFINITION callout that introduces its concept
+  const jv = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    go({ name: 'class', courseId: 'D286' }); await w(800);
+    go({ name: 'section', courseId: 'D286', chId: 'u10', secId: 'z10_7' }); await w(3500);
+    const host = document.querySelector('#app .lesson');
+    const fig = host && [...host.querySelectorAll('.vl')].find(e => /📊 FIGURE/.test((e.firstElementChild || e).textContent || ''));
+    const prev = fig && fig.previousElementSibling;
+    const label = prev && prev.querySelector('.callout-label');
+    return { fig: !!fig, flowed: !!(fig && fig.getAttribute('data-flowed') === '1'), prevIsCallout: !!(prev && prev.classList.contains('callout')), label: label ? label.textContent.trim() : null, headings: host ? host.querySelectorAll('h2,h3,h4').length : -1 };
+  });
+  ok('a heading-less Java lesson seats its figure right after the DEFINITION callout', jv.fig && jv.flowed && jv.prevIsCallout && /DEFINITION/.test(jv.label || ''), jv);
 
   ok('no page errors', errs.length === 0, errs);
   await browser.close();

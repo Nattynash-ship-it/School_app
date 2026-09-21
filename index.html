@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.613">
+<meta name="app-build" content="18.614">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -19713,17 +19713,49 @@ function lessonFlowVlRanges(body) {
  }
  return out;
 }
+// Topic markers in document order: h2-h4 headings, and - only on a page with no
+// headings at all - the DEFINITION callout (its bold terms) and each
+// "WORKED EXAMPLE — topic" callout. Java lessons mark topics with those callouts
+// rather than headings; a headed lesson keeps its reviewed, heading-only
+// decisions exactly, because adding markers there changed 96 of them.
+// where the block that opens at `start` closes, by div depth
+function lessonFlowBlockEnd(html, start) {
+ const re = /<div\b|<\/div>/g; re.lastIndex = start; let depth = 0, m;
+ while ((m = re.exec(html))) { depth += m[0].charAt(1) === '/' ? -1 : 1; if (depth === 0) return m.index + m[0].length; }
+ return html.length;
+}
+function lessonFlowMarkers(plain) {
+ const marks = [];
+ const hre = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/g; let m;
+ while ((m = hre.exec(plain))) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'h', h: m[1].replace(/<[^>]+>/g, '').trim() });
+ if (!marks.length) {
+ const cre = /<div class="callout"[^>]*>\s*<div class="callout-label">([\s\S]*?)<\/div>/g;
+ while ((m = cre.exec(plain))) {
+ const label = m[1].replace(/<[^>]+>/g, '').trim();
+ const mend = m.index + m[0].length;
+ if (label.indexOf('DEFINITION') !== -1) {
+ const bodyt = plain.slice(mend, lessonFlowBlockEnd(plain, m.index) - 6);   // inside the callout, before its </div>
+ const terms = []; const tre = /<strong>([\s\S]*?)<\/strong>/g; let t;
+ while ((t = tre.exec(bodyt))) terms.push(t[1].replace(/<[^>]+>/g, '').replace(/^[\s:]+|[\s:]+$/g, ''));
+ const text = terms.join(' ');
+ if (text) marks.push({ start: m.index, end: mend, close: lessonFlowBlockEnd(plain, m.index), kind: 'def', h: text });
+ } else if (label.indexOf('WORKED EXAMPLE') !== -1 && label.indexOf('—') !== -1) {
+ marks.push({ start: m.index, end: mend, close: lessonFlowBlockEnd(plain, m.index), kind: 'wex', h: label.split('—').slice(1).join('—').trim() });
+ }
+ }
+ }
+ marks.sort((x, y) => x.start - y.start);
+ return marks;
+}
 function lessonFlowDecide(body) {
  body = String(body || '');
  const vl = lessonFlowVlRanges(body);
- const inVl = (pos) => vl.some(r => pos >= r[0] && pos < r[1]);
  // the prose without any figure or definition block
  let plain = '', last = 0;
  for (const r of vl) { plain += body.slice(last, r[0]); last = r[1]; }
  plain += body.slice(last);
- const parts = plain.split(/(<h[234][^>]*>[\s\S]*?<\/h[234]>)/);
- const secs = [];
- for (let k = 1; k < parts.length; k += 2) secs.push({ h: parts[k].replace(/<[^>]+>/g, '').trim(), text: parts[k + 1] || '' });
+ const marks = lessonFlowMarkers(plain);
+ const secs = marks.map((mk, i) => ({ h: mk.h, kind: mk.kind, text: plain.slice(mk.end, i + 1 < marks.length ? marks[i + 1].start : plain.length) }));
  // the figures, by caption
  const figs = [];
  for (const r of vl) {
@@ -19745,9 +19777,9 @@ function lessonFlowDecide(body) {
  scores.sort((a, b) => (b.sc - a.sc) || (b.i - a.i));
  const best = scores[0], second = scores.length > 1 ? scores[1].sc : 0;
  const ok = best.sc >= 2 && best.sc - second >= 1.25;
- return { title: f.title, start: f.start, end: f.end, target: best.i, heading: secs[best.i].h, score: best.sc, second, move: ok };
+ return { title: f.title, start: f.start, end: f.end, target: best.i, heading: secs[best.i].h, kind: secs[best.i].kind, score: best.sc, second, move: ok };
  });
- return { figs, secs: secs.length, decisions, inVl };
+ return { figs, secs: secs.length, decisions };
 }
 function lessonFlow(body) {
  try {
@@ -19756,7 +19788,7 @@ function lessonFlow(body) {
  const d = lessonFlowDecide(body);
  const moves = d.decisions.filter(x => x.move);
  if (!moves.length) return body;
- // lift the moved figures out, remembering which heading each goes under
+ // lift the moved figures out, remembering which marker each goes under
  const byTarget = new Map();
  let out = '', last = 0;
  for (const f of d.decisions) {
@@ -19768,25 +19800,35 @@ function lessonFlow(body) {
  last = f.end;
  }
  out += body.slice(last);
- // headings outside any block, in the same order the decision used
+ // the same markers, located in the page with the figures lifted out (blocks skipped)
  const vl = lessonFlowVlRanges(out);
- const heads = [];
- const re = /<h[234][^>]*>[\s\S]*?<\/h[234]>/g; let m;
- while ((m = re.exec(out))) { if (!vl.some(r => m.index >= r[0] && m.index < r[1])) heads.push({ start: m.index, end: m.index + m[0].length }); }
- if (heads.length !== d.secs) return body;                 // the shape changed under us - leave it alone
+ const inVl = (pos) => vl.some(r => pos >= r[0] && pos < r[1]);
+ let plain2 = '', last2 = 0, map = [];            // plain2 offset -> out offset
+ for (const r of vl) { map.push([plain2.length, last2, r[0] - last2]); plain2 += out.slice(last2, r[0]); last2 = r[1]; }
+ map.push([plain2.length, last2, out.length - last2]); plain2 += out.slice(last2);
+ const toOut = (pp) => { for (let i = map.length - 1; i >= 0; i--) { if (pp >= map[i][0]) return map[i][1] + (pp - map[i][0]); } return pp; };
+ const marks = lessonFlowMarkers(plain2);
+ if (marks.length !== d.secs) return body;                 // the shape changed under us - leave it alone
  const targets = [...byTarget.keys()].sort((a, b) => b - a);   // last first, so earlier offsets stay valid
  for (const ti of targets) {
- const h = heads[ti];
- const nextStart = ti + 1 < heads.length ? heads[ti + 1].start : out.length;
- let at = h.end;
- const pEnd = out.indexOf('</p>', h.end);
- if (pEnd >= 0 && pEnd < nextStart) at = pEnd + 4;        // after the topic sentence
- out = out.slice(0, at) + byTarget.get(ti).join('') + out.slice(at);
+ const mk = marks[ti];
+ const nextStart = ti + 1 < marks.length ? marks[ti + 1].start : plain2.length;
+ let at;
+ if (mk.kind === 'h') {
+ at = mk.end;
+ const pEnd = plain2.indexOf('</p>', mk.end);
+ if (pEnd >= 0 && pEnd < nextStart) at = pEnd + 4;    // after the topic sentence
+ } else {
+ // a callout: the figure follows the whole box
+ at = mk.close || mk.end;
+ }
+ const outAt = toOut(at);
+ out = out.slice(0, outAt) + byTarget.get(ti).join('') + out.slice(outAt);
  }
  return out;
  } catch (e) { return body; }
 }
-window.__lessonFlow = { decide: lessonFlowDecide, apply: lessonFlow };
+window.__lessonFlow = { decide: lessonFlowDecide, apply: lessonFlow, markers: lessonFlowMarkers };
 
 function renderSection(courseId, chId, secId) {
   const c = COURSES[courseId];
