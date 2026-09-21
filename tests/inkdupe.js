@@ -124,7 +124,8 @@ const URL = 'http://127.0.0.1:8901/index.html';
     const unrounded = clone(cur[1]);                   // the pre-18.437 shape:
     unrounded.points.forEach(q => { q.x += 0.04; q.y -= 0.03; });  // same stroke, unrounded
     const later = clone(cur[2]);                       // a real second stroke over the same
-    later.ts = (later.ts || 0) + 4000;                 // words, four seconds later - must stay
+    later._ts = (later._ts || later.ts || 0) + 4000;  // words, four seconds later - must stay
+    later.ts = later._ts;                              // (_ts is the stamp a drawn stroke carries)
     const moved = clone(cur[3]);                       // same instant, but somewhere else
     moved.points.forEach(q => { q.y += 40; });         // a whole ruled line away - must stay
     gannoSaveStrokes(rk, cur.concat([exact, unrounded, later, moved]));
