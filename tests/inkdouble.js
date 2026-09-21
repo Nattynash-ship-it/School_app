@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "The same issue is happening where when I write a word once it's being
 //  copied multiple times on the page."
 //

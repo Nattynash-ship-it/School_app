@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Action-based Undo/Redo (notebook pad + lesson pen), eraser sizes, the pen
 // picker that replaced the loose swatches, and the removed quick strip.
 const { chromium } = require('playwright');

@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "when I open the notes the page isn't where I left it and when I close the
 //  notes it isn't where it's supposed to be"
 //

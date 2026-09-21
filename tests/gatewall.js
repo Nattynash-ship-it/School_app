@@ -1,3 +1,4 @@
+// SECTION: Gate
 // When the server answers 401 (signed out of the gate), the app shows the
 // sign-in wall once, with a button to /__gate, and keeps working offline.
 const { chromium } = require('playwright');

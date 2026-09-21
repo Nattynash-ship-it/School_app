@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Ink must stay on the paragraph it was drawn over when the LESSON CONTENT
 // CHANGES - a new build inserting a diagram, worked example or definition table
 // above it. The column anchor could not see that: it pins ink to #app's outer

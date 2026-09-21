@@ -1,6 +1,8 @@
+// SECTION: Notes pad
 // The MY NOTES block at the foot of every lesson folds to one line, stays
 // folded across lessons, and unfolds itself when a note is added.
 const { chromium } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 (async () => {
   const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium' });
@@ -41,7 +43,7 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   // clean up the empty note and the flag
   await p.evaluate(() => { const k = 'C959/ch4/s2'; if (store.notes && store.notes[k]) store.notes[k] = store.notes[k].filter(n => n.text); delete store.myNotesCollapsed; saveStore(); });
   ok('no page errors', errs.length===0, errs.join('|').slice(0,300));
-  await p.screenshot({ path: 'notes-collapsed.png', clip: { x: 280, y: 60, width: 720, height: 774 } }).catch(()=>{});
+  await p.screenshot({ path: scratch('notes-collapsed.png'), clip: { x: 280, y: 60, width: 720, height: 774 } }).catch(()=>{});
   await b.close();
   const bad=F.filter(f=>!f.pass);
   for (const f of F) console.log((f.pass?'PASS':'FAIL')+' '+f.n+(f.pass?'':' -> '+f.x));

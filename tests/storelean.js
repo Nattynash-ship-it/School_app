@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // The store that gets saved must not carry her handwriting.
 //
 // Ink was split out into one storage slot per page, but store.gannoStrokes is

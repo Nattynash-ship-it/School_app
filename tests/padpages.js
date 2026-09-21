@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Notebook skins, and pages she can insert and delete.
 //   skins: eight in the picker, chosen per class, painted as variables on the
 //          dock (the rules and paper change colour), a dark skin shows a black

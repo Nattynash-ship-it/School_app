@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // "there are way too many sections and it's confusing and overwhelming, please
 //  leave the actual sections of work there but kindly combine anything that
 //  can be combined or make it easier to navigate" - the home screen: nine

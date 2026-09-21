@@ -1,4 +1,5 @@
 #!/bin/bash
+# SECTION: Harness
 S="$(cd "$(dirname "$0")" && pwd)"
 cd "$S" || exit 1
 # Playwright is a GLOBAL install on this image (/opt/node22/lib/node_modules),
@@ -20,12 +21,26 @@ fi
 # and a suite that died printed a blank line that read exactly like a quiet
 # pass. That is how a run where the server had gone away under the last six
 # suites still ended in BATTERY EXIT 0.
+# A test writes files only to the scratch space (tests/scratch.js). Give it one
+# when the caller has not, and treat a suite that changes the working tree - a
+# screenshot dropped in the repository, a swapped file not put back - as failed.
+export TEST_SCRATCH="${TEST_SCRATCH:-${TMPDIR:-/tmp}/study-hub-tests}"
+mkdir -p "$TEST_SCRATCH"
+R="$(cd "$S/.." && pwd)"
+tree() { git -C "$R" status --porcelain --ignored --untracked-files=all 2>/dev/null; }
 FAILED=""
 run() {
-  local name="$1" file="$2" lines="${3:-2}" out rc
+  local name="$1" file="$2" lines="${3:-2}" out rc before after
   echo "=== $name ==="
+  before="$(tree)"
   out="$(timeout 900 node "$S/$file" 2>&1)"; rc=$?
+  after="$(tree)"
   printf '%s\n' "$out" | tail -"$lines"
+  if [ "$before" != "$after" ]; then
+    echo "SUITE-WROTE-REPO $name (the working tree changed - tests write only to the scratch space)"
+    diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep '^[<>]' | head -8
+    FAILED="$FAILED $name"
+  fi
   if [ "$rc" -ne 0 ]; then
     echo "SUITE-FAILED $name (exit $rc)"
     # the summary line alone does not say WHICH assertion went - print them, so
@@ -37,6 +52,7 @@ run() {
     FAILED="$FAILED $name"
   fi
 }
+run writeguard writeguard.js 1
 run gate gatetest.mjs 1
 run gateparity gateparity.mjs 1
 run bootsmoke bootsmoke.js 1

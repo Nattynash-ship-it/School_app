@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "I would also like the notes to be accessible somewhere on the home page like
 //  all collectively in notebooks. Although it's created in the lessons I'd like
 //  a particular notebook to be accessible anywhere"

@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "the notes screen keeps moving as I erase, it needs to stay in place":
 // redraw() used to tear down and rebuild the WHOLE svg (every rule line and
 // every stroke) on every single erase hit-test, which is real DOM churn

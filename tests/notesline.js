@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Straight lines in the notes pad, the GoodNotes way: draw a rough line with the
 // pen, hold still at the end, and it snaps to a clean two-point stroke. There is
 // also a ╱ tool that draws one from the first touch. Nothing new is stored - a

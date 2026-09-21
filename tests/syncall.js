@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // "what else needs fixing" - measured: of the store's 28 keys, only 8 crossed
 // between her iPad and her phone. Exam-sim results, pretest results, her own
 // flashcard decks, Learn progress, exam dates, streak, XP, daily goal, calendar,

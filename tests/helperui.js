@@ -1,3 +1,4 @@
+// SECTION: Study helper
 // "So many issues with the study helper" - a photo of the panel where every
 // piece of code in the answer was a solid black blob.
 //

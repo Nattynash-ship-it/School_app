@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "The pencil is also skipping as I write in the notes."
 //
 // The finished stroke is a pressure-shaped OUTLINE: two corner-cutting passes

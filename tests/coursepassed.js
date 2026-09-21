@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // "When a class is passed remove it from list and add it to mastered and be
 // sure to show site wide that the class has passed."
 const { chromium } = require('playwright');

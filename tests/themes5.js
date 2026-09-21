@@ -1,8 +1,10 @@
+// SECTION: Lesson annotation & themes
 // Five new themes (18.599): Chalkboard, Sumi Ink (dark); Riso Print, Concrete,
 // Terrazzo (light). Each must be in the picker with a swatch, apply its own
 // palette to the page, keep reading contrast, carry its texture, survive a
 // reload, and render a lesson without errors.
 const { chromium } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const PORT = process.env.PORT || 8901;
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 const IDS = ['chalkboard','sumi','riso','concrete','terrazzo','studio','studionight'];
@@ -77,11 +79,11 @@ const cr = (a,b) => { const la=lum(a), lb=lum(b); return (Math.max(la,lb)+0.05)/
     if (id === 'terrazzo') ok('terrazzo: keeps the rounded rows', parseFloat(R.cardRadius) >= 18, R.cardRadius);
     if (id === 'sumi') ok('sumi: serif headings', /serif/.test(R.h1Font) && !/sans-serif$/.test(R.h1Font.trim()), R.h1Font);
     if (id === 'chalkboard') ok('chalkboard: chalk headings', /Chalkboard SE/.test(R.h1Font), R.h1Font);
-    await p.screenshot({ path: `theme-${id}-class.png` });
+    await p.screenshot({ path: scratch(`theme-${id}-class.png`) });
     await p.evaluate(async () => { const w=ms=>new Promise(r=>setTimeout(r,ms)); const ch = COURSES.C959.chapters.find(c => c.sections && c.sections.length); go({name:'section', courseId:'C959', chId:ch.id, secId:ch.sections[0].id}); await w(1200); });
-    await p.screenshot({ path: `theme-${id}-lesson.png` });
+    await p.screenshot({ path: scratch(`theme-${id}-lesson.png`) });
     await p.evaluate(async () => { const w=ms=>new Promise(r=>setTimeout(r,ms)); go({name:'home'}); await w(700); });
-    await p.screenshot({ path: `theme-${id}-home.png` });
+    await p.screenshot({ path: scratch(`theme-${id}-home.png`) });
     ok(`${id}: home, a C959 lesson and the C959 class page all render under the theme`, R.homeText > 500 && R.lessonText > 500 && R.cardCount > 0, JSON.stringify({home:R.homeText, lesson:R.lessonText, rows:R.cardCount}));
   }
   // persistence: the last choice survives a reload

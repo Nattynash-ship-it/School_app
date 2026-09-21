@@ -1,3 +1,4 @@
+// SECTION: Study helper
 // "the voice is still off": Listen fed the lesson's whole innerText to the
 // speech engine, so it read code blocks, captured program output, chart labels
 // and collapsed worked solutions aloud - character by character. Every worked

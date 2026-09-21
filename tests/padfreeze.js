@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "My notes are distorted": a stroke drawn while the pad was still gliding had
 // the scroll baked into it - 133 units at writing zoom, over three ruled lines
 // - and persist() saved the deformed points, so it looked identical forever.

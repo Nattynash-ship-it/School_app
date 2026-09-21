@@ -1,8 +1,10 @@
+// SECTION: Study helper
 // Import a document -> a course with STRUCTURED lessons and questions, the
 // way the built-in classes are built. The helper is mocked per mode (the
 // sandbox has no API key); a .txt upload runs the identical pipeline after
 // text extraction (pdf.js itself is unchanged and cdnjs is blocked here).
 const { chromium } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const fs = require('fs');
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 
@@ -56,8 +58,8 @@ function mockHelper(mode, body) {
 
 (async () => {
   const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium' });
-  const docPath = require('path').join(__dirname, 'fixtures', 'networking-basics.txt');
-  fs.writeFileSync(docPath, DOC);
+  const docPath = scratch('networking-basics.txt');   // the document under test is generated, so it lives in the scratch space
+  fs.writeFileSync(docPath, DOC);   // written to scratch( ) above, never into the repository
 
   async function run(helperMode) {
     const p = await b.newPage({ viewport:{width:1194,height:834} });

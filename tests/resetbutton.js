@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // "when I reset the class it still displays the same review cards and the
 //  classes revert back to the original percentage"
 //

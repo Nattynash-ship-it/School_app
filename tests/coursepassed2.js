@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // Edge case: undoing a pass while the active-course limit is full. Undo
 // always removes the "passed" record (unambiguous, always succeeds); whether
 // it ALSO puts her back in the active rotation depends on room, exactly like

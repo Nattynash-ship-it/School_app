@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // Her library has to survive a deploy, and she has to be able to put it there
 // on purpose.
 //
@@ -55,7 +56,7 @@ const shelf = p => p.evaluate(async () => {
        moved on, and the test went quietly green without testing anything. */
     const curCache = (original.match(/const CACHE = '([^']+)'/) || [])[1];
     if (!curCache) throw new Error('could not read CACHE out of sw.js');
-    fs.writeFileSync(SW, original.replace("const CACHE = '" + curCache + "'", "const CACHE = 'study-hub-v901'"));
+    fs.writeFileSync(SW, original.replace("const CACHE = '" + curCache + "'", "const CACHE = 'study-hub-v901'"));   // REPO-WRITE-ALLOWED: the served sw.js must change for the worker to see a new build; restored in finally
     await p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); });
     await p.waitForTimeout(11000);
     const after = await shelf(p);
@@ -90,7 +91,7 @@ const shelf = p => p.evaluate(async () => {
        JSON.stringify({ C959: off.C959, D684: off.D684 }));
     ok('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   } finally {
-    fs.writeFileSync(SW, original);
+    fs.writeFileSync(SW, original);   // REPO-WRITE-ALLOWED: restores sw.js byte for byte (battery.sh checks the tree is unchanged)
     await browser.close();
   }
   console.log(`offlinekeep: ${pass}/${pass + fail} passed`);

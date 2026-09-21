@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });

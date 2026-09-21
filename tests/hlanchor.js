@@ -1,3 +1,4 @@
+// SECTION: Lesson annotation & themes
 // "When I open the notes the highlights become distorted as well."
 //
 // Opening the notes panel in side mode slides #app left by --mn-shift (183px

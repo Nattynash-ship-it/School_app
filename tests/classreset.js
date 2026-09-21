@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // Resetting one class must STAY reset. The sync merges an incoming copy into
 // the store, so a reset that leaves no record of itself is undone the next time
 // the other device's copy arrives - "it resets, then it reverts". The erase

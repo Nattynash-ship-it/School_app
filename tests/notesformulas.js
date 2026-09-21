@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // A maths class carries its formulas inside the notebook.
 //
 // "in the notes in the math classes have them accessible as formulas to refer

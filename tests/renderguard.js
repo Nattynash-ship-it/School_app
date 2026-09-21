@@ -1,3 +1,4 @@
+// SECTION: Lesson annotation & themes
 // "Please fix the notes... they get distorted when there's a new update."
 //
 // Her flight recorder named it. Two stalls, the same shape both times:

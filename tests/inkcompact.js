@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Writing must never wait on a repack of the whole page.
 //
 // Handwriting is stored as a packed slot plus an append log: a pen lift writes

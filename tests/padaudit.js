@@ -1,8 +1,10 @@
+// SECTION: Notes pad
 // Notebook pad audit: (1) is every toolbar control actually reachable in side
 // mode and bottom mode on the iPad sizes she uses, (2) what does Undo do after
 // an erase, (3) does the eraser find strokes at writing scale, (4) do typed
 // notes survive edit/blur. Screenshots for the toolbar question.
 const { chromium } = require('playwright');
+const scratch = require('./scratch');   // every file this suite writes goes to the scratch space
 const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
 (async () => {
   const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium' });
@@ -37,7 +39,7 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   let tb = await toolbarReport(p);
   ok('landscape: notebook opens at the side', tb.side, JSON.stringify(tb));
   ok('landscape side: every tool visible without scrolling', tb.hidden.length === 0, 'hidden: ' + tb.hidden.join(',') + ' scrollW ' + tb.toolsScrollW + ' clientW ' + tb.toolsClientW);
-  await p.screenshot({ path:'pad-side-landscape.png' });
+  await p.screenshot({ path: scratch('pad-side-landscape.png') });
 
   // draw two strokes with the mouse (pen path: only touch is rejected)
   const draw = async (p, dx) => {
@@ -83,7 +85,7 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   ({ p, errs } = await open({ width:834, height:1112 }));
   tb = await toolbarReport(p);
   ok('portrait: every tool visible without scrolling', tb.hidden.length === 0, 'side=' + tb.side + ' hidden: ' + tb.hidden.join(',') + ' scrollW ' + tb.toolsScrollW + ' clientW ' + tb.toolsClientW);
-  await p.screenshot({ path:'pad-portrait.png' });
+  await p.screenshot({ path: scratch('pad-portrait.png') });
   // typed notes: add, edit, blur, verify persisted
   await p.evaluate(async () => {
     const w=ms=>new Promise(r=>setTimeout(r,ms));

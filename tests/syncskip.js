@@ -1,3 +1,4 @@
+// SECTION: Store, sync & reset
 // "The pages stall for a second when the notes are updated and the little
 // message about the notes is displayed."
 // A pull unpacked the whole copy and walked every page of ink even when the

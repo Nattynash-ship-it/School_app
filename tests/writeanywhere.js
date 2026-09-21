@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // "I'd like a particular notebook to be accessible anywhere" - 18.593 made a
 // class notebook READABLE anywhere and left writing where it had always been:
 // the pad opened only on a lesson page, because that is the only route that

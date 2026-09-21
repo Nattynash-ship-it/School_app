@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // The professional chrome, six things:
 //   1. no emoji as icons in the chrome - every nav, rail, brand, top-bar, lesson
 //      and tool-column button carries a line icon

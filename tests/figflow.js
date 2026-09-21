@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // "The diagrams need to be directly under the topic to be associated, the
 //  information shouldn't be scattered everywhere, information needs to flow."
 //

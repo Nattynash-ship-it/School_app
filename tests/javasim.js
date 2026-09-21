@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // Java (D286) OA-sim pool: every multiple-choice question carries a rationale
 // for each wrong option, the exam-week questions are present and tagged, the
 // manifest index matches the pool, and a new question renders in the sim.

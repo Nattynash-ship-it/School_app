@@ -1,3 +1,4 @@
+// SECTION: Notes pad
 // Tidy writing. "As I write, format the text to look formatted and aligned."
 // A beat after the pen stops, the line just written is levelled, dropped onto
 // the nearest rule and de-shaken - one Undo step, and never onto a DIFFERENT

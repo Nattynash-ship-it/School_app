@@ -1,3 +1,4 @@
+// SECTION: Boot & screens
 // (a) what is the second colour/size strip in the brand bar next to the pen
 // toolbar, (b) console errors/warnings while walking through the main screens.
 const { chromium } = require('playwright');

@@ -1,3 +1,4 @@
+// SECTION: Quizzes & content
 // Scoring by round. "Can we have all the percentages showing how much it is per
 // round... even if I take it again, the higher score will be used... but I'd
 // like the accurate score for the round every time."
