@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.618">
+<meta name="app-build" content="18.619">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -68716,6 +68716,11 @@ css.textContent = [
   '  font-family:inherit; font-size:12.5px; color:var(--text-2); text-align:left;}',
   '.mn-size.on{background:var(--surface-2); color:var(--text); font-weight:700;}',
   '.mn-size-t{flex:1 1 auto;}',
+  '.mn-fine{display:flex; align-items:center; gap:10px; padding:4px 8px 2px;}',
+  '.mn-fine-w{flex:0 0 22px; width:22px; display:flex; align-items:center; justify-content:center;}',
+  '.mn-fine-sl{flex:1 1 auto; min-width:0; margin:0; height:24px; cursor:pointer;',
+  '  accent-color:var(--accent,#5eead4); touch-action:none;}',
+  '.mn-fine-t{font-size:11px; color:var(--text-3); padding:0 8px 8px 40px;}',
   '#mn-fab .mn-badge{position:absolute; top:-3px; right:-3px; min-width:17px; height:17px; padding:0 4px;',
   '  border-radius:9px; background:var(--secondary,#f472b6); color:#fff; font-size:10px; font-weight:800;',
   '  display:none; align-items:center; justify-content:center; line-height:1;}',
@@ -68751,6 +68756,42 @@ var WIDTHS = [
   { w: 5.0, name: 'Marker' }
 ];
 var DEFAULT_W = 1.4;
+/* THE WEIGHT BETWEEN THE NAMES.
+ *
+ * "Can you allow me to alter the heaviness of the pencil? The options now are
+ * too thin and too heavy." Six named points with more than half again between
+ * each leaves real gaps: the nib she wants sits between Fine and Medium, and
+ * no tap can reach it. The names stay - one tap each, and she knows them - and
+ * the slider under them reaches every weight in between.
+ *
+ * The travel is PROPORTIONAL, not linear. A linear slider over 0.4 to 5 spends
+ * nine tenths of itself above Medium, so the whole fine end - where a hair of
+ * difference is the difference - is crushed into its first few pixels. Equal
+ * distances here change the weight by equal FRACTIONS, so the fine end gets as
+ * much of the slider as the broad end, and Medium falls near the middle. */
+var FINE_MIN = 0.4, FINE_MAX = 5.0, FINE_STEPS = 120;
+function wToPos(w){
+  w = Math.min(FINE_MAX, Math.max(FINE_MIN, (+w > 0) ? +w : DEFAULT_W));
+  return Math.round(FINE_STEPS * Math.log(w / FINE_MIN) / Math.log(FINE_MAX / FINE_MIN));
+}
+function posToW(p){
+  p = Math.min(FINE_STEPS, Math.max(0, (+p >= 0) ? +p : 0));
+  return Math.round(FINE_MIN * Math.pow(FINE_MAX / FINE_MIN, p / FINE_STEPS) * 100) / 100;
+}
+/* A number on its own says nothing about a nib, so the weight is also said in
+   the words the rows use - "between fine and medium" is a thing she can hold
+   in her head and come back to. */
+function weightName(w){
+  var i;
+  for (i = 0; i < WIDTHS.length; i++) if (Math.abs(WIDTHS[i].w - w) < 0.005) return WIDTHS[i].name;
+  if (w < WIDTHS[0].w) return 'Finer than ' + WIDTHS[0].name.toLowerCase();
+  for (i = 0; i < WIDTHS.length - 1; i++) {
+    if (w > WIDTHS[i].w && w < WIDTHS[i + 1].w) {
+      return 'Between ' + WIDTHS[i].name.toLowerCase() + ' and ' + WIDTHS[i + 1].name.toLowerCase();
+    }
+  }
+  return 'Heavier than ' + WIDTHS[WIDTHS.length - 1].name.toLowerCase();
+}
 
 /* THE HIGHLIGHTER. A wide, even, translucent band - a marker, not a nib, so it
    keeps a plain stroked polyline rather than the pressure-shaped outline the
@@ -69075,6 +69116,51 @@ function openPenPop(anchor){
         closePop();
         if (tool !== 'pen') setTool('pen');
       }));
+    });
+    /* THE WEIGHT BETWEEN THE NAMES - see FINE_MIN. The dot beside the slider is
+       the same dot the rows carry, at the same scale, so a weight she drags to
+       can be compared with the names directly above it. */
+    var fine = document.createElement('div');
+    fine.className = 'mn-fine';
+    var well = document.createElement('span');
+    well.className = 'mn-fine-w';
+    well.appendChild(sizeDot(cur));
+    fine.appendChild(well);
+    var sl = document.createElement('input');
+    sl.type = 'range'; sl.className = 'mn-fine-sl';
+    sl.min = '0'; sl.max = String(FINE_STEPS); sl.step = '1';
+    sl.value = String(wToPos(cur));
+    sl.setAttribute('aria-label', 'Pen weight');
+    fine.appendChild(sl);
+    pop.appendChild(fine);
+    var cap = document.createElement('div');
+    cap.className = 'mn-fine-t';
+    cap.textContent = weightName(cur);
+    pop.appendChild(cap);
+    var saveSoon = 0;
+    sl.addEventListener('input', function(){
+      var w = posToW(sl.value);
+      prefs().w = w;
+      well.textContent = ''; well.appendChild(sizeDot(w));
+      cap.textContent = weightName(w);
+      // the rows and the slider are one setting: light the row she lands on
+      var rows = pop.querySelectorAll('.mn-size');
+      for (var i = 0; i < rows.length && i < WIDTHS.length; i++) {
+        rows[i].classList.toggle('on', Math.abs(WIDTHS[i].w - w) < 0.005);
+      }
+      refreshSizeBtn();
+      /* saveStore compresses the whole store - running it on every frame of a
+         drag is a stutter. The weight is live at once; only the write waits. */
+      clearTimeout(saveSoon); saveSoon = setTimeout(save, 350);
+    });
+    sl.addEventListener('change', function(){
+      clearTimeout(saveSoon); save();
+      if (tool !== 'pen' && tool !== 'line') setTool('pen');
+    });
+    /* A drag on the slider is not a tap on the paper and not a tap outside the
+       picker: it must neither draw, nor scroll the page, nor close this. */
+    ['pointerdown','touchstart','mousedown','click'].forEach(function(ev){
+      sl.addEventListener(ev, function(e){ e.stopPropagation(); }, true);
     });
   });
 }
@@ -70911,6 +70997,23 @@ window.__notesPanel = {
   splitSessions: function(){ return splitSessions(); },
   tidy: function(){ return tidyOn(); },
   setTidy: function(on){ setTidy(on); return tidyOn(); },
+  /* The pen's weight: the named points, the one in use, and the slider's own
+     travel - so the weight can be read and set without reaching into the pad. */
+  weights: function(){ return WIDTHS.map(function(o){ return { w: o.w, name: o.name }; }); },
+  weight: function(v){
+    if (v !== undefined) {
+      prefs().w = Math.min(FINE_MAX, Math.max(FINE_MIN, (+v > 0) ? +v : DEFAULT_W));
+      save(); refreshSizeBtn();
+    }
+    return penWidth();
+  },
+  weightName: function(w){ return weightName((w === undefined) ? penWidth() : +w); },
+  weightTravel: function(){
+    var out = { min: FINE_MIN, max: FINE_MAX, steps: FINE_STEPS, at: wToPos(penWidth()), stops: [] };
+    for (var i = 0; i <= FINE_STEPS; i++) out.stops.push(posToW(i));
+    return out;
+  },
+  weightPos: function(w){ return wToPos((w === undefined) ? penWidth() : +w); },
   tidyNow: function(){ return tidyNow(); },
   tidyQueue: function(st){ tidySoon(st); },
   ruleYs: function(y){ return ruleYsAt(y || 0); },
