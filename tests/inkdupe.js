@@ -127,8 +127,10 @@ const URL = 'http://127.0.0.1:8901/index.html';
     const later = clone(cur[2]);                       // a real second stroke over the same
     later._ts = (later._ts || later.ts || 0) + 4000;  // words, four seconds later - must stay
     later.ts = later._ts;                              // (_ts is the stamp a drawn stroke carries)
+    later._uid = 'a-second-stroke';                    // a stroke of her own has its own id (18.618)
     const moved = clone(cur[3]);                       // same instant, but somewhere else
     moved.points.forEach(q => { q.y += 40; });         // a whole ruled line away - must stay
+    moved._uid = 'another-stroke';
     gannoSaveStrokes(rk, cur.concat([exact, unrounded, later, moved]));
     await w(300);
     const before = gannoGetStrokes(rk).length;

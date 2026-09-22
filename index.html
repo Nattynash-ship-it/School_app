@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.617">
+<meta name="app-build" content="18.618">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -30674,6 +30674,14 @@ window.__gannoTidyNow = function(){
 };
 })();
 
+/* WHAT A STROKE KEEPS WHEN IT IS MOVED. The moment it was drawn (_ts) is
+   re-stamped by Undo and by page moves, and the shape changes under realign,
+   tidy and split - so neither can say "this is the same stroke" across a
+   sync. This id is stamped once, when the pen lifts, and every copy of the
+   stroke (a move, a split, a restore) carries it unchanged. */
+function inkUid(ts) {
+ return (ts || Date.now()).toString(36) + '.' + Math.random().toString(36).slice(2, 8);
+}
 function gannoPointerUp(e) {
  ganno._capInv = null; // release stroke transform snapshot
  ganno._rectCache = null; // next stroke re-reads the rect (scroll/zoom may have changed)
@@ -30759,6 +30767,7 @@ function gannoPointerUp(e) {
  // ignores it exactly as it ignores _id - it exists so an erase made on one
  // device can spare ink drawn on the other one after it.
  c._ts = Date.now();
+ c._uid = inkUid(c._ts);
  strokes.push(c);
  gannoLogOp({ op: 'draw', s: c, i: strokes.length - 1 });
  gannoSaveStrokes(ganno.routeKey, strokes);
@@ -31684,14 +31693,24 @@ function gannoRealignEnd(commit) {
  var strokes = gannoGetStrokes(ganno.routeKey);
  if (commit && r && (r.dx || r.dy)) {
  var moved = 0;
+ /* WRITING COPIED ON TOP OF ITSELF, OFFSET. This used to move each stroke IN
+    PLACE - same object, new coordinates. The erase record only sees a stroke
+    that leaves the list, so it never learned the old shape was gone, and the
+    sync merge knew a stroke only by its shape: the other device's copy of the
+    ink from before the move no longer matched, came back as new writing, and
+    every later sync could stack it again. A moved stroke is now a NEW object,
+    exactly as tidy, split and page inserts already do, so the old shape goes
+    on the erase record and the move travels to the other device instead. */
  for (var i = 0; i < strokes.length; i++) {
  var s = strokes[i];
  if (!s) continue;
- if (s.points) s.points = s.points.map(function (q) { return { x: q.x + r.dx, y: q.y + r.dy, p: q.p }; });
- if (s.start) s.start = { x: s.start.x + r.dx, y: s.start.y + r.dy };
- if (s.end) s.end = { x: s.end.x + r.dx, y: s.end.y + r.dy };
- s.anchor = gannoGetAnchor();
- s.tanchor = gannoMakeTextAnchor(s);   // pin to whatever line it now covers
+ var m = Object.assign({}, s);
+ if (s.points) m.points = s.points.map(function (q) { return { x: q.x + r.dx, y: q.y + r.dy, p: q.p }; });
+ if (s.start) m.start = { x: s.start.x + r.dx, y: s.start.y + r.dy };
+ if (s.end) m.end = { x: s.end.x + r.dx, y: s.end.y + r.dy };
+ m.anchor = gannoGetAnchor();
+ m.tanchor = gannoMakeTextAnchor(m);   // pin to whatever line it now covers
+ strokes[i] = m;
  moved++;
  }
  gannoHistReset(ganno.routeKey);
@@ -59176,6 +59195,26 @@ function inkSameStroke(a, b){
   }
   return true;
 }
+/* PASS 3: THE COPY THAT SITS BESIDE ITS STROKE. Ink moved after a sync (the
+   realign bar, before 18.618) and the other device's copy of it from before
+   the move are two strokes to a shape comparison. They share the moment they
+   were drawn, the kind, the point count, and every point differs by the same
+   shift of a page or more - two strokes made by hand cannot. The first, the
+   one she positioned, is kept. Ink drawn from 18.618 carries an id instead,
+   and a second copy of the same id on a page is a copy whatever its shift. */
+function inkShiftedCopy(a, b){
+  var pa = a && a.points, pb = b && b.points;
+  if (!pa || !pb || pa.length !== pb.length || !pa.length) return false;
+  var dx = pb[0].x - pa[0].x, dy = pb[0].y - pa[0].y;
+  // the copies the merge laid down sit whole pages apart; a stroke drawn the
+  // same instant a line away (the sweep's oldest guard) is never touched
+  if (Math.abs(dx) < 600 && Math.abs(dy) < 600) return false;
+  for (var i = 1; i < pa.length; i++) {
+    if (Math.abs((pb[i].x - pa[i].x) - dx) > 0.3) return false;
+    if (Math.abs((pb[i].y - pa[i].y) - dy) > 0.3) return false;
+  }
+  return true;
+}
 function inkRepairRun(){
   var keys = [];
   try {
@@ -59194,6 +59233,15 @@ function inkRepairRun(){
         var dupe = false;
         for (var q = 0; q < bucket.length; q++) {
           if (inkSameStroke(bucket[q], s)) { dupe = true; break; }
+        }
+        if (!dupe && typeof s._uid === 'string' && s._uid) {
+          var ub = 'uid:' + s._uid;
+          if (by[ub]) dupe = true; else by[ub] = [s];
+        } else if (!dupe && s._ts > 0) {
+          var ib = 'ts:' + s._ts + '|' + (s.type || 'pen') + '|' + ((s.points && s.points.length) || 0);
+          var tb = by[ib] || (by[ib] = []);
+          for (var q2 = 0; q2 < tb.length; q2++) { if (inkShiftedCopy(tb[q2], s)) { dupe = true; break; } }
+          if (!dupe) tb.push(s);
         }
         if (dupe) { cut++; continue; }
         bucket.push(s);
@@ -59222,9 +59270,10 @@ try {
   // Bumped to 3: the sweep is once-per-value, so a page doubled AFTER the 2
   // sweep ran was never going to be cleaned by it. This build closes the hole
   // that doubled it and sweeps what the hole already left behind.
-  if (store.inkDupSweep !== 3) {
+  // 4: the pass above also removes the offset copies the realign bar left
+  if (store.inkDupSweep !== 4) {
     var _r = inkRepairRun();
-    store.inkDupSweep = 3;
+    store.inkDupSweep = 4;
     try { saveStore(); } catch (e) {}
     if (_r.dropped) {
       try {
@@ -64213,6 +64262,12 @@ function sig(s){
     return JSON.stringify(o);
   } catch (e) { return null; }
 }
+// the id a stroke was stamped with when it was drawn (18.618): what it keeps
+// when it is moved. Ink from before the stamp existed has none, and is known
+// by its shape alone - its moves travel on the erase record instead.
+function ident(s){
+  try { return (s && typeof s._uid === 'string' && s._uid) ? 'u' + s._uid : null; } catch (e) { return null; }
+}
 function mergeInk(remoteInk, when, remoteErased){
   var added = 0, pages = 0;
   if (!remoteInk) return { added: 0, pages: 0 };
@@ -64241,22 +64296,49 @@ function mergeInk(remoteInk, when, remoteErased){
     } catch (e) {}
     var local = [];
     try { local = gannoGetStrokes(rk) || []; } catch (e) { local = []; }
-    var seen = Object.create(null), i;
-    for (i = 0; i < local.length; i++) { var sg = sig(local[i]); if (sg) seen[sg] = 1; }
-    var fresh = [], theirs = Object.create(null);
+    /* THE SAME STROKE, MOVED, IS STILL THE SAME STROKE. Ink she realigned,
+       tidied or shifted down a page keeps the moment it was drawn (_ts) while
+       its shape changes; a copy of it from before the move must not come back
+       as new writing beside it. So a page knows its strokes two ways - by shape
+       (sig) and by that moment (ident) - and an incoming stroke is new only
+       when it matches neither. */
+    var dm0 = null;
+    try { dm0 = (E && E.deadMap) ? E.deadMap(rk) : null; } catch (e) { dm0 = null; }
+    var seen = Object.create(null), byId = Object.create(null), i, sg, idk;
+    for (i = 0; i < local.length; i++) {
+      sg = sig(local[i]); if (sg) seen[sg] = 1;
+      idk = ident(local[i]); if (idk && byId[idk] === undefined) byId[idk] = i;
+    }
+    var fresh = [], theirs = Object.create(null), drop = Object.create(null);
     for (i = 0; i < incoming.length; i++) {
       var s2 = sig(incoming[i]);
       if (!s2) continue;
-      theirs[s2] = 1;
-      if (!seen[s2]) { seen[s2] = 1; fresh.push(incoming[i]); }
+      var id2 = ident(incoming[i]);
+      theirs[s2] = 1; if (id2) theirs[id2] = 1;
+      if (seen[s2]) continue;                       // the same shape is already here
+      if (id2 && byId[id2] !== undefined) {
+        /* The same stroke at another position. Whichever copy the erase record
+           says is gone is the stale one: a local copy marked dead is replaced
+           by the moved one arriving; otherwise the local copy stands and the
+           older shape is not laid beside it. */
+        var mine = local[byId[id2]], mineDead = false, incDead = false;
+        try { if (dm0 && E) { mineDead = dm0[E.strokeKey(mine)] > 0; incDead = dm0[E.strokeKey(incoming[i])] > 0; } } catch (e) {}
+        if (mineDead && !incDead && !drop[byId[id2]]) { drop[byId[id2]] = 1; seen[s2] = 1; fresh.push(incoming[i]); }
+        continue;
+      }
+      seen[s2] = 1; if (id2) byId[id2] = -1;
+      fresh.push(incoming[i]);
     }
-    if (!fresh.length) continue;
+    var dropped = 0;
+    for (var di in drop) dropped++;
+    if (dropped) { var kept = []; for (i = 0; i < local.length; i++) if (!drop[i]) kept.push(local[i]); local = kept; }
+    if (!fresh.length && !dropped) continue;
     /* A STROKE SHE ERASED STAYS ERASED - see the erase record. */
     try {
       var dm = (E && E.deadMap) ? E.deadMap(rk) : null;
       if (dm) {
         fresh = fresh.filter(function(st){ return !(dm[E.strokeKey(st)] > 0); });
-        if (!fresh.length) continue;
+        if (!fresh.length && !dropped) continue;
       }
     } catch (e) {}
     /* BOTH DEVICES WROTE THIS PAGE. "Why are the notes like this" - one page
@@ -64269,7 +64351,10 @@ function mergeInk(remoteInk, when, remoteErased){
        and she is told. A page written on one device only merges in place,
        exactly as before. */
     var mineOnly = 0;
-    for (i = 0; i < local.length; i++) { var sg2 = sig(local[i]); if (sg2 && !theirs[sg2]) { mineOnly++; break; } }
+    for (i = 0; i < local.length; i++) {
+      var sg2 = sig(local[i]), id3 = ident(local[i]);
+      if (sg2 && !theirs[sg2] && !(id3 && theirs[id3])) { mineOnly++; break; }
+    }
     var placed = fresh, newPage = 0;
     if (mineOnly && local.length) {
       var PH = 1294;
@@ -70030,7 +70115,7 @@ function splitStroke(s, p, R){
   for (var k = 0; k < runs.length; k++) {
     if (runs[k].length < 2) continue;
     out.push({ type: s.type || 'pen', color: s.color, width: s.width, points: runs[k],
-               ts: s.ts || Date.now(), _ts: Date.now() });
+               ts: s.ts || Date.now(), _ts: Date.now(), _uid: (typeof inkUid === 'function') ? inkUid() : undefined });
   }
   return out;
 }
@@ -70095,7 +70180,7 @@ function wireInk(){
     live = { type: isHl ? 'hl' : 'pen',
              color: isHl ? hlColor() : penColor(),
              width: isHl ? hlWidth() : penWidth(),
-             points: snapped ? [p, { x: p.x, y: p.y }] : [p], ts: Date.now(), _ts: Date.now() };
+             points: snapped ? [p, { x: p.x, y: p.y }] : [p], ts: Date.now(), _ts: Date.now(), _uid: (typeof inkUid === 'function') ? inkUid() : undefined };
     liveD = snapped ? lineD(p, p) : ('M ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1));
     liveEl = liveNode(live);
     liveEl.setAttribute('d', liveD);
