@@ -14,7 +14,8 @@
 const fs = require('fs'), path = require('path');
 const DIR = __dirname;
 const SECTIONS = ['Harness', 'Gate', 'Boot & screens', 'Quizzes & content', 'Notes pad',
-                  'Lesson annotation & themes', 'Study helper', 'Store, sync & reset'];
+                  'Lesson annotation & themes', 'Reading & typography', 'Study helper',
+                  'Store, sync & reset'];
 const WRITE = /\.(screenshot|pdf)\(\s*\{[^}]*\bpath\s*:|\bfs\.(writeFileSync|appendFileSync|copyFileSync|renameSync|createWriteStream|writeFile|appendFile)\b|\bfs\.promises\.(writeFile|appendFile|copyFile|rename)\b|(^|[^.\w])(writeFileSync|appendFileSync|createWriteStream)\(/;
 let pass = 0, fail = 0;
 const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, console.log('FAIL ' + n + ' ' + (d === undefined ? '' : JSON.stringify(d).slice(0, 600)))); };
