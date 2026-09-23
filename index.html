@@ -49768,6 +49768,16 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
      slide it away while scrolling, bring it back when you stop */
   '.phone-ctl { transition: transform 0.18s ease, opacity 0.18s ease; }',
   '.phone-ctl.phone-ctl-away { transform: translateX(-50%) translateY(140%); opacity: 0; pointer-events: none; }',
+  /* FOLDED, LIKE THE TOOL TRAY. Once the dock stopped pushing this bar off the
+     side of the phone it became what it had always been on paper: 209px of
+     controls lying across the words on every screen. It keeps one button - the
+     thing she opens it for - and the rest unfold on a tap. */
+  '.phone-ctl .phone-ctl-handle { font-size: 15px; }',
+  '.phone-ctl.pc-fold > button:not(.phone-ctl-handle) { display: none !important; }',
+  '.phone-ctl.pc-fold { gap: 0; padding: 5px; }',
+  /* the notebook owns the screen while it is open - the tray already steps
+     aside for it, and so does this */
+  'body.mn-open .phone-ctl { display: none !important; }',
   '@media print { .phone-ctl { display: none !important; } }'
   ].join('\n');
 
@@ -49793,6 +49803,15 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (cls) b.className = cls;
       return b;
     }
+
+    /* The handle is the whole strip when it is folded, so it carries the one
+       thing she came for: the text size. Tapping it opens the rest. */
+    var handle = btn('Aa', 'Text size and phone controls', 'phone-ctl-handle');
+    handle.addEventListener('click', function(){
+      var folded = strip.classList.toggle('pc-fold');
+      pref().fold = folded ? 1 : 0; save();
+    });
+    strip.appendChild(handle);
 
     var smaller = btn('A−', 'Smaller text', 'phone-ctl-size');
     smaller.addEventListener('click', function(){ bumpSize(-1); });
@@ -49838,6 +49857,9 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (on) {
       buildStrip();
       var p = pref();
+      // folded unless she opened it last time - a bar over the text is the
+      // thing she asked us to take away
+      strip.classList.toggle('pc-fold', p.fold === undefined ? true : !!p.fold);
       document.documentElement.style.setProperty('--phone-fs', (p.fs || 16.5) + 'px');
       document.body.classList.toggle('phone-tools', !!p.tools);
       var tb = strip && strip.querySelector('button[aria-label="Show drawing tools"]');
@@ -49878,7 +49900,12 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (!strip || !document.body.classList.contains('phone-mode')) return;
     strip.classList.add('phone-ctl-away');
     if (awayTimer) clearTimeout(awayTimer);
-    awayTimer = setTimeout(function(){ strip.classList.remove('phone-ctl-away'); }, 850);
+    awayTimer = setTimeout(function(){
+      strip.classList.remove('phone-ctl-away');
+      // reading is what the scroll was for: it comes back as a button, not a bar
+      strip.classList.add('pc-fold');
+      try { pref().fold = 1; save(); } catch (e) {}
+    }, 850);
   }, { passive: true });
 
   refresh();

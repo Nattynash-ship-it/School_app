@@ -49,6 +49,30 @@ const LESSON = { name: 'section', courseId: 'D286', chId: 'u1', secId: 'z1_1' };
   ok('no fixed control is placed off the side of the screen', placed.off.length === 0, placed.off);
   ok('so the A-/A+/pencil/Exit strip is reachable', placed.strip && placed.strip.shown && placed.strip.l >= 0 && placed.strip.r <= placed.vw, placed.strip);
 
+  /* "the toolbar is not necessary when in phone mode as it blocks the contents
+     of the page" - the strip is a 209px bar, and once it was no longer being
+     pushed off the side of the phone it lay across the words on every screen.
+     It now keeps one button and unfolds on a tap. */
+  const fold = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    const s = document.querySelector('.phone-ctl');
+    const box = () => { const r = s.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; };
+    const handle = s.querySelector('.phone-ctl-handle');
+    const out = { hasHandle: !!handle, shut: s.classList.contains('pc-fold'), shutBox: box() };
+    if (handle) handle.click(); await w(260);
+    out.open = !s.classList.contains('pc-fold');
+    out.openBox = box();
+    out.pencilSeen = (() => { const b = [...s.querySelectorAll('button')].find(b => /drawing tools/i.test(b.getAttribute('aria-label') || '')); return !!b && getComputedStyle(b).display !== 'none'; })();
+    window.dispatchEvent(new Event('scroll')); await w(1100);
+    out.shutAfterScroll = s.classList.contains('pc-fold');
+    if (handle) handle.click(); await w(260);
+    out.reopened = !s.classList.contains('pc-fold');
+    return out;
+  });
+  ok('the strip starts as one button, not a bar across the page', fold.hasHandle && fold.shut && fold.shutBox.w <= 60 && fold.shutBox.h <= 60, fold);
+  ok('one tap opens the rest of it', fold.open && fold.openBox.w > fold.shutBox.w + 60 && fold.pencilSeen, fold);
+  ok('and reading folds it away again', fold.shutAfterScroll && fold.reopened, fold);
+
   // a full-width drawer must not be read as a left rail
   const drawer = await p.evaluate(() => {
     const d = document.createElement('div');
@@ -67,7 +91,9 @@ const LESSON = { name: 'section', courseId: 'D286', chId: 'u1', secId: 'z1_1' };
     const w = ms => new Promise(r => setTimeout(r, ms));
     const vis = sel => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; };
     const before = { tray: vis('#tool-tray'), anno: vis('.top-bar .actions .anno-toggle-btn') };
-    const pencil = [...document.querySelectorAll('.phone-ctl button')].find(b => /drawing tools/i.test(b.getAttribute('aria-label') || ''));
+    const strip = document.querySelector('.phone-ctl');
+    if (strip && strip.classList.contains('pc-fold')) { strip.querySelector('.phone-ctl-handle').click(); await w(260); }
+    const pencil = [...document.querySelectorAll('.phone-ctl button')].find(b => /drawing tools/i.test(b.getAttribute('aria-label') || '') && getComputedStyle(b).display !== 'none');
     if (pencil) pencil.click(); await w(320);
     const after = { tray: vis('#tool-tray'), anno: vis('.top-bar .actions .anno-toggle-btn'), cls: document.body.classList.contains('phone-tools') };
     if (pencil) pencil.click(); await w(320);
