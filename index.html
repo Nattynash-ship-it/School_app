@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.619">
+<meta name="app-build" content="18.620">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -15539,6 +15539,11 @@ function showOverflowMenu() {
  <div style="font-size:11px; color:var(--text-4); letter-spacing:0.1em; text-transform:uppercase; font-weight:700; margin-bottom:10px;">Settings & Data</div>
  <button class="pomo-btn" data-act="cloud-sync" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);">☁ Cloud sync — study on any device</button>
  <button class="pomo-btn" data-act="sync-help" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.1); border-color: rgba(94,234,212,0.3);">⇄ Sync across devices — how?</button>
+ <!-- "I like to use the app on the train to study but I still have no access when
+      there is no WiFi." The download existed, at the foot of the Export sheet,
+      where she was never going to find it. It belongs here, saying what this
+      device is actually holding. -->
+ <button class="pomo-btn" data-act="offline-save" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);">📥 Save classes for the train &nbsp;<span data-off-status style="opacity:.6; font-size:11px;">…</span></button>
  <button class="pomo-btn" data-act="force-update" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.35);">⟳ Update app to latest &nbsp;<span style="opacity:.6; font-size:11px;">(${(document.querySelector('meta[name=app-build]')?.content || 'v?').split('-')[0]})</span></button>
  <button class="pomo-btn" data-act="find-notes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(255,206,64,0.14); border-color: rgba(255,206,64,0.4);">🔎 Find my notes</button>
  <button class="pomo-btn" data-act="repair-notes" style="width:100%; justify-content:flex-start; text-align:left; margin-bottom:8px; background: rgba(94,234,212,0.12); border-color: rgba(94,234,212,0.35);">🩹 Repair scrambled notes</button>
@@ -15563,6 +15568,15 @@ function showOverflowMenu() {
  sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
  sheet.querySelector('[data-close]').addEventListener('click', close);
  sheet.querySelector('[data-act="sync-help"]')?.addEventListener('click', () => { close(); showSyncHelp(); });
+ sheet.querySelector('[data-act="offline-save"]')?.addEventListener('click', () => { close(); try { window.__offlineSheet(); } catch (e) {} });
+ // the line reads what is on the device, so the menu itself answers "am I ready for the train?"
+ try {
+  const st = sheet.querySelector('[data-off-status]');
+  if (st && window.__offline && window.__offline.status) {
+   window.__offline.status().then(r => { if (st.isConnected) st.textContent = '(' + r.label + ')'; })
+     .catch(() => { if (st.isConnected) st.textContent = ''; });
+  }
+ } catch (e) {}
  sheet.querySelector('[data-act="cloud-sync"]')?.addEventListener('click', () => { close(); showCloudSync(); });
  sheet.querySelector('[data-act="force-update"]')?.addEventListener('click', () => { close(); forceUpdateApp(); });
  /* WRITING SITTING ON TOP OF ITSELF. The launch recovery used to put a page's
@@ -19898,8 +19912,8 @@ function renderSection(courseId, chId, secId) {
  <span style="padding:2px 6px; color:var(--text); font-weight:600; background:var(--surface-2); border-radius:4px;">§ ${sectionIdx + 1}/${totalInChapter}</span>
  </div>
 
- <p class="label label-accent" style="margin-bottom: 6px;">${esc(ch.title.toUpperCase())}</p>
- <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px;">
+ <p class="label label-accent lesson-unit-label" style="margin-bottom: 6px;">${esc(ch.title.toUpperCase())}</p>
+ <div class="lesson-title-row" style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px;">
  <h1 style="font-size: 26px; margin: 0; flex:1;">${esc(s.title)}</h1>
  ${lesson ? `
  <button data-focus-start class="focus-btn" title="Start a 25-min focus session" aria-label="Start focus session" style="flex-shrink:0; padding:8px 12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; cursor:pointer; color:var(--text-2); font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; transition:all 0.18s ease;">
@@ -32820,6 +32834,34 @@ function urls(){
   try { if (typeof window.__contentUrls === 'function') return window.__contentUrls(); } catch (e) {}
   return ['/content-manifest.json?v=' + build()];
 }
+/* THE CLASSES SHE IS ACTUALLY STUDYING, FIRST.
+ *
+ * "I like to use the app on the train to study but I still have no access when
+ * there is no WiFi." Everything was one 64MB button at the foot of the Export
+ * sheet - a long wait on a platform, for fifty-four classes she is not taking.
+ * Her active classes are a tenth of that and are what she opens, so they are
+ * the default and everything else is the second button. */
+function mine(){
+  var out = [];
+  try {
+    for (var cid in COURSES) {
+      var c = COURSES[cid];
+      if (c && c.active) out.push(cid);
+    }
+  } catch (e) {}
+  return out;
+}
+/* The addresses for a chosen set of classes, the manifest always included -
+   without it the app cannot read any of them. */
+function urlsFor(cids){
+  var all = urls(), want = {}, out = [], i;
+  for (i = 0; i < (cids || []).length; i++) want[cids[i]] = 1;
+  for (i = 0; i < all.length; i++) {
+    var m = /\/content-([\w-]+)\.json/.exec(all[i]);
+    if (!m || m[1] === 'manifest' || want[m[1]]) out.push(all[i]);
+  }
+  return out;
+}
 function held(){
   if (!window.caches) return Promise.resolve({ files: 0, bytes: 0 });
   return caches.open(SHELF).then(function(c){
@@ -32843,9 +32885,9 @@ function mb(n){ return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB'; }
 /* One at a time on purpose. Sixty parallel requests for a megabyte each is
    how you stall a phone on a weak signal and end up with a half-written
    cache; this way every file either lands whole or is simply missing. */
-function download(onStep){
+function download(onStep, list){
   if (!window.caches) return Promise.reject(new Error('This browser cannot keep an offline copy.'));
-  var list = urls();
+  list = (list && list.length) ? list : urls();
   if (list.length < 2) return Promise.reject(new Error('The class list has not loaded yet — open the app fully, then try again.'));
   return caches.open(SHELF).then(function(c){
     var i = 0, okCount = 0, failed = [];
@@ -32862,7 +32904,17 @@ function download(onStep){
   });
 }
 
-window.__offline = { held: held, download: download, urls: urls, shelf: SHELF };
+window.__offline = { held: held, download: download, urls: urls, shelf: SHELF,
+                     mine: mine, urlsFor: urlsFor, open: function(){ open(); },
+                     /* what the menu line says, without opening anything */
+                     status: function(){
+                       return held().then(function(h){
+                         var total = Math.max(0, urls().length - 1);
+                         return { files: h.files, bytes: h.bytes, total: total,
+                                  label: h.files ? (h.files + ' of ' + total + ' saved · ' + mb(h.bytes))
+                                                 : 'nothing saved yet' };
+                       });
+                     } };
 
 /* ---------- the panel ---------- */
 function open(){
@@ -32871,17 +32923,24 @@ function open(){
   var sheet = document.createElement('div');
   sheet.className = 'pomo-sheet off-sheet';
   sheet.style.alignItems = 'flex-end';
+  var mineIds = mine(), mineN = mineIds.length, allN = Math.max(0, urls().length - 1);
   sheet.innerHTML =
     '<div class="pomo-card" style="text-align:left; max-width:520px; padding:18px 20px 22px;">' +
       '<button class="pomo-close" data-close>&times;</button>' +
-      '<div style="font-size:11px; color:var(--text-4); letter-spacing:.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Use it without signal</div>' +
+      '<div style="font-size:11px; color:var(--text-4); letter-spacing:.1em; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Study with no signal</div>' +
       '<p style="font-size:12.5px; color:var(--text-3); line-height:1.55; margin:0 0 14px;">' +
-        'Save every class onto this device so the app works on the train, on a plane, anywhere. ' +
-        'Do it while you have a good connection.</p>' +
-      '<div data-held style="font-size:12px; color:var(--text-2); background:var(--bg-2); border-radius:9px; padding:10px 12px; margin-bottom:12px;">Checking…</div>' +
-      '<button class="pomo-btn primary" data-go style="width:100%;">Save everything for offline</button>' +
+        'Save your classes onto this device so the app works on the train, on a plane, anywhere. ' +
+        'Do it now, while you have a connection \u2014 not on the platform.</p>' +
+      '<div data-held style="font-size:12px; color:var(--text-2); background:var(--bg-2); border-radius:9px; padding:10px 12px; margin-bottom:12px;">Checking\u2026</div>' +
+      (mineN
+        ? ('<button class="pomo-btn primary" data-go-mine style="width:100%; margin-bottom:8px;">Save my ' +
+             mineN + ' class' + (mineN === 1 ? '' : 'es') + '</button>' +
+           '<p style="font-size:11px; color:var(--text-4); line-height:1.5; margin:0 0 12px;">' +
+             'The ones you are taking now. A minute or two, and it is what you open.</p>')
+        : '') +
+      '<button class="pomo-btn' + (mineN ? '' : ' primary') + '" data-go style="width:100%;">Save all ' + allN + ' classes</button>' +
       '<p data-note style="font-size:11px; color:var(--text-4); line-height:1.5; margin:10px 0 0;">' +
-        'About 64 MB. It stays until you clear the app’s data, and a new version no longer wipes it.</p>' +
+        'About 64 MB, and a longer wait. It stays until you clear the app\u2019s data, and a new version no longer wipes it.</p>' +
     '</div>';
   document.body.appendChild(sheet);
   var close = function(){ sheet.remove(); };
@@ -32889,36 +32948,54 @@ function open(){
   sheet.querySelector('[data-close]').addEventListener('click', close);
   var heldEl = sheet.querySelector('[data-held]');
   var goBtn = sheet.querySelector('[data-go]');
+  var mineBtn = sheet.querySelector('[data-go-mine]');
 
   function show(){
     held().then(function(h){
       heldEl.textContent = h.files
-        ? ('On this device now: ' + h.files + ' class ' + (h.files === 1 ? 'file' : 'files') + ', ' + mb(h.bytes))
-        : 'Nothing saved on this device yet.';
+        ? ('On this device now: ' + h.files + ' of ' + allN + ' class ' + (h.files === 1 ? 'file' : 'files') + ', ' + mb(h.bytes))
+        : 'Nothing saved on this device yet \u2014 with no signal there is nothing to read.';
     });
   }
   show();
 
-  goBtn.addEventListener('click', function(){
-    goBtn.disabled = true; goBtn.style.opacity = '.5';
-    goBtn.textContent = 'Saving…';
-    download(function(i, n){
-      heldEl.textContent = 'Saving ' + i + ' of ' + n + '…';
-    }).then(function(r){
-      goBtn.textContent = 'Save everything for offline';
-      goBtn.disabled = false; goBtn.style.opacity = '';
-      show();
-      try {
-        if (typeof toast === 'function')
-          toast(r.failed.length ? (r.ok + ' saved, ' + r.failed.length + ' could not be fetched — try again on a better connection')
-                                : 'All ' + r.ok + ' saved — the app works with no signal now');
-      } catch (e) {}
-    }).catch(function(e){
-      goBtn.textContent = 'Save everything for offline';
-      goBtn.disabled = false; goBtn.style.opacity = '';
-      heldEl.textContent = (e && e.message) ? e.message : 'It did not save.';
-    });
-  });
+  /* A save with no signal cannot work, and saying so beats a row of failures. */
+  function offlineNow(){
+    try { return (typeof navigator !== 'undefined' && navigator.onLine === false); } catch (e) { return false; }
+  }
+  function run(btn, label, list){
+    if (offlineNow()) {
+      heldEl.textContent = 'This device has no connection right now, so there is nothing to download. Try again on WiFi.';
+      return;
+    }
+    var buttons = [goBtn, mineBtn].filter(Boolean);
+    buttons.forEach(function(b){ b.disabled = true; b.style.opacity = '.5'; });
+    btn.textContent = 'Saving\u2026';
+    download(function(i, n){ heldEl.textContent = 'Saving ' + i + ' of ' + n + '\u2026'; }, list)
+      .then(function(r){
+        btn.textContent = label;
+        buttons.forEach(function(b){ b.disabled = false; b.style.opacity = ''; });
+        show();
+        try {
+          if (typeof toast === 'function')
+            toast(r.failed.length
+              ? (r.ok + ' saved, ' + r.failed.length + ' could not be fetched \u2014 try again on a better connection')
+              : 'Saved \u2014 those classes open with no signal now');
+        } catch (e) {}
+      })
+      .catch(function(e){
+        btn.textContent = label;
+        buttons.forEach(function(b){ b.disabled = false; b.style.opacity = ''; });
+        heldEl.textContent = (e && e.message) ? e.message : 'It did not save.';
+      });
+  }
+
+  if (mineBtn) {
+    var mineLabel = mineBtn.textContent;
+    mineBtn.addEventListener('click', function(){ run(mineBtn, mineLabel, urlsFor(mineIds)); });
+  }
+  var allLabel = goBtn.textContent;
+  goBtn.addEventListener('click', function(){ run(goBtn, allLabel, urls()); });
 }
 window.__offlineSheet = open;
 
@@ -49627,8 +49704,42 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
      reachable — full-screen reading is not worth losing navigation for */
   '.phone-mode .top-bar { position: sticky !important; top: 0 !important; z-index: 40; }',
   '.phone-mode .lesson-wrap { padding-bottom: 120px !important; }',   /* clear the floating buttons */
-  /* the section title should own its row instead of being squeezed by buttons */
-  '.phone-mode .top-bar .title { font-size: 16px !important; }',
+  /* THE SECTION TITLE MUST BE READABLE. Measured on a 390px phone: the title
+     had 83px for a name needing 199px, so every lesson read "1.1 Prog…" while
+     a full-width "Back" pill sat beside it. On a phone the chevron alone says
+     back - the word costs 70px of the only line that tells her where she is. */
+  '.phone-mode .top-bar .title { font-size: 16px !important; flex: 1 1 auto !important; min-width: 0 !important; }',
+  /* the chevron stays - it is the control - and the word beside it goes: on a
+     phone "Back" costs 70px of the one line that says where she is */
+  '.phone-mode .top-bar .back[data-back] .nav-back-label,',
+  '.phone-mode .top-bar .back[data-back] .nav-back-short { display: none !important; }',
+  '.phone-mode .top-bar .back[data-back] .nav-back-chev { display: inline-flex !important; }',
+  '.phone-mode .top-bar .back[data-back] {',
+  '  flex: 0 0 auto !important; padding: 0 11px !important; min-width: 40px !important;',
+  '}',
+  /* THE TITLE GETS THE WIDTH IT NEEDS. Measured on a 390px phone: Focus,
+     Listen and Quiz sat beside the heading and left it 183px, so every lesson
+     opened with its name broken across three lines. The buttons drop below it
+     and the heading reads in one or two. */
+  '.phone-mode .lesson-title-row { flex-wrap: wrap !important; }',
+  '.phone-mode .lesson-title-row > h1 {',
+  '  flex: 1 0 100% !important; font-size: 23px !important;',
+  '  line-height: 1.22 !important; margin-bottom: 2px !important;',
+  '}',
+  /* the breadcrumb above it already says which unit this is */
+  '.phone-mode .screen > p.lesson-unit-label { display: none !important; }',
+  /* a phone has no Apple Pencil, so the annotate toggle is a button that
+     cannot do anything here - and the title needs its 36px */
+  '.phone-mode .top-bar .actions .anno-toggle-btn { display: none !important; }',
+  '.phone-mode.phone-tools .top-bar .actions .anno-toggle-btn { display: inline-flex !important; }',
+
+  /* THE TOOLBAR IS NOT WANTED HERE. "The toolbar is not necessary when in
+     phone mode as it blocks the contents of the page." A phone has no Pencil,
+     so the floating tools are chrome sitting on top of the words. They go
+     away with everything else the pencil button controls, and the same button
+     brings them back. */
+  '.phone-mode #tool-tray { display: none !important; }',
+  '.phone-mode.phone-tools #tool-tray { display: flex !important; }',
 
   /* floating widgets: smaller and out of the reading column */
   '.phone-mode .pomo-fab { transform: scale(0.82); transform-origin: bottom right; }',
@@ -50285,6 +50396,14 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   var RAILS  = ['.side-rail', '.v2-sidebar'];   // fixed navigation pinned to the left edge
 
   function one(sel){ try { return document.querySelector(sel); } catch(e){ return null; } }
+  /* THE LAST WORD ON EVERY PLACEMENT. Whatever the arithmetic above decides, a
+     control that lands off the side of the screen is a control she cannot use.
+     Nothing leaves the viewport; a thing too wide for it starts at the edge. */
+  function onScreen(left, w, vw){
+    var max = vw - EDGE - w;
+    if (max < EDGE) return EDGE;
+    return Math.max(EDGE, Math.min(left, max));
+  }
   function shown(el){
     if (!el) return false;
     var cs = getComputedStyle(el);
@@ -50304,6 +50423,13 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       var el = one(sel);
       if (!shown(el)) return;
       var r = el.getBoundingClientRect();
+      /* A RAIL IS NARROW. A phone's navigation drawer matches these selectors
+         too, and it is the width of the screen - so the dock started after its
+         right edge, at 402px on a 390px phone, and every control it places
+         went off the side. That is why the A-/A+/pencil/Exit strip could not
+         be found on her phone at all. Something as wide as the screen is a
+         drawer, not a rail, and the dock ignores it. */
+      if (r.width > vw * 0.4) return;
       if (r.left <= 1 && r.right > start) start = Math.round(r.right) + EDGE;
     });
 
@@ -50344,7 +50470,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
       if (!shown(el)) return;
       var w = el.getBoundingClientRect().width;
       if (x > start && x + w > limit - GAP) { row++; x = start; }   // wrap upward, never overlap
-      el.style.setProperty('left', x + 'px', 'important');
+      el.style.setProperty('left', onScreen(x, w, vw) + 'px', 'important');
       el.style.setProperty('right', 'auto', 'important');
       el.style.setProperty('bottom',
         'calc(' + (BASE + row * ROW) + 'px + env(safe-area-inset-bottom, 0px))', 'important');
@@ -50354,7 +50480,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     if (strip) {
       var sRow = stripSharesRow ? 0 : row + 1;
       var sLeft = stripSharesRow ? stripLeft : start;
-      strip.style.setProperty('left', sLeft + 'px', 'important');
+      strip.style.setProperty('left', onScreen(sLeft, stripW, vw) + 'px', 'important');
       strip.style.setProperty('right', 'auto', 'important');
       strip.style.setProperty('transform', 'none', 'important');
       strip.style.setProperty('bottom',
