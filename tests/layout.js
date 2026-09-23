@@ -54,7 +54,11 @@ const ROUTES = [['home', { name: 'home' }], ['today', { name: 'today' }], ['clas
         }
         const fixedEls = all.filter(el => vis(el) && getComputedStyle(el).position === 'fixed' && el.getBoundingClientRect().width < vw * 0.9 && !el.classList.contains('toast') && !/toast/.test(el.className));
         const covered = [];
-        for (const f of fixedEls) { if (f.id === 'tool-tray' && f.classList.contains('tt-shut') && innerWidth < 700) continue; const fr = f.getBoundingClientRect(); for (const L of boxes) { if (L.fixed || f.contains(L.el)) continue; const ix = Math.min(fr.right, L.r.right) - Math.max(fr.left, L.r.left), iy = Math.min(fr.bottom, L.r.bottom) - Math.max(fr.top, L.r.top); if (ix > 6 && iy > 6) { covered.push(desc(f) + ' over ' + desc(L.el)); break; } } if (covered.length > 4) break; }
+        /* A CONTROL FOLDED TO ONE BUTTON IS NOT A BAR OVER THE TEXT. On a phone the
+           tool tray and the phone strip both collapse to a single round button in a
+           corner; that is the shape this rule exists to require, so it is the one
+           shape it does not fail. Anything wider is a bar lying across the words. */
+        for (const f of fixedEls) { const _fr = f.getBoundingClientRect(); if (innerWidth < 700 && _fr.width <= 60 && _fr.height <= 60) continue; const fr = f.getBoundingClientRect(); for (const L of boxes) { if (L.fixed || f.contains(L.el)) continue; const ix = Math.min(fr.right, L.r.right) - Math.max(fr.left, L.r.left), iy = Math.min(fr.bottom, L.r.bottom) - Math.max(fr.top, L.r.top); if (ix > 6 && iy > 6) { covered.push(desc(f) + ' over ' + desc(L.el)); break; } } if (covered.length > 4) break; }
         return { docOverflow, offRight, clipped, pairs, covered, text: (document.getElementById('app') || {}).innerText?.length || 0 };
       }, route);
       if (R.err) { bad.push(rn + ': ' + R.err); continue; }
@@ -99,7 +103,12 @@ const ROUTES = [['home', { name: 'home' }], ['today', { name: 'today' }], ['clas
       ok(vn + ': sidebar and main column both present', S.sidebarShown && S.mainW >= 500, S);
       ok(vn + ': the tool tray is unfolded', S.trayThere && !S.trayShut, S);
     }
-    ok(vn + ': the tray steps aside while the notebook is open, nothing floats over the paper, and it comes back', S.trayHiddenWithNotebook && S.overDock.length === 0 && S.trayBack, S);
+    /* On a phone the tray is deliberately away until the pencil button asks for
+       it ("the toolbar is not necessary when in phone mode as it blocks the
+       contents of the page"), so coming back means coming back to that. */
+    ok(vn + ': the tray steps aside while the notebook is open, and nothing floats over the paper',
+       S.trayHiddenWithNotebook && S.overDock.length === 0, S);
+    ok(vn + ': and afterwards it is where this screen keeps it', phone ? !S.trayBack : S.trayBack, S);
     ok(vn + ': no page errors', errs.length === 0, errs.slice(0, 3));
     await ctx.close();
   }

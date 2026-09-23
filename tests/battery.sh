@@ -108,6 +108,7 @@ run plandates plandates.js 1
 run padpages padpages.js 1
 run ipadnotes ipadnotes.js 3
 run layout layout.js 3
+run phoneoffline phoneoffline.js 1
 run pro pro.js 1
 run rounds rounds.js 1
 run secstatus secstatus.js 1
