@@ -1,0 +1,54 @@
+What do the three letters of the CIA triad stand for?	Confidentiality, Integrity, Availability
+CIA triad: what does Confidentiality mean?	Information is available only to those authorised to see it
+CIA triad: what does Integrity mean?	Information has not been altered by anyone unauthorised, and you can prove it
+CIA triad: what does Availability mean?	The system is accessible and usable when it is needed
+In OT, which element of the CIA triad usually comes FIRST, and why?	Availability — losing control of a running physical process can injure people or damage the environment
+What is non-repudiation?	Proof that a specific party performed an action, such that they cannot later deny it — delivered by digital signatures plus audit logging
+What are the THREE A's of AAA?	Authentication (who are you), Authorisation (what may you do), Accounting (what did you do)
+Name the FOUR security control CATEGORIES.	Technical, Managerial, Operational, Physical
+Name the SIX security control TYPES.	Preventive, Deterrent, Detective, Corrective, Compensating, Directive
+A control CATEGORY answers which question?	What kind of thing is it — technology, governance, people, or the physical world
+A control TYPE answers which question?	What does it do — stop it, discourage it, notice it, fix it, stand in for another control, or instruct people
+What is a COMPENSATING control?	An alternative control giving comparable protection when the intended control is not feasible — e.g. isolating and monitoring a PLC that cannot be patched
+What is a DIRECTIVE control? Give an example.	A control that instructs people what to do — an acceptable use policy, a posted procedure
+Which control type is a warning sign, and why is it NOT preventive?	Deterrent — it changes an attacker's decision but physically stops nothing
+Classify a security guard on both axes.	Category: physical. Type: preventive, deterrent AND detective — one control can have several types
+Classify a camera on both axes.	Category: physical. Type: deterrent and detective — it does not prevent anything
+What is defence in depth?	Multiple independent protective layers, so that one failure is not total failure
+What is Zero Trust, in one sentence?	Network location confers no trust — every request is verified explicitly, wherever it comes from
+Zero Trust: which components sit in the CONTROL plane?	Policy Engine, Policy Administrator, Policy Decision Point — plus adaptive identity and threat scope reduction
+Zero Trust: which component sits in the DATA plane?	The Policy Enforcement Point — where the decision is actually carried out on the traffic
+What is a gap analysis?	Comparing current security posture against a target standard to identify the difference
+What does PLC stand for and what does it do?	Programmable Logic Controller — a ruggedised industrial computer that reads sensors and drives pumps, valves and motors
+Security+ current exam code, question count, time and passing score?	SY0-701 — max 90 questions, 90 minutes, 750 out of 100–900
+When does Security+ SY0-701 retire, and what replaces it?	Retires around mid-May 2027; SY0-801 launches 17 November 2026
+Name the five Security+ SY0-701 domains with weightings.	General Security Concepts 12% · Threats/Vulns/Mitigations 22% · Security Architecture 18% · Security Operations 28% · Program Management & Oversight 20%
+Which Security+ domain is the heaviest, and what does it cover?	Domain 4, Security Operations, at 28% — monitoring, logging, alerting, incident response
+GICSP exam format?	82 questions, 3 hours, 71% to pass — and it is OPEN BOOK
+GRID exam format?	75 questions, 2 hours, 74% to pass
+ISA/IEC 62443 Cybersecurity Fundamentals Specialist exam format?	20 questions, 70% to pass — attached to ISA course IC32
+What stops you taking the CISSP straight away?	It requires five years of paid relevant experience across at least two domains; passing without it makes you an Associate of ISC2
+What is OT (Operational Technology)?	The computers that run physical things — pumps, valves, turbines, dosing systems
+What is ICS?	Industrial Control System — the umbrella term for the control equipment inside OT
+Why does baselining work in OT when it barely works in IT?	OT traffic is highly repetitive — the same devices exchange the same function codes at the same intervals for years, so departures from the baseline are genuinely anomalous
+Which industrial protocol has no authentication at all, and why?	Modbus — designed in 1979 for a serial cable inside a locked cabinet, where physical presence WAS the authentication
+Which TCP port does Modbus TCP use?	502
+What does SIS stand for and what is its job?	Safety Instrumented System — an independent system that takes a process to a safe state when defined limits are exceeded
+What is a SIF?	Safety Instrumented Function — one specific protective action, e.g. 'if pressure exceeds 12 bar, close valve XV-101'
+What does SIL mean?	Safety Integrity Level, 1–4 — how reliable a safety function must be; higher SIL means lower permitted probability of failure on demand
+Which standard governs SIS for the process industries?	IEC 61511, adopted in the US as ISA 84; IEC 61508 is the parent standard for the equipment
+What is the single most important property of an SIS relative to the control system?	Independence — separate sensors, separate logic solver, separate final elements from the BPCS
+Why is a cyberattack uniquely dangerous to Layers of Protection Analysis?	LOPA assumes the layers fail independently; an attacker can defeat several layers at once deliberately, which no random failure does
+What was TRITON/TRISIS, and why does it matter?	The first known malware built to compromise a Safety Instrumented System — a Triconex controller at a petrochemical plant, 2017
+How was TRITON discovered?	The attackers' code did not match what the controller expected, so the Triconex failed safe and tripped the plant — twice — and the investigation found the malware
+What physical control should have blocked TRITON?	The Triconex key switch — in RUN position the logic cannot be changed over the network; it was reportedly left in PROGRAM
+What is a HAZOP?	Hazard and Operability study — a structured workshop asking 'what if this goes wrong?' for every part of a process
+What is an Independent Protection Layer (IPL)?	A safeguard that still works even if the other layers have failed — the word that matters is independent
+What does AWIA 2018 require of US community water systems?	Risk and resilience assessments that explicitly include cybersecurity, plus emergency response plans
+Which US regulation is the environmental twin of OSHA PSM?	The EPA Risk Management Program (RMP), 40 CFR Part 68
+Stuxnet: what did it do to the operators' displays?	Replayed recorded normal sensor data, so operators saw a calm process while the centrifuges were being destroyed
+Ukraine 2015: what made it notable?	No ICS-specific malware — stolen credentials and the utility's own HMI software; operators clicked the breakers open by hand
+Ukraine 2016: what changed from 2015?	CRASHOVERRIDE/Industroyer automated the attack and spoke grid protocols natively (IEC 60870-5-101/104, IEC 61850, OPC DA) — modular and re-targetable
+Colonial Pipeline 2021: which systems were actually compromised?	Only IT — the OT systems were not compromised; the company shut the pipeline down itself, reportedly because it could not bill or measure
+Oldsmar 2021: what did the FBI investigation conclude?	It could not confirm any intrusion; officials later said it was most likely employee error — teach it as attribution discipline, not as an attack
+What is the single highest-value alert in OT monitoring?	A new source/destination pair, or a host that has never written issuing a write — because the normal set is small and stable
