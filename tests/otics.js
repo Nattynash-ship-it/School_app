@@ -54,7 +54,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   // ---------- 3. NO EMPTY SECTIONS ----------
   const cover = await p.evaluate(async () => {
     const w = ms => new Promise(r => setTimeout(r, ms));
-    const MINE = ['map', 'sys', 'sec', 'env', 'cases', 'labs', 'found', 'iec', 'gicsp', 'grid', 'cissp'];
+    const MINE = ['map', 'sys', 'sec', 'env', 'cases', 'labs', 'found', 'iec', 'gicsp', 'grid', 'cissp', 'track'];
     const c = COURSES['OT-ICS'];
     const want = [];
     c.chapters.filter(ch => MINE.includes(ch.id))
@@ -62,7 +62,9 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     const r = await fetch(window.__otUrl);
     const L = JSON.parse((await r.json()).l);
     const missing = want.filter(k => !L[k] || !(L[k].body || '').trim());
-    const thin = want.filter(k => L[k] && (L[k].body || '').replace(/<[^>]*>/g, '').trim().length < 900);
+    /* the tracker's pack lesson is deliberately a short fallback - the page
+       she sees is built live by the otTracker module, and tested below */
+    const thin = want.filter(k => k !== 'OT-ICS/track/s1' && L[k] && (L[k].body || '').replace(/<[^>]*>/g, '').trim().length < 900);
     const orphan = Object.keys(L).filter(k => !want.includes(k));
     return { want: want.length, missing, thin, orphan,
              shortest: Math.min(...want.filter(k => L[k]).map(k => L[k].body.replace(/<[^>]*>/g, '').trim().length)) };
@@ -167,6 +169,74 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     return { status: r.status, cards: lines.length, bad: bad.slice(0, 3) };
   });
   ok('the Anki deck is served and every line is exactly front<TAB>back', deck.status === 200 && deck.cards >= 40 && deck.bad.length === 0, deck);
+
+  /* THE TRACKER: "Can this be added to the app?" A live page built from her
+     own scoring - a row per module with status and scores, the weak-area log
+     she can add to, flashcards due, the four-line check-in. It must react to
+     a real quiz round, and what she adds must survive a reload. */
+  const tr = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    const out = {};
+    go({ name: 'section', courseId: 'OT-ICS', chId: 'track', secId: 's1' }); await w(2000);
+    const page = () => document.querySelector('.lesson .ot-track');
+    out.live = !!page();
+    /* A NEGATIVE CONTROL MUST REPORT, NOT CRASH: with the module absent every
+       check below fails on its own line instead of taking the harness down. */
+    if (!out.live) return Object.assign(out, { rows: 0, manual: [], checkin: '' });
+    out.rows = page() ? page().querySelectorAll('tr[data-ot-mod]').length : 0;
+    out.lessons = COURSES['OT-ICS'].chapters.filter(c => !/^(track|weak_drill|review_missed|userdocs|hard_drill|challenge)$/.test(c.id)).reduce((a, c) => a + c.sections.length, 0);
+    const m1 = () => page().querySelector('tr[data-ot-mod="sec/s1"]');
+    out.m1Before = m1() ? m1().children[1].textContent.trim() : null;
+    // a real round on Module 1: answer every question correctly through the app's own history shape
+    const qs = getQuestions('OT-ICS', 'sec', 's1') || [];
+    const rid = Date.now() - 60000;
+    qs.forEach((q, i) => store.quizHistory.push({ courseId: 'OT-ICS', chId: 'sec', secId: 's1', qId: q.id, topic: q.topic, correct: true, confidence: null, ts: rid + i * 1000, rid }));
+    saveStore(); render(); await w(900);
+    out.m1After = m1() ? m1().children[1].textContent.trim() : null;
+    out.m1Best = m1() ? m1().children[2].textContent.trim() : null;
+    // a weak round on Module 2: 4 of 10 right, so the topic surfaces in the auto log
+    const q2 = getQuestions('OT-ICS', 'sec', 's2') || [];
+    const rid2 = Date.now() - 30000;
+    q2.forEach((q, i) => store.quizHistory.push({ courseId: 'OT-ICS', chId: 'sec', secId: 's2', qId: q.id, topic: q.topic, correct: i < 4, confidence: null, ts: rid2 + i * 1000, rid: rid2 }));
+    saveStore(); render(); await w(900);
+    out.m2After = page().querySelector('tr[data-ot-mod="sec/s2"]').children[1].textContent.trim();
+    out.autoWeak = [...page().querySelectorAll('.ot-auto li')].map(li => li.textContent).some(t => /Module 2/.test(t));
+    // add an entry by the buttons, as she would
+    page().querySelector('[data-ot-topic]').value = 'client vs agentless';
+    page().querySelector('[data-ot-note]').value = 'agent installed on host vs scanned over network; OT usually cannot install';
+    page().querySelector('[data-ot-add]').click(); await w(700);
+    out.manual = [...document.querySelectorAll('.ot-track .ot-man li')].map(li => li.textContent.replace(/\s+/g, ' ').trim());
+    out.checkin = document.querySelector('.ot-track [data-ot-checkin]').value;
+    document.querySelector('.ot-track [data-ot-exam]').value = '2027-02-01';
+    document.querySelector('.ot-track [data-ot-exam]').dispatchEvent(new Event('change', { bubbles: true })); await w(600);
+    out.examStored = store.otExamDate;
+    return out;
+  });
+  ok('the tracker is a live page with a row for every module in the track', tr.live && tr.rows === tr.lessons && tr.rows > 25, tr);
+  ok('a real quiz round moves a module from not started to solid', /not started/.test(tr.m1Before || '') && /solid/.test(tr.m1After || '') && tr.m1Best === '100%', tr);
+  ok('a weak round is marked weak and its topic surfaces in the auto weak-area log', /weak/.test(tr.m2After || '') && tr.autoWeak === true, tr);
+  ok('she can add her own weak-area entry, and it lands as pending', tr.manual.length === 1 && /pending/.test(tr.manual[0]) && /client vs agentless/.test(tr.manual[0]), tr.manual);
+  ok('the check-in carries all six lines and her entry', ['Week of:', 'Modules done:', 'Quiz scores:', 'Wrong-answer topics:', 'Hours actually studied:', 'Life factor:'].every(l => tr.checkin.includes(l)) && /client vs agentless/.test(tr.checkin) && /Module 1[^\n]*100%/.test(tr.checkin), tr.checkin);
+  ok('and the exam date is stored', tr.examStored === '2027-02-01', tr);
+
+  await p.reload({ waitUntil: 'load', timeout: 240000 }); await p.waitForTimeout(9000);
+  const tr2 = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    // the reload wiped the pack URL the later checks fetch; restore it
+    const man = await (await fetch('/content-manifest.json')).json();
+    window.__otUrl = '/content-OT-ICS.json?v=' + encodeURIComponent((man.fv || {})['OT-ICS'] || man.build);
+    go({ name: 'section', courseId: 'OT-ICS', chId: 'track', secId: 's1' }); await w(2000);
+    const li = document.querySelector('.ot-track .ot-man li');
+    if (!li) return { before: '', after: '', gone: -1, exam: null, m1: '' };
+    const before = li ? li.textContent : '';
+    li.querySelector('[data-ot-toggle]').click(); await w(600);
+    const after = (document.querySelector('.ot-track .ot-man li') || {}).textContent || '';
+    document.querySelector('.ot-track .ot-man li [data-ot-del]').click(); await w(600);
+    return { before, after, gone: document.querySelectorAll('.ot-track .ot-man li').length, exam: document.querySelector('.ot-track [data-ot-exam]').value,
+             m1: document.querySelector('tr[data-ot-mod="sec/s1"]').children[1].textContent.trim() };
+  });
+  ok('after a reload the entry, the scores and the exam date are still there', /client vs agentless/.test(tr2.before) && /solid/.test(tr2.m1) && tr2.exam === '2027-02-01', tr2);
+  ok('marking it fixed works, and deleting removes it', /fixed/.test(tr2.after) && tr2.gone === 0, tr2);
 
   /* THE SKELETON: the whole programme visible in the app. Every course has
      its own chapter with a real overview - format, schedule, module outline,
