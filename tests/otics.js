@@ -287,6 +287,18 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   });
   ok('Module 2 is in the tree with a full lesson behind it', m2.inTree && m2.chars > 6000 && m2.covers.length === 0, m2);
   ok('Module 2 ends in a ten-question quiz', m2.quiz >= 10, m2);
+  /* "Sorry both" - the explainer she left blank on the quiz, as a highlighted
+     box in the lesson: agent on the host vs scanned over the network, and why
+     OT usually has no choice. */
+  const m2c = await p.evaluate(async () => {
+    const r = await fetch(window.__otUrl); const L = JSON.parse((await r.json()).l);
+    const b = (L['OT-ICS/sec/s2'] || {}).body || '';
+    const box = b.split('<div class="callout"').find(x => /Client-based vs agentless/.test(x)) || '';
+    const t = box.replace(/<[^>]*>/g, ' ');
+    const T = t.replace(/\s+/g, ' ');   // the source wraps lines mid-phrase
+    return { box: !!box, agent: /installed on the host/.test(T), agentless: /over the network/.test(T) && /nothing installed/.test(T), ot: /cannot.*install|crash a controller/.test(T), label: /ON THE EXAM/.test(box) };
+  });
+  ok('and carries the client-vs-agentless explainer as a highlighted box', m2c.box && m2c.agent && m2c.agentless && m2c.ot && m2c.label, m2c);
   ok('and ships its own deck, linked from the flashcards lesson', m2.deck.status === 200 && m2.deck.cards >= 30 && m2.deck.bad === 0 && m2.linked, m2);
 
   /* A NEVER-ACTIVATED COURSE READS AS LOCKED, and tapping it opens the
