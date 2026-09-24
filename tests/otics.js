@@ -168,6 +168,26 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   });
   ok('the Anki deck is served and every line is exactly front<TAB>back', deck.status === 200 && deck.cards >= 40 && deck.bad.length === 0, deck);
 
+  /* EACH "NEXT" ADDS A MODULE, and each module arrives whole: a lesson in the
+     tree, a ten-question quiz behind it, and its own deck. */
+  const m2 = await p.evaluate(async () => {
+    const c = COURSES['OT-ICS'].chapters.find(ch => ch.id === 'sec');
+    const inTree = !!(c && c.sections.some(sx => sx.id === 's2' && /Module 2/.test(sx.title)));
+    const r = await fetch(window.__otUrl); const pk = await r.json();
+    const L = JSON.parse(pk.l), Q = JSON.parse(pk.q);
+    const body = (L['OT-ICS/sec/s2'] || {}).body || '';
+    const txt = body.replace(/<[^>]*>/g, ' ');
+    const d = await fetch('/flashcards/ot-ics-m2.txt'); const t = d.ok ? await d.text() : '';
+    const lines = t.split('\n').filter(Boolean);
+    return { inTree, chars: txt.length, quiz: (Q['OT-ICS/sec/s2'] || []).length,
+             covers: ['Nation-state', 'Insider', 'Shadow IT', 'Pretexting', 'Watering hole', 'supply chain', 'Ukraine'].filter(k => !new RegExp(k, 'i').test(txt)),
+             deck: { status: d.status, cards: lines.length, bad: lines.filter(l => l.split('\t').length !== 2).length },
+             linked: /ot-ics-m2\.txt/.test((L['OT-ICS/sys/s4'] || {}).body || '') };
+  });
+  ok('Module 2 is in the tree with a full lesson behind it', m2.inTree && m2.chars > 6000 && m2.covers.length === 0, m2);
+  ok('Module 2 ends in a ten-question quiz', m2.quiz >= 10, m2);
+  ok('and ships its own deck, linked from the flashcards lesson', m2.deck.status === 200 && m2.deck.cards >= 30 && m2.deck.bad === 0 && m2.linked, m2);
+
   /* A NEVER-ACTIVATED COURSE READS AS LOCKED, and tapping it opens the
      activate/limit dialog instead of the lesson. A parallel certification track
      is not a degree class to be activated - it should simply open. */

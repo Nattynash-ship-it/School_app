@@ -1,0 +1,32 @@
+What is a threat actor?	The person or group behind an attack
+On which THREE attributes does SY0-701 describe threat actors?	Internal vs external; resources/funding; level of sophistication/capability
+Which threat actor is external, very well resourced, very sophisticated and patient — often called an APT?	Nation-state
+What does APT stand for?	Advanced Persistent Threat — a well-resourced, patient attacker, usually a nation-state
+Which threat actor is motivated primarily by financial gain and runs like a business (ransomware, affiliates)?	Organised crime
+Which threat actor is motivated by philosophical or political beliefs and wants attention?	Hacktivist
+Which threat actor is the only one with legitimate access?	Insider threat
+Does 'insider threat' require malice?	No — it includes careless or well-meaning employees who cause harm unintentionally
+Which 'threat actor' on the exam list is not an adversary at all?	Shadow IT — employees using unapproved systems, which creates undefended attack surface
+Which threat actor has low resources and low skill and uses others' tools?	Unskilled attacker (older material: script kiddie)
+Name the 'taking' motivations on the SY0-701 list.	Data exfiltration, espionage, financial gain, blackmail
+Name the 'breaking' motivations on the SY0-701 list.	Service disruption, disruption/chaos, war
+Name the 'believing' motivations on the SY0-701 list.	Philosophical/political beliefs, ethical, revenge
+A penetration tester with written permission is driven by which listed motivation?	Ethical — same techniques as a criminal, distinguished by authorisation
+What is a threat vector?	The path an attack takes to reach you
+What is an attack surface?	The sum of all points where an attacker could get in
+Which vector carried Stuxnet across an air gap?	Removable device (USB media)
+Client-based vs agentless vulnerability scanning — the difference?	Client-based installs an agent on the host; agentless scans over the network with nothing installed
+Why is agentless scanning often the only option in OT?	Installing software on a controller is usually forbidden or impossible
+What is a supply chain vector?	Compromise through a vendor, supplier or service provider (e.g. an MSP) whose access or code you inherit
+What does MSP stand for?	Managed Service Provider — an outside company that runs part of your IT, with matching access
+What was Colonial Pipeline's reported initial vector?	A legacy VPN account without multi-factor authentication
+Phishing vs smishing vs vishing?	Email (or general messaging) vs SMS text vs voice call
+What is business email compromise (BEC)?	A real or convincingly spoofed executive/partner account used to request a payment or data transfer
+Pretexting vs impersonation — the distinction?	Impersonation is WHO the attacker claims to be; pretexting is the invented STORY that makes the request seem legitimate
+What is a watering-hole attack?	Compromising a website the targets already visit, then waiting for them
+What is typosquatting?	Registering a domain one keystroke from a real one (rnicrosoft.com)
+Misinformation vs disinformation?	False content spread accidentally (mis-) vs deliberately (dis-)
+What is brand impersonation?	Pretending to be a trusted company — its logo, its login page
+Ukraine 2015: actor, motivation, vector in, vector across?	Nation-state; service disruption in wartime; spear-phishing with a macro document; stolen credentials on the utility's own remote access
+Maroochy 2000: actor and vector?	Insider (disgruntled ex-contractor, revenge); unsecure wireless with a stolen radio
+Why does knowing the threat actor matter for defence?	It tells you which door they will use — a nation-state finds doors you did not know you had; organised crime uses the one you left unlocked
