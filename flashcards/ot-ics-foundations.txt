@@ -1,0 +1,52 @@
+How many layers has the OSI model, and which model does the internet actually use?	Seven; TCP/IP, which has four (link, internet, transport, application)
+At which OSI layer do Modbus, DNP3 and OPC UA sit?	Layer 7, application
+At which OSI layers does a conventional firewall filter, and what does that mean for Modbus?	Layers 3 and 4 (addresses, ports) — it passes 'TCP to 502' without seeing that the message inside is a write
+What does /24 mean in CIDR notation?	The first 24 bits are the network; 256 addresses, 254 usable
+Usable hosts in a /26?	62 (64 addresses minus network and broadcast)
+Router vs switch — one line each?	A router moves packets BETWEEN subnets; a switch moves frames WITHIN one
+What is a VLAN?	One physical switch split into separate logical networks by tag — cheap segmentation
+What is a DMZ in OT terms?	A buffer network between the business and control networks — Purdue Level 3.5
+Purdue Level 0?	The physical process — sensors, valves, pumps, motors
+Purdue Level 1?	Basic control — PLCs, RTUs, DCS controllers
+Purdue Level 2?	Area supervisory — HMIs, SCADA servers
+Purdue Level 3?	Site operations — historian, engineering workstations, OT domain controller
+Purdue Level 3.5?	The industrial DMZ — jump hosts, patch servers, replicated historians; no direct business-to-control connection
+Purdue Levels 4 and 5?	Site business systems, and the enterprise network
+Zone vs conduit (62443)?	A zone is a group of assets sharing security requirements; a conduit is the communication path between zones, where the controls go
+Security Level 1 to 4 — what scales?	The attacker to be resisted: casual (1), simple intentional (2), sophisticated with moderate resources and ICS skills (3), extended resources / nation-state (4)
+Are Purdue levels the same as 62443 zones?	No — Purdue describes a hierarchy; zones are a security design that can span or split levels
+Why does the SIS get its own zone?	Its independence is the basis of the safety case; sharing networks and workstations with the BPCS is what TRITON exploited
+PLC vs RTU?	Both control field devices; the RTU is built for remote, harsh, low-bandwidth sites, the PLC for fast local control
+SCADA vs DCS?	SCADA: geographically distributed, event-driven, tolerates slow links (utilities). DCS: one site, one continuous process, tightly integrated (refinery, chemical plant)
+What is an HMI?	Human-Machine Interface — the operator's screen, often a Windows PC; can be falsified (Stuxnet) or driven by an attacker (Ukraine 2015)
+What is a historian?	A time-series database of every process value — tags, timestamps, values; the plant's memory
+Why is the engineering workstation the most valuable machine on an OT network?	It holds the vendor software, project files and credentials to reprogram controllers — TRITON, Stuxnet and Pipedream all went through it
+What is ladder logic?	The graphical PLC programming language resembling relay wiring diagrams
+Modbus TCP: port, and security?	TCP 502; none at all
+Modbus function codes: which read, which write?	1–4 read; 5, 6, 15, 16 write
+DNP3: port, sector, security?	TCP/UDP 20000; electric and water utilities in North America; optional Secure Authentication (IEEE 1815), rarely deployed
+EtherNet/IP: port and ecosystem?	TCP 44818 / UDP 2222; Rockwell/Allen-Bradley; carries CIP
+OPC UA: port, and why it matters?	TCP 4840; the one protocol with real built-in security (certificates, signing, encryption) — optional and often left off
+IEC 61850 GOOSE — what and why notable?	Layer-2 multicast for millisecond protection signalling; cannot cross a router; no authentication by default; CRASHOVERRIDE spoke it
+Which protocol did Stuxnet target and on which port?	Siemens S7comm on TCP 102
+Why is 'encrypt the protocol' usually the wrong OT answer?	Most devices cannot, and encryption blinds monitoring — segment, restrict the conduit, monitor the protocol
+ATT&CK: tactic vs technique?	Tactic is why (the goal at a stage); technique is how (numbered T0xxx in the ICS matrix)
+Which two tactics exist only in ATT&CK for ICS?	Inhibit Response Function and Impair Process Control
+Stuxnet maps to which ATT&CK Impact techniques?	Manipulation of View and Manipulation of Control
+TRITON maps to which ATT&CK Impact technique?	Loss of Safety
+What is a detection coverage matrix?	Techniques × your detections, showing what you catch and — honestly — what you cannot
+NERC CIP — who enforces it and who does it bind?	NERC under FERC authority; bulk electric system operators in the US and Canada; mandatory, audited, fineable
+Which NERC CIP standard is essentially an OT detection job description?	CIP-015, internal network security monitoring
+What triggered the TSA pipeline Security Directives?	Colonial Pipeline, May 2021
+Are CISA's Cybersecurity Performance Goals mandatory?	No — guidance, but the baseline everyone is measured against
+NIS2 incident reporting timeline?	Early warning within 24 hours, notification within 72 (from memory — confirm current text)
+UK NIS Regulations — assessed against what?	The NCSC Cyber Assessment Framework (CAF), by sector regulators
+What does IEC 62351 do?	Adds security to IEC 61850 and the 60870 family — TLS for MMS, GOOSE authentication, role-based access
+What did IEEE 1547-2018 mandate that changed grid security?	Communication interfaces on DER inverters — millions of controllable computers on the grid; IEEE 1547.3 is their cybersecurity guide
+What is a DER?	Distributed Energy Resource — small-scale generation or storage at the distribution level: rooftop solar, wind, batteries, EV chargers
+What is an aggregator / virtual power plant, and why is it a risk?	A company controlling thousands of DERs together — one login, enormous reach
+Physical failure mode if a battery storage BMS is compromised?	Thermal runaway — a fire water cannot extinguish, with toxic gas release
+What lets contaminants INTO a drinking-water distribution network?	Loss of pressure — contaminants enter through any leak
+What is the physical consequence of manipulating a wastewater lift station?	Raw sewage overflow into streets and waterways — Maroochy
+AWIA 2018 — what does it require of community water systems?	Risk and resilience assessments explicitly including cybersecurity, plus emergency response plans, certified to EPA on a five-year cycle
+The engineered safety layers in a water plant?	Dosing pumps physically sized below toxic rates, independent chlorine analysers, float switches wired to interlocks, operators who sample the water
