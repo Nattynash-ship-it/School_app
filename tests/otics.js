@@ -85,6 +85,28 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('it teaches the concept and grounds it in a plant', lesson.hasCIA && lesson.hasOT, lesson);
   ok('and it spells out the acronym the first time it is used', lesson.defines === true, lesson);
 
+  // ---------- 5b. EVERY lesson ends in a quiz ("Quiz me at the end of every lesson") ----------
+  const allq = await p.evaluate(async () => {
+    const r = await fetch(window.__otUrl);
+    const pk = await r.json(); const L = JSON.parse(pk.l), Q = JSON.parse(pk.q);
+    const noQuiz = Object.keys(L).filter(k => !(Q[k] && Q[k].length >= 4));
+    const bad = [], oneSlot = [];
+    Object.entries(Q).forEach(([k, qs]) => {
+      if (new Set(qs.map(x => x.correct)).size < 2) oneSlot.push(k);
+      qs.forEach(x => {
+        const want = x.options.map((_, i) => String(i)).filter(i => +i !== x.correct);
+        const got = Object.keys(x.distractors || {});
+        if (want.length !== got.length || !want.every(w => got.includes(w))) bad.push(x.id);
+      });
+    });
+    const inApp = Object.keys(L).filter(k => { const [c, ch, sc] = k.split('/'); try { const g = getQuestions(c, ch, sc); return !(g && g.length); } catch (e) { return true; } });
+    return { lessons: Object.keys(L).length, total: Object.values(Q).reduce((a, v) => a + v.length, 0), noQuiz, bad, oneSlot, inApp };
+  });
+  ok('every lesson ends in a quiz of at least four questions', allq.noQuiz.length === 0, allq);
+  ok('every question in the track explains each wrong option', allq.bad.length === 0, allq.bad.slice(0, 5));
+  ok('no quiz has its answers all in the same slot', allq.oneSlot.length === 0, allq.oneSlot);
+  ok('and the app itself can find every one of those quizzes', allq.inApp.length === 0, allq.inApp);
+
   // ---------- 5. the quiz, with a reason for every option ----------
   const quiz = await p.evaluate(async () => {
     const r = await fetch(window.__otUrl);
