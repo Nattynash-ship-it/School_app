@@ -41,6 +41,11 @@ run() {
     diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep '^[<>]' | head -8
     FAILED="$FAILED $name"
   fi
+  # A SUITE THAT SAYS FAIL HAS FAILED, whatever it exits with. helperui printed
+  # 20/21 for three builds and exited 0, and the battery stayed green over a
+  # real defect (the folded phone strip on the helper sheet). The words are the
+  # verdict; the exit code is a courtesy.
+  if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qE '^FAIL '; then rc=1; fi
   if [ "$rc" -ne 0 ]; then
     echo "SUITE-FAILED $name (exit $rc)"
     # the summary line alone does not say WHICH assertion went - print them, so

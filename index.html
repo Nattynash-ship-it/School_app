@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.622">
+<meta name="app-build" content="18.623">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -50036,6 +50036,10 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   /* the notebook owns the screen while it is open - the tray already steps
      aside for it, and so does this */
   'body.mn-open .phone-ctl { display: none !important; }',
+  /* and for the AI helper sheet: folded to one button it still sat on the
+     sheet's corner (helperui has said so since 18.620, and the suite did
+     not fail the battery) */
+  'body.aih-open .phone-ctl { display: none !important; }',
   '@media print { .phone-ctl { display: none !important; } }'
   ].join('\n');
 
