@@ -178,4 +178,7 @@ const THEMES = ['arcade','architect','aurora','boldstudy','brightblocks','butter
   for (const f of F) console.log((f.pass?'PASS ':'FAIL ')+f.n+(f.x?'  '+f.x:''));
   console.log('helperui: '+F.filter(f=>f.pass).length+'/'+F.length+' passed');
   await b.close();
+  /* A SUITE THAT SAYS FAIL MUST FAIL. This one printed 20/21 for three
+     builds and exited 0, so the battery stayed green over a real defect. */
+  process.exit(F.some(f => !f.pass) ? 1 : 0);
 })().catch(e=>{ console.log('HARNESS '+e); process.exit(2); });
