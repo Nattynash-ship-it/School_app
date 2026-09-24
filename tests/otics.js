@@ -54,7 +54,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   // ---------- 3. NO EMPTY SECTIONS ----------
   const cover = await p.evaluate(async () => {
     const w = ms => new Promise(r => setTimeout(r, ms));
-    const MINE = ['map', 'sys', 'sec', 'env', 'cases', 'labs'];
+    const MINE = ['map', 'sys', 'sec', 'env', 'cases', 'labs', 'found', 'iec', 'gicsp', 'grid', 'cissp'];
     const c = COURSES['OT-ICS'];
     const want = [];
     c.chapters.filter(ch => MINE.includes(ch.id))
@@ -167,6 +167,37 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     return { status: r.status, cards: lines.length, bad: bad.slice(0, 3) };
   });
   ok('the Anki deck is served and every line is exactly front<TAB>back', deck.status === 200 && deck.cards >= 40 && deck.bad.length === 0, deck);
+
+  /* THE SKELETON: the whole programme visible in the app. Every course has
+     its own chapter with a real overview - format, schedule, module outline,
+     exam-day traps - and the foundation topics and the renewables/water module
+     she asked for are there as lessons, not as promises. */
+  const skel = await p.evaluate(async () => {
+    const ch = id => COURSES['OT-ICS'].chapters.find(c => c.id === id);
+    const r = await fetch(window.__otUrl); const pk = await r.json();
+    const L = JSON.parse(pk.l), Q = JSON.parse(pk.q);
+    const txt = k => ((L[k] || {}).body || '').replace(/<[^>]*>/g, ' ');
+    const has = (k, ...words) => words.filter(w => !new RegExp(w, 'i').test(txt(k)));
+    const d = await fetch('/flashcards/ot-ics-foundations.txt'); const t = d.ok ? await d.text() : '';
+    return {
+      courses: ['iec', 'gicsp', 'grid', 'cissp'].map(id => ({ id, chapter: !!ch(id), overview: (txt('OT-ICS/' + id + '/s0').length > 3000), quiz: (Q['OT-ICS/' + id + '/s0'] || []).length })),
+      overviewsSayWhat: ['iec', 'gicsp', 'grid', 'cissp'].flatMap(id => has('OT-ICS/' + id + '/s0', 'Module outline|module list|The eight domains', 'strategy|mindset', 'VERIFIED')),
+      found: ch('found') ? ch('found').sections.length : 0,
+      foundCovers: [...has('OT-ICS/found/s1', 'OSI', 'subnet', 'VLAN'), ...has('OT-ICS/found/s2', 'Purdue', 'conduit', '3\\.5'), ...has('OT-ICS/found/s3', 'RTU', 'DCS', 'historian'),
+                    ...has('OT-ICS/found/s4', 'DNP3', 'OPC UA', '61850', 'Profinet'), ...has('OT-ICS/found/s5', 'Inhibit Response', 'Impair Process'), ...has('OT-ICS/found/s6', 'NERC CIP', 'TSA', 'NIS2')],
+      env: ch('env') ? ch('env').sections.length : 0,
+      renewables: has('OT-ICS/env/s3', '61850', '62351', '1547', 'battery', 'wind', 'aggregator'),
+      water: has('OT-ICS/env/s4', 'chlorine', 'wastewater', 'AWIA', 'pressure'),
+      secOutline: has('OT-ICS/sec/s0', 'Third-party risk, compliance, audits', 'Monitoring, logging and alerting', 'practice exam'),
+      deck: { status: d.status, cards: t.split('\n').filter(Boolean).length, bad: t.split('\n').filter(Boolean).filter(l => l.split('\t').length !== 2).length },
+    };
+  });
+  ok('all four remaining courses have a chapter with a full overview and a quiz', skel.courses.every(c => c.chapter && c.overview && c.quiz >= 4), skel.courses);
+  ok('each overview gives the module outline, the exam strategy and verified facts', skel.overviewsSayWhat.length === 0, skel.overviewsSayWhat);
+  ok('the six foundation topics are lessons, each covering what its title promises', skel.found === 6 && skel.foundCovers.length === 0, skel);
+  ok('renewables/grid and water are in the safety module', skel.env === 4 && skel.renewables.length === 0 && skel.water.length === 0, skel);
+  ok('the Security+ overview now lists every module to come', skel.secOutline.length === 0, skel.secOutline);
+  ok('and the foundations deck is served', skel.deck.status === 200 && skel.deck.cards >= 40 && skel.deck.bad === 0, skel.deck);
 
   /* EACH "NEXT" ADDS A MODULE, and each module arrives whole: a lesson in the
      tree, a ten-question quiz behind it, and its own deck. */
