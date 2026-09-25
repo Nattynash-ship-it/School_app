@@ -148,6 +148,7 @@ run simfresh simfresh.js 1
 run handfigs handfigs.js 1
 run contentstamp contentstamp.js 1
 run d286rat d286rat.js 1
+run choose2 choose2.js 1
 run javaunits javaunits.js 1
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"

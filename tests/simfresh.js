@@ -37,7 +37,8 @@ for (const cid of courses) {
       const t = norm(q.text); byPool[k].add(t);
       if (practice.has(t)) { copies.push(cid + ' ' + k.split('/')[1] + ' ' + q.id); continue; }
       const opts = q.options || [];
-      if (opts.length !== 4 || typeof q.correct !== 'number' || q.correct < 0 || q.correct > 3 || new Set(opts.map(String)).size !== 4 || String(q.explain || '').trim().length < 8) badFmt.push(cid + ' ' + k.split('/')[1] + ' ' + q.id);
+      if (q.multi) { const cs = q.correctSet || []; const wrong = opts.map((_, i) => i).filter(i => cs.indexOf(i) < 0).map(String); if (q.pick !== 2 || opts.length !== 5 || cs.length !== 2 || new Set(opts.map(String)).size !== 5 || !cs.every(i => i >= 0 && i < 5) || String(q.explain || '').trim().length < 8 || Object.keys(q.distractors || {}).sort().join(',') !== wrong.join(',')) badFmt.push(cid + ' ' + k.split('/')[1] + ' ' + q.id + ' (choose-2)'); }
+      else if (opts.length !== 4 || typeof q.correct !== 'number' || q.correct < 0 || q.correct > 3 || new Set(opts.map(String)).size !== 4 || String(q.explain || '').trim().length < 8) badFmt.push(cid + ' ' + k.split('/')[1] + ' ' + q.id);
       if (t.split(' ').length >= 8 && nears.length < 200) { const s1 = sh(t); for (const [s2] of pracSh) { const inter = [...s1].filter(x => s2.has(x)).length; const j = inter / (s1.size + s2.size - inter); if (j >= 0.6) { nears.push(cid + ' ' + k.split('/')[1] + ' ' + q.id + ' ~' + j.toFixed(2)); break; } } }
     }
     if (man.qids && man.qids[cid] && man.qids[cid][k]) { const ids = Q[k].map(q => q.id).sort().join(','); if (ids !== man.qids[cid][k].slice().sort().join(',')) manifestOff.push(cid + ' ' + k.split('/')[1]); }

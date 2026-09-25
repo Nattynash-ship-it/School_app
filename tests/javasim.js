@@ -20,7 +20,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     for (const it of sim) {
       if (!('correct' in it) || !Array.isArray(it.options)) continue;   // code tasks
       const d = it.distractors || {};
-      const want = it.options.map((_, i) => i).filter(i => i !== it.correct).map(String).join(',');   // some questions carry five options
+      const want = it.options.map((_, i) => i).filter(i => Array.isArray(it.correctSet) ? it.correctSet.indexOf(i) < 0 : i !== it.correct).map(String).join(',');   // some questions carry five options
       if (!it.distractors) { out.missing.push(it.id); continue; }
       if (Object.keys(d).sort().join(',') !== want) out.badKeys.push(it.id);
       for (const v of Object.values(d)) { if (String(v).length < 15) out.short.push(it.id); if (/\b(?:option|answer|choice) [A-D]\b/i.test(String(v))) out.letters.push(it.id); }
