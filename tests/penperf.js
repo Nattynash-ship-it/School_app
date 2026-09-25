@@ -110,7 +110,7 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
   });
   ok('the in-flight stroke is a plain polyline, not a rebuilt outline', R.liveIsPolyline && R.liveFill === 'none',
      R.liveD.slice(0,40) + '…');
-  ok('it grows by one segment per point', R.liveSegments >= 250 && R.liveSegments <= 300, R.liveSegments + ' segments');
+  ok('it grows by one segment per point (plus the steady hand\'s raw tail to the nib)', R.liveSegments >= 250 && R.liveSegments <= 310, R.liveSegments + ' segments');
   ok('it is drawn at the pen width', parseFloat(R.liveWidth) > 0, R.liveWidth);
   ok('the expensive outline is NEVER built while the pen is down', R.outlineDuringStroke === 0,
      R.outlineDuringStroke + ' builds during 300 points');

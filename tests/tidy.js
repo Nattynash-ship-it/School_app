@@ -161,7 +161,9 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
     for (let wI = 0; wI < 4; wI++) {
       const bx = 200 + wI * 120, by = 500 + 18 * (wI / 3);
       made.push({ type: 'pen', color: '#e11', width: 3, _ts: Date.now(), ts: Date.now(),
-        points: Array.from({ length: 12 }, (_, k) => ({ x: bx + k * 8, y: by - Math.abs(Math.sin(k / 3)) * 16 + (k % 2 ? 1.4 : -1.4), p: .5 })) });
+        // each word its own shape, as handwriting is: levelled, four copies of one
+        // stamped shape would become exact translations, which the render drops
+        points: Array.from({ length: 12 }, (_, k) => ({ x: bx + k * 8, y: by - Math.abs(Math.sin(k / 3 + wI * 0.4)) * (14 + wI * 1.5) + (k % 2 ? 1.4 : -1.4), p: .5 })) });
     }
     gannoSaveStrokes(ganno.routeKey, made.slice());
     const slope = list => { const f = window.__tidy.fitLine(window.__tidy.envelope([].concat.apply([], list.map(s => s.points)))); return f ? Math.round(f.m * 1000) / 10 : null; };
