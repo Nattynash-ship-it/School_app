@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.631">
+<meta name="app-build" content="18.632">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -30180,6 +30180,22 @@ function gannoHlBBoxOfPts(pts, sy, pad) {
 function gannoRender(strokes, currentStroke) {
  const svg = ganno.svg;
  if (!svg) return;
+ /* GHOST INK never reaches the screen (see inkTranslatedCopy). A page found
+    carrying ghosts is rewritten without them once the pen is up, which also
+    puts the ghosts on the erase record so no sync can bring them back. */
+ try {
+ if (typeof window.__inkGhosts === 'function' && strokes && strokes.length > 1) {
+ var _gh = window.__inkGhosts(strokes);
+ if (_gh.dropped.length) {
+ strokes = _gh.kept;
+ if (!ganno.drawing && ganno.routeKey && typeof gannoSaveStrokes === 'function') {
+ gannoSaveStrokes(ganno.routeKey, _gh.kept);
+ ganno._ghostsCleared = (ganno._ghostsCleared || 0) + _gh.dropped.length;
+ try { if (typeof toast === 'function' && !ganno._ghostToastAt) { ganno._ghostToastAt = Date.now(); toast('Removed ' + _gh.dropped.length + ' copied pen stroke' + (_gh.dropped.length === 1 ? '' : 's') + ' from this page \u2713', 5000); } } catch (e0) {}
+ }
+ }
+ }
+ } catch (eG) {}
  while (svg.firstChild) svg.removeChild(svg.firstChild);
  gannoHlClear();
 
@@ -59821,6 +59837,46 @@ function inkShiftedCopy(a, b){
   }
   return true;
 }
+/* GHOST INK. "The issue with the writing being copied all of the page." Her
+   photo: the same six words twice, the second copy one page lower. The sync
+   merge lays ink it cannot match onto a fresh page below hers so two sittings
+   never overlap - and her OWN strokes, re-saved at slightly different
+   coordinates or drawn before ids existed, matched neither shape nor id and
+   came back as that second sitting. Two strokes made by hand never agree on
+   every point to a third of a unit; a translated copy does, whatever its shift
+   and whether or not it carries a stamp. That is the rule, and it is applied at
+   every stage: the render never shows a ghost, the merge never lays one, and
+   the sweep clears the ones already on the device. */
+function inkTranslatedCopy(a, b){
+  var pa = a && a.points, pb = b && b.points;
+  if (!pa || !pb || pa.length !== pb.length || pa.length < 6) return false;
+  if ((a.type || 'pen') !== (b.type || 'pen')) return false;
+  // an id is minted only when a stroke is drawn, so a copy carries its
+  // original's id or none: two strokes with DIFFERENT ids are two writings
+  if (typeof a._uid === 'string' && a._uid && typeof b._uid === 'string' && b._uid && a._uid !== b._uid) return false;
+  var dx = pb[0].x - pa[0].x, dy = pb[0].y - pa[0].y;
+  for (var i = 1; i < pa.length; i++) {
+    if (Math.abs((pb[i].x - pa[i].x) - dx) > 0.35) return false;
+    if (Math.abs((pb[i].y - pa[i].y) - dy) > 0.35) return false;
+  }
+  return true;
+}
+/* Split a page's list into the strokes to keep and the ghosts: the first copy
+   of each shape, in the page's own order, is the one she positioned. */
+function inkGhostSplit(list){
+  var kept = [], dropped = [], by = Object.create(null);
+  for (var i = 0; i < (list || []).length; i++) {
+    var st = list[i]; if (!st) continue;
+    var pts = st.points;
+    if (!pts || pts.length < 6) { kept.push(st); continue; }
+    var k = (st.type || 'pen') + '|' + pts.length, b = by[k] || (by[k] = []), ghost = false;
+    for (var q = 0; q < b.length; q++) { if (inkTranslatedCopy(b[q], st)) { ghost = true; break; } }
+    if (ghost) dropped.push(st); else { b.push(st); kept.push(st); }
+  }
+  return { kept: kept, dropped: dropped };
+}
+window.__inkTranslated = inkTranslatedCopy;
+window.__inkGhosts = inkGhostSplit;
 function inkRepairRun(){
   var keys = [];
   try {
@@ -59848,6 +59904,12 @@ function inkRepairRun(){
           var tb = by[ib] || (by[ib] = []);
           for (var q2 = 0; q2 < tb.length; q2++) { if (inkShiftedCopy(tb[q2], s)) { dupe = true; break; } }
           if (!dupe) tb.push(s);
+        }
+        // PASS 4: a translated copy of a freehand stroke, stamp or no stamp
+        if (!dupe && s.points && s.points.length >= 6) {
+          var gb = 'g:' + (s.type || 'pen') + '|' + s.points.length, gl = by[gb] || (by[gb] = []);
+          for (var q3 = 0; q3 < gl.length; q3++) { if (inkTranslatedCopy(gl[q3], s)) { dupe = true; break; } }
+          if (!dupe) gl.push(s);
         }
         if (dupe) { cut++; continue; }
         bucket.push(s);
@@ -59877,9 +59939,10 @@ try {
   // sweep ran was never going to be cleaned by it. This build closes the hole
   // that doubled it and sweeps what the hole already left behind.
   // 4: the pass above also removes the offset copies the realign bar left
-  if (store.inkDupSweep !== 4) {
+  // 5: pass 4 - ghosts a page down, with or without a stamp (18.632)
+  if (store.inkDupSweep !== 5) {
     var _r = inkRepairRun();
-    store.inkDupSweep = 4;
+    store.inkDupSweep = 5;
     try { saveStore(); } catch (e) {}
     if (_r.dropped) {
       try {
@@ -64916,12 +64979,23 @@ function mergeInk(remoteInk, when, remoteErased){
       idk = ident(local[i]); if (idk && byId[idk] === undefined) byId[idk] = i;
     }
     var fresh = [], theirs = Object.create(null), drop = Object.create(null);
+    /* GHOST INK: a translated copy of a stroke already on this page IS that
+       stroke - the other device's copy from before a re-anchor or realign, or
+       ink from before ids existed. It is neither new writing nor a second
+       sitting; the local stroke counts as seen by the sender too. */
+    var twins = Object.create(null), tw = (typeof window.__inkTranslated === 'function') ? window.__inkTranslated : null;
+    if (tw) for (i = 0; i < local.length; i++) { var lp = local[i] && local[i].points; if (lp && lp.length >= 6) { var tk = (local[i].type || 'pen') + '|' + lp.length; (twins[tk] || (twins[tk] = [])).push(local[i]); } }
     for (i = 0; i < incoming.length; i++) {
       var s2 = sig(incoming[i]);
       if (!s2) continue;
       var id2 = ident(incoming[i]);
       theirs[s2] = 1; if (id2) theirs[id2] = 1;
       if (seen[s2]) continue;                       // the same shape is already here
+      if (tw) {
+        var ip = incoming[i].points, twin = null;
+        if (ip && ip.length >= 6) { var tl = twins[(incoming[i].type || 'pen') + '|' + ip.length] || []; for (var tq = 0; tq < tl.length; tq++) { if (tw(tl[tq], incoming[i])) { twin = tl[tq]; break; } } }
+        if (twin) { var tsg = sig(twin), tid = ident(twin); if (tsg) theirs[tsg] = 1; if (tid) theirs[tid] = 1; continue; }
+      }
       if (id2 && byId[id2] !== undefined) {
         /* The same stroke at another position. Whichever copy the erase record
            says is gone is the stale one: a local copy marked dead is replaced

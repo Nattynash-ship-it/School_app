@@ -141,6 +141,7 @@ run fngate fngate.mjs 2
 run newcontent newcontent.js 1
 run wguqs wguqs.js 1
 run inkdouble inkdouble.js 2
+run inkghost inkghost.js 1
 run figflow figflow.js 1
 run javasim javasim.js 1
 run simfresh simfresh.js 1
