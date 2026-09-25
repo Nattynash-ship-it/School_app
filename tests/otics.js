@@ -230,7 +230,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
       overviews: [...r.querySelectorAll('td.ot-t')].map(td => td.textContent).filter(t => /overview/.test(t)),
     };
   });
-  ok('the offline save list for the track carries its three decks - and only for the track', au.offlineDecks === 3 && au.offlineOthers === 0, au);
+  ok('the offline save list for the track carries its four decks (Modules 1-3 and foundations) - and only for the track', au.offlineDecks === 4 && au.offlineOthers === 0, au);
   ok('every input on the tracker has a name a screen reader can say', au.labelled === true, au);
   ok('the four course overviews are named by course, not all "Course overview"', au.overviews.length >= 4 && new Set(au.overviews).size === au.overviews.length && au.overviews.every(t => /62443|GICSP|GRID|CISSP|Security\+/.test(t)), au.overviews);
 
@@ -317,6 +317,28 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   });
   ok('Module 2 is in the tree with a full lesson behind it', m2.inTree && m2.chars > 6000 && m2.covers.length === 0, m2);
   ok('Module 2 ends in a ten-question quiz', m2.quiz >= 10, m2);
+  /* "yes please" - Module 3, objectives 1.3 and 1.4: change management and
+     cryptography, the same whole shape: lesson, quiz, deck, and its figure. */
+  const m3 = await p.evaluate(async () => {
+    const c = COURSES['OT-ICS'].chapters.find(ch => ch.id === 'sec');
+    const inTree = !!(c && c.sections.some(sx => sx.id === 's3' && /Module 3/.test(sx.title)));
+    const r = await fetch(window.__otUrl); const pk = await r.json();
+    const L = JSON.parse(pk.l), Q = JSON.parse(pk.q);
+    const body = (L['OT-ICS/sec/s3'] || {}).body || '';
+    const txt = body.replace(/<[^>]*>/g, ' ');
+    const d = await fetch('/flashcards/ot-ics-m3.txt'); const t = d.ok ? await d.text() : '';
+    const lines = t.split('\n').filter(Boolean);
+    const qs = Q['OT-ICS/sec/s3'] || [];
+    return { inTree, chars: txt.length, quiz: qs.length, slots: [...new Set(qs.map(q => q.correct))].length,
+             covers: ['Backout plan', 'Maintenance window', 'Dependencies', 'AES', 'Diffie-Hellman', 'salt', 'HSM', 'Tokenization', 'OCSP', 'Wildcard', 'CSR', 'Modbus'].filter(k => !new RegExp(k, 'i').test(txt)),
+             figure: /data-figure="hand"/.test(body) && /chain of trust/i.test(body),
+             deck: { status: d.status, cards: lines.length, bad: lines.filter(l => l.split('\t').length !== 2).length },
+             linked: /ot-ics-m3\.txt/.test((L['OT-ICS/sys/s4'] || {}).body || ''),
+             offline: (window.__offline && window.__offline.files && (window.__offline.files['OT-ICS'] || []).indexOf('/flashcards/ot-ics-m3.txt') >= 0) };
+  });
+  ok('Module 3 is in the tree with a full lesson covering all of 1.3 and 1.4', m3.inTree && m3.chars > 9000 && m3.covers.length === 0 && m3.figure, m3);
+  ok('Module 3 ends in a ten-question quiz whose answers are spread across slots', m3.quiz >= 10 && m3.slots >= 3, m3);
+  ok('its deck is served, linked from the flashcard page, and saved for offline', m3.deck.status === 200 && m3.deck.cards >= 40 && m3.deck.bad === 0 && m3.linked && m3.offline, m3);
   /* "Sorry both" - the explainer she left blank on the quiz, as a highlighted
      box in the lesson: agent on the host vs scanned over the network, and why
      OT usually has no choice. */
