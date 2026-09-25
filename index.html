@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.629">
+<meta name="app-build" content="18.630">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -5627,6 +5627,8 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
 .hero-sim-btn { flex:1; border:none; border-radius:9px; padding:7px 0; font-size:12px; font-weight:800; cursor:pointer; transition: transform 0.12s ease, filter 0.14s ease; }
 .hero-sim-btn:hover { filter: brightness(1.08); }
 .hero-sim-btn:active { transform: scale(0.95); }
+.hero-sim-btn.hero-sim-short { opacity: 0.8; }
+.hero-sim-btn.hero-sim-none { opacity: 0.45; cursor: not-allowed; }
 .hero-sim-btn.pa { background: linear-gradient(135deg, var(--accent), #38bdf8); color:#04211c; }
 .hero-sim-btn.oa { background: linear-gradient(135deg, #f59e0b, #ef4444); color:#fff; }
 
@@ -19684,12 +19686,20 @@ function renderClass(courseId) {
  const card = (ch, i) => {
  const cprog = chapterProgress(courseId, ch.id);
  const status = cprog === 0 ? `untouched` : (cprog >= 80 ? `mastered` : `in progress`);
+ /* a simulation tile says what it can deal: the pool holds only questions
+    that are not practice questions, and a short pool says so here rather
+    than after she has pressed start */
+ let simMeta = '';
+ if (/^(oa_sim|pa_sim|pa_fresh)$/.test(String(ch.id)) && typeof simPoolSize === 'function') {
+ const n = simPoolSize(courseId, ch.id), sit = simSitting(courseId);
+ simMeta = n >= sit ? `${n} questions · deals ${sit}` : (n >= 10 ? `${n} questions · short of a ${sit}-question sitting` : `${n} question${n === 1 ? '' : 's'} · nothing to sit yet`);
+ }
  return `
  <div class="chapter-item" data-chapter="${ch.id}">
  <div class="chapter-num">CH ${String(i + 1).padStart(2, `0`)}</div>
  <div class="chapter-body">
  <div class="chapter-title">${esc(ch.title)}</div>
- <div class="chapter-meta">${ch.sections.length} sections <span class="pill new">${status}</span></div>
+ <div class="chapter-meta">${simMeta ? simMeta : `${ch.sections.length} sections`} <span class="pill new">${status}</span></div>
  <div class="progress-bar"><div style="width: ${cprog}%;"></div></div>
  </div>
  <div class="chevron">›</div>
@@ -38467,6 +38477,21 @@ function renderHomeV3() {
 
 
 // ==================== TODAY HERO: exam simulations front-and-center (v17.60) ====================
+/* A SIM BUTTON MUST NOT PROMISE WHAT THE POOL CANNOT DEAL. The simulation
+   pools used to be the practice banks re-labelled; with the copies gone some
+   courses' pools are smaller than a sitting. A button for one of those is
+   disabled and says how many questions are there, instead of dealing a
+   nine-question "OA" that reads as a full one. */
+function simPoolSize(cid, pool){ try { return (SAMPLE_QUESTIONS[cid + '/' + pool + '/sim'] || []).filter(Boolean).length; } catch (e) { return 0; } }
+function simSitting(cid){ return (window.SIM_SIZE && window.SIM_SIZE[cid]) || 50; }
+function simBtn(cid, pool, label){
+  var n = simPoolSize(cid, pool), sit = simSitting(cid), cls = 'hero-sim-btn ' + (pool === 'pa_sim' ? 'pa' : 'oa');
+  if (n >= sit) return '<button class="' + cls + '" data-sim-launch="' + cid + '|' + pool + '">' + label + ' \u00b7 ' + sit + 'Q</button>';
+  /* fewer than a sitting but enough to be worth sitting: launchable, and the
+     label says how short it is. Fewer than ten: nothing to sit yet. */
+  if (n >= 10) return '<button class="' + cls + ' hero-sim-short" data-sim-launch="' + cid + '|' + pool + '" title="' + n + ' questions that are not practice questions - short of a ' + sit + '-question sitting">' + label + ' \u00b7 ' + n + 'Q short</button>';
+  return '<button class="' + cls + ' hero-sim-short hero-sim-none" disabled aria-disabled="true" data-sim-launch="' + cid + '|' + pool + '" title="Only ' + n + ' question' + (n === 1 ? '' : 's') + ' here that ' + (n === 1 ? 'is' : 'are') + ' not a practice question - nothing to sit yet">' + label + ' \u00b7 ' + n + ' of ' + sit + '</button>';
+}
 function todayHeroHTML(){
  try {
   var pinned = Object.values(COURSES).filter(function(c){ return store.pinnedCourses && store.pinnedCourses[c.id] && c.chapters && c.chapters.some(function(x){ return x.id==='pa_sim'; }); });
@@ -38478,8 +38503,7 @@ function todayHeroHTML(){
   var cards = pool.map(function(c){
    return '<div class="hero-sim-card"><div class="hero-sim-code">'+esc(c.id)+'</div><div class="hero-sim-name">'+esc(c.name)+'</div>'
      + '<div class="hero-sim-btns">'
-     + '<button class="hero-sim-btn pa" data-sim-launch="'+c.id+'|pa_sim">PA \u00b7 '+((window.SIM_SIZE&&window.SIM_SIZE[c.id])||50)+'Q</button>'
-     + '<button class="hero-sim-btn oa" data-sim-launch="'+c.id+'|oa_sim">OA \u00b7 '+((window.SIM_SIZE&&window.SIM_SIZE[c.id])||50)+'Q</button>'
+     + simBtn(c.id, 'pa_sim', 'PA') + simBtn(c.id, 'oa_sim', 'OA')
      + '</div></div>';
   }).join('');
   return '<div class="today-hero">'
@@ -38494,6 +38518,7 @@ document.addEventListener('click', function(e){
  var el = e.target && e.target.closest && e.target.closest('[data-sim-launch]');
  if (!el) return;
  e.preventDefault();
+ if (el.disabled || el.getAttribute('aria-disabled') === 'true') { try { toast(el.title || 'Not enough questions for a full sitting yet'); } catch (e2) {} return; }
  var parts = String(el.getAttribute('data-sim-launch')).split('|');
  if (typeof go === 'function') go({ name:'quiz', courseId: parts[0], chId: parts[1], secId:'sim', mode:'practice' });
 }, true);
@@ -39411,7 +39436,14 @@ setTimeout(function(){ try{
       pool.push(clone);
     }
   }
-  if (pool.length >= 50){ SAMPLE_QUESTIONS['C959/oa_sim/sim'] = pool; SAMPLE_QUESTIONS['C959/pa_sim/sim'] = pool.slice(); }
+  /* THE OA MUST NOT BE THE PRACTICE QUESTIONS. This built `pool` by cloning
+     every practice question with a domain tag and then REPLACED the course
+     file's own OA and PA pools with it - so what she sat for Discrete was the
+     practice bank re-labelled, whatever the file held, and the PA was the
+     same array again. The file's pools carry their own domain tags now and
+     are disjoint; the clone is no longer used. The stratified draw below is
+     unchanged and reads the file's pools. */
+  if (false && pool.length >= 50){ SAMPLE_QUESTIONS['C959/oa_sim/sim'] = pool; SAMPLE_QUESTIONS['C959/pa_sim/sim'] = pool.slice(); }
   // The real C959 OA is 72 questions over seven units, with graphs and trees the
   // heaviest; this draw mirrors that shape (proofs are counted inside logic).
   window.SIM_SIZE = { C959: 72 };
@@ -67467,6 +67499,12 @@ FRESHGEN.deal = function(cid, n){
       if (out.some(function(o){ return o.text === q.text; })) continue;
       q.id = 'fx_' + Math.random().toString(36).slice(2, 10);
       q.fresh = true;
+      if (cid === 'C959' && !q._dom) {
+        var tp = String(q.topic || '').toLowerCase();
+        q._dom = /matri/.test(tp) ? 'matrix' : /graph/.test(tp) ? 'graphs' : /relation/.test(tp) ? 'relations'
+               : /summation|sequence/.test(tp) ? 'series' : /number base/.test(tp) ? 'bool'
+               : /truth|quantif|equivalen/.test(tp) ? 'logic' : 'sets_fn';
+      }
       delete q._java; delete q._expect; delete q._helper; delete q._git;
       out.push(q);
     } catch (e) { /* skip a bad roll */ }
