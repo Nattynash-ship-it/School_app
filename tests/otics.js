@@ -219,6 +219,36 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   ok('the check-in carries all six lines and her entry', ['Week of:', 'Modules done:', 'Quiz scores:', 'Wrong-answer topics:', 'Hours actually studied:', 'Life factor:'].every(l => tr.checkin.includes(l)) && /client vs agentless/.test(tr.checkin) && /Module 1[^\n]*100%/.test(tr.checkin), tr.checkin);
   ok('and the exam date is stored', tr.examStored === '2027-02-01', tr);
 
+  /* THE AUDIT'S FIXES, PINNED. Five columns did not fit a phone; the decks were
+     not on the train; the inputs had no names; four overviews read the same. */
+  const au = await p.evaluate(() => {
+    const r = document.querySelector('.ot-track');
+    return {
+      offlineDecks: (window.__offline && window.__offline.urlsFor(['OT-ICS']) || []).filter(u => /\/flashcards\/ot-ics-.*\.txt$/.test(u)).length,
+      offlineOthers: (window.__offline && window.__offline.urlsFor(['C959']) || []).filter(u => /flashcards/.test(u)).length,
+      labelled: ['[data-ot-topic]', '[data-ot-note]', '[data-ot-exam]'].every(q => (r.querySelector(q).getAttribute('aria-label') || '').length > 3),
+      overviews: [...r.querySelectorAll('td.ot-t')].map(td => td.textContent).filter(t => /overview/.test(t)),
+    };
+  });
+  ok('the offline save list for the track carries its three decks - and only for the track', au.offlineDecks === 3 && au.offlineOthers === 0, au);
+  ok('every input on the tracker has a name a screen reader can say', au.labelled === true, au);
+  ok('the four course overviews are named by course, not all "Course overview"', au.overviews.length >= 4 && new Set(au.overviews).size === au.overviews.length && au.overviews.every(t => /62443|GICSP|GRID|CISSP|Security\+/.test(t)), au.overviews);
+
+  const ph = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const pp = await ph.newPage(); pp.on('dialog', d => d.accept());
+  await pp.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load', timeout: 240000 }); await pp.waitForTimeout(11000);
+  const phone = await pp.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    go({ name: 'section', courseId: 'OT-ICS', chId: 'track', secId: 's1' }); await w(2500);
+    const t = document.querySelector('.ot-track .ot-mods'); const rows = [...t.querySelectorAll('tr[data-ot-mod]')];
+    const vw = innerWidth;
+    const off = rows.filter(tr => [...tr.children].some(td => td.getBoundingClientRect().right > vw + 1)).length;
+    return { stacked: getComputedStyle(rows[0]).display === 'block', headHidden: getComputedStyle(t.querySelector('tr.ot-head')).display === 'none',
+             tableRight: Math.round(t.getBoundingClientRect().right), vw, rowsOff: off, pageWide: document.documentElement.scrollWidth > vw + 1 };
+  });
+  await ph.close();
+  ok('on a phone each module is a block, the header goes, and nothing runs off the right edge', phone.stacked && phone.headHidden && phone.rowsOff === 0 && !phone.pageWide && phone.tableRight <= phone.vw, phone);
+
   await p.reload({ waitUntil: 'load', timeout: 240000 }); await p.waitForTimeout(9000);
   const tr2 = await p.evaluate(async () => {
     const w = ms => new Promise(r => setTimeout(r, ms));

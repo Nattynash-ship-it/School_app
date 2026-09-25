@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.627">
+<meta name="app-build" content="18.628">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -4763,9 +4763,24 @@ body { font-family: var(--font-body, "Space Grotesk", -apple-system, BlinkMacSys
 .ot-track table.ot-mods { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ot-track .ot-mods th, .ot-track .ot-mods td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .ot-track .ot-chrow td { background: var(--surface-2); font-weight: 800; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
-.ot-track tr.ot-weak td:nth-child(2) { color: #dc2626; font-weight: 700; }
-.ot-track tr.ot-solid td:nth-child(2) { color: #16a34a; font-weight: 700; }
-.ot-track tr.ot-revisit td:nth-child(2) { color: #d97706; font-weight: 700; }
+.ot-track tr.ot-weak td.ot-s { color: var(--danger); font-weight: 700; }
+.ot-track tr.ot-solid td.ot-s { color: var(--success); font-weight: 700; }
+.ot-track tr.ot-revisit td.ot-s { color: var(--warning); font-weight: 700; }
+.ot-track td.ot-s, .ot-track td.ot-n, .ot-track td.ot-d { white-space: nowrap; }
+.ot-track td.ot-n { font-variant-numeric: tabular-nums; }
+/* FIVE COLUMNS DO NOT FIT A PHONE. At 390px the module name was squeezed to two
+   words a line and the date column ran off the right edge. Below 600px each
+   module becomes a block: the name on its own line, then status, best, last
+   and date as one short line under it, each number labelled. */
+@media (max-width: 600px) {
+  .ot-track .ot-mods tr.ot-head { display: none; }
+  .ot-track .ot-mods tr { display: block; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .ot-track .ot-mods tr.ot-chrow { padding: 8px 6px; }
+  .ot-track .ot-mods td { display: inline; border: 0; padding: 0 8px 0 0; }
+  .ot-track .ot-mods td.ot-t { display: block; padding: 0 0 3px; font-weight: 600; }
+  .ot-track .ot-mods td.ot-n::before { content: attr(data-l) ' '; font-size: 11px; color: var(--text-3); }
+  .ot-track .ot-add input[type="text"] { flex-basis: 100%; }
+}
 .ot-track .ot-sum { font-size: 13px; color: var(--text-2); margin: 8px 0 0; }
 .ot-track .ot-hint { font-size: 12.5px; color: var(--text-3); margin: 4px 0 8px; }
 .ot-track ul.ot-auto, .ot-track ul.ot-man { padding-left: 18px; margin: 6px 0; }
@@ -33066,6 +33081,11 @@ function mine(){
 }
 /* The addresses for a chosen set of classes, the manifest always included -
    without it the app cannot read any of them. */
+/* A COURSE'S DECKS GO ON THE TRAIN WITH IT. The OT/ICS track ships its Anki
+   decks as plain files beside the packs; they were only reachable offline on a
+   device that had already opened them, which is not what "save for the train"
+   promises. */
+var COURSE_FILES = { 'OT-ICS': ['/flashcards/ot-ics-m1.txt', '/flashcards/ot-ics-m2.txt', '/flashcards/ot-ics-foundations.txt'] };
 function urlsFor(cids){
   var all = urls(), want = {}, out = [], i;
   for (i = 0; i < (cids || []).length; i++) want[cids[i]] = 1;
@@ -33073,6 +33093,7 @@ function urlsFor(cids){
     var m = /\/content-([\w-]+)\.json/.exec(all[i]);
     if (!m || m[1] === 'manifest' || want[m[1]]) out.push(all[i]);
   }
+  for (var cid in COURSE_FILES) if (want[cid]) out = out.concat(COURSE_FILES[cid]);
   return out;
 }
 function held(){
@@ -33117,7 +33138,7 @@ function download(onStep, list){
   });
 }
 
-window.__offline = { held: held, download: download, urls: urls, shelf: SHELF,
+window.__offline = { held: held, download: download, urls: urls, shelf: SHELF, files: COURSE_FILES,
                      mine: mine, urlsFor: urlsFor, open: function(){ open(); },
                      /* what the menu line says, without opening anything */
                      status: function(){
@@ -44217,7 +44238,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
   function day(ts){ if (!ts) return '—'; var d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function monday(){ var d = new Date(); var n = (d.getDay() + 6) % 7; d.setDate(d.getDate() - n); return day(d.getTime()); }
   function band(pct){ if (pct == null) return { ico:'—', word:'not started', cls:'ot-none' }; if (pct >= 85) return { ico:'✅', word:'solid', cls:'ot-solid' }; if (pct >= 70) return { ico:'🔁', word:'revisit', cls:'ot-revisit' }; return { ico:'🔴', word:'weak', cls:'ot-weak' }; }
-  function short(t){ return String(t || '').replace(/\s*\(Obj[^)]*\)/, '').split(':')[0].trim(); }
+  function short(t, chTitle){
+    var x = String(t || '').replace(/\s*\(Obj[^)]*\)/, '').split(':')[0].trim();
+    if (/^(Course overview|The long-range plan)$/.test(x) && chTitle) x = (chTitle.indexOf(' \u2014 ') >= 0 ? chTitle.split(' \u2014 ').slice(1).join(' \u2014 ') : chTitle) + ' \u2014 overview';
+    return x;
+  }
 
   function modules(){
     var out = [], c = COURSES[CID]; if (!c) return out;
@@ -44228,7 +44253,7 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
         var best = (m && m.best) ? m.best.pct : (m && m.attempted ? Math.round(m.accuracy * 100) : null);
         var last = (m && m.last) ? m.last.pct : null;
         var when = (m && m.attempted) ? Date.now() - (m.days || 0) * 86400000 : null;
-        out.push({ ch: ch.id, sec: sec.id, chapter: ch.title, title: short(sec.title), attempted: !!(m && m.attempted), best: best, last: last, when: when, band: band(m && m.attempted ? best : null) });
+        out.push({ ch: ch.id, sec: sec.id, chapter: ch.title, title: short(sec.title, ch.title), attempted: !!(m && m.attempted), best: best, last: last, when: when, band: band(m && m.attempted ? best : null) });
       });
     });
     return out;
@@ -44252,11 +44277,11 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     var ms = modules(), rv = reviews(), auto = weakAuto(), man = weakManual();
     var byCh = {}; ms.forEach(function(m){ (byCh[m.chapter] = byCh[m.chapter] || []).push(m); });
     var h = '<div class="ot-track">';
-    h += '<h3>Modules</h3><table class="ot-mods"><tr><th>Module</th><th>Status</th><th>Best</th><th>Last</th><th>Date</th></tr>';
+    h += '<h3>Modules</h3><table class="ot-mods"><tr class="ot-head"><th>Module</th><th>Status</th><th>Best</th><th>Last</th><th>Date</th></tr>';
     Object.keys(byCh).forEach(function(chTitle){
       h += '<tr class="ot-chrow"><td colspan="5">' + esc(chTitle) + '</td></tr>';
       byCh[chTitle].forEach(function(m){
-        h += '<tr class="' + m.band.cls + '" data-ot-mod="' + esc(m.ch + '/' + m.sec) + '"><td>' + esc(m.title) + '</td><td>' + m.band.ico + ' ' + m.band.word + '</td><td>' + (m.best == null ? '—' : m.best + '%') + '</td><td>' + (m.last == null ? '—' : m.last + '%') + '</td><td>' + day(m.when) + '</td></tr>';
+        h += '<tr class="' + m.band.cls + '" data-ot-mod="' + esc(m.ch + '/' + m.sec) + '"><td class="ot-t">' + esc(m.title) + '</td><td class="ot-s">' + m.band.ico + ' ' + m.band.word + '</td><td class="ot-n" data-l="best">' + (m.best == null ? '—' : m.best + '%') + '</td><td class="ot-n" data-l="last">' + (m.last == null ? '—' : m.last + '%') + '</td><td class="ot-d">' + day(m.when) + '</td></tr>';
       });
     });
     h += '</table>';
@@ -44270,12 +44295,12 @@ window.__floatDebounce=window.__floatDebounce||(function(){var q=[],sched=false;
     h += '<ul class="ot-man">';
     man.forEach(function(w, i){ h += '<li class="' + (w.status === 'fixed' ? 'ot-fixed' : 'ot-pending') + '"><span class="ot-st">' + (w.status === 'fixed' ? '✓ fixed' : '○ pending') + '</span> <b>' + esc(w.t) + '</b>' + (w.note ? ' — ' + esc(w.note) : '') + ' <small>' + day(w.ts) + '</small> <button type="button" class="ot-btn" data-ot-toggle="' + i + '">' + (w.status === 'fixed' ? 'reopen' : 'mark fixed') + '</button> <button type="button" class="ot-btn" data-ot-del="' + i + '" aria-label="delete">×</button></li>'; });
     h += '</ul>';
-    h += '<div class="ot-add"><input type="text" data-ot-topic placeholder="Topic (e.g. client vs agentless)" maxlength="80"> <input type="text" data-ot-note placeholder="The actual rule, in your words" maxlength="240"> <button type="button" class="ot-btn ot-primary" data-ot-add>Add to log</button></div>';
+    h += '<div class="ot-add"><input type="text" data-ot-topic aria-label="Weak-area topic" placeholder="Topic (e.g. client vs agentless)" maxlength="80"> <input type="text" data-ot-note aria-label="The rule, in your words" placeholder="The actual rule, in your words" maxlength="240"> <button type="button" class="ot-btn ot-primary" data-ot-add>Add to log</button></div>';
 
     h += '<h3>Next reviews</h3>';
     h += '<p>' + (rv.total ? (rv.due + ' flashcard' + (rv.due === 1 ? '' : 's') + ' due now' + (rv.next ? ' · next due ' + day(rv.next) : '') + ' · ' + rv.total + ' cards in this track') : 'No flashcards reviewed in this track yet — start a deck and the dates appear here.') + '</p>';
     var ex = store.otExamDate || '';
-    h += '<p><label>Practice exam scheduled for: <input type="date" data-ot-exam value="' + esc(ex) + '"></label>' + (ex ? ' <small>(two weeks before the real exam, never the week before)</small>' : '') + '</p>';
+    h += '<p><label>Practice exam scheduled for: <input type="date" data-ot-exam aria-label="Practice exam date" value="' + esc(ex) + '"></label>' + (ex ? ' <small>(two weeks before the real exam, never the week before)</small>' : '') + '</p>';
 
     h += '<h3>Weekly check-in</h3><p class="ot-hint">Paste this to your coach once a week. Fill in the last two lines.</p>';
     h += '<textarea class="ot-checkin" data-ot-checkin readonly rows="7">' + esc(checkin()) + '</textarea>';
