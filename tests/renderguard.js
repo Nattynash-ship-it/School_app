@@ -29,7 +29,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     gannoSetActive(true); await w(600);
     // her page: 205 strokes
     const mk = n => { const a=[]; for (let i=0;i<n;i++){ const pts=[]; const y=300+(i%40)*26;
-      for (let k=0;k<28;k++) pts.push({x:120+(i%5)*140+k*4, y:y+Math.sin(k/4)*5, p:.5});
+      // each stroke its own shape, as handwriting is: an exact translated copy
+      // of a stroke is a duplicate the render drops (18.632, tests/inkghost.js)
+      for (let k=0;k<28;k++) pts.push({x:120+(i%5)*140+k*4, y:y+Math.sin(k/4+i*0.37)*(4+i*0.05), p:.5});
       a.push({type:i%4===0?'highlighter':'pen',color:'#ffe45c',width:i%4===0?8:2,points:pts,
               ts:Date.now()-i*900,_ts:Date.now()-i*900}); } return a; };
     gannoSaveStrokes(ganno.routeKey, mk(205)); await w(500);
