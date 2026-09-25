@@ -145,7 +145,9 @@ const THEMES = ['arcade','architect','aurora','boldstudy','brightblocks','butter
   ok('the paper is one painted colour, not three stacked layers',
      R.paperStacked.length === 1 && R.paperStacked[0] === 'glass',
      'stacked only in: ' + (R.paperStacked.join(',') || 'none'));
-  ok('a move with no prediction draws only what she drew', R.segNoPredict === 40, R.segNoPredict + ' segments');
+  /* 40 points she made, plus the raw tail the steady hand draws so the visible
+     line reaches the nib (half its window plus one, six at the default) */
+  ok('a move with no prediction draws only what she drew, plus the raw tail to the nib', R.segNoPredict >= 40 && R.segNoPredict <= 46, R.segNoPredict + ' segments');
   ok('a 3-point prediction draws 3 segments ahead of the nib',
      R.segWithPredict === R.segNoPredict + 1 + 3, R.segNoPredict + ' -> ' + R.segWithPredict);
   ok('the tail is capped so a sharp turn cannot flick out a spur',

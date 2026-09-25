@@ -110,6 +110,43 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   const kept = await p.evaluate(() => window.__notesPanel.steady().amount);
   ok('and the amount survives a reload', Math.abs(kept - 0.8) < 0.01, kept);
 
+  /* SECOND PASS - "while writing I am having some issues". The stored point
+     trails the nib by design, but the line she SEES must not: it reaches the
+     nib along her raw path. And a corner must survive the averaging. */
+  const probe = async (amount, kind) => p.evaluate(async ({ amount, kind }) => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    const NP = window.__notesPanel; if (!document.querySelector('#mn-dock svg')) { NP.open(); await w(1200); }
+    NP.steady(amount);
+    const s = NP.surface(); const svg = document.querySelector('#mn-dock svg'); const R = svg.getBoundingClientRect(); const K = 1000 / R.width;
+    const mk = (t, x, y) => new PointerEvent(t, { pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.6, bubbles: true, cancelable: true, buttons: t === 'pointerup' ? 0 : 1 });
+    const x0 = s.x + 100 + Math.random() * 300, y0 = s.y + 150 + Math.random() * 200;
+    const before = JSON.stringify(NP.lastStroke()); const out = {};
+    if (kind === 'lag') {
+      svg.dispatchEvent(mk('pointerdown', x0, y0)); let x = x0;
+      for (let i = 1; i <= 40; i++) { x = x0 + 2 * i; svg.dispatchEvent(mk('pointermove', x, y0)); }
+      const d = svg.querySelector('path:last-of-type').getAttribute('d'); const m = d.match(/L ([\d.]+) ([\d.]+)\s*$/);
+      out.lagPx = m ? Math.round((((x - R.left) * K - (+m[1])) / K) * 10) / 10 : null;
+      svg.dispatchEvent(mk('pointerup', x, y0));
+    }
+    if (kind === 'corner') {
+      svg.dispatchEvent(mk('pointerdown', x0, y0)); let x = x0, y = y0;
+      for (let i = 1; i <= 30; i++) { x = x0 + 2.5 * i; y = y0 + 2.5 * i; svg.dispatchEvent(mk('pointermove', x, y)); }
+      const ax = x, ay = y; for (let i = 1; i <= 30; i++) svg.dispatchEvent(mk('pointermove', ax + 2.5 * i, ay - 2.5 * i));
+      svg.dispatchEvent(mk('pointerup', ax + 75, ay - 75)); await w(200);
+      const st = NP.lastStroke(); const apx = (ax - R.left) * K, apy = (ay - R.top) * K; let best = 1e9;
+      if (st) st.points.forEach(q => { best = Math.min(best, Math.hypot(q.x - apx, q.y - apy)); });
+      out.cornerCutPx = Math.round(best / K * 10) / 10;
+    }
+    if (kind === 'dot') { svg.dispatchEvent(mk('pointerdown', x0, y0)); svg.dispatchEvent(mk('pointermove', x0 + 1, y0 + 0.5)); svg.dispatchEvent(mk('pointerup', x0 + 1, y0 + 0.5)); }
+    await w(200); const st2 = NP.lastStroke(); out.kept = !!st2 && JSON.stringify(st2) !== before;
+    return out;
+  }, { amount, kind });
+  const lagD = await probe(0.4, 'lag'), lagF = await probe(1, 'lag');
+  ok('while she writes, the line she sees reaches the nib (no rubber band), at the default and at full', lagD.lagPx !== null && lagD.lagPx <= 1.5 && lagF.lagPx !== null && lagF.lagPx <= 1.5, { def: lagD, full: lagF });
+  const cornerRaw = await probe(0, 'corner'), cornerD = await probe(0.4, 'corner');
+  ok('a sharp corner survives the steady hand: rounded by under 5 px at the default (the raw control keeps it exactly)', cornerRaw.cornerCutPx < 0.5 && cornerD.cornerCutPx < 5, { raw: cornerRaw, def: cornerD });
+  const dotD = await probe(0.4, 'dot');
+  ok('a dot is still a mark', dotD.kept, dotD);
   ok('no page errors', errs.length === 0, errs.slice(0, 3));
   await ctx.close(); await b.close();
   console.log(`steady: ${pass}/${pass + fail} passed`);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.630">
+<meta name="app-build" content="18.631">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -70292,7 +70292,29 @@ var STEADY_DEFAULT = 0.4, STEADY_MAX_PX = 10;
 function steadyAmt(){ var v = prefs().steady; return (typeof v === 'number' && v >= 0 && v <= 1) ? v : STEADY_DEFAULT; }
 function steadyPx(){ return STEADY_MAX_PX * steadyAmt(); }
 function steadyWin(){ var a = steadyAmt(); return a > 0 ? Math.round(4 + 12 * a) : 1; }   // samples averaged: 9 default, 16 full
-var steadyBuf = [];           // the last few follower positions, averaged into the stored point
+var steadyBuf = [];           // follower positions [x, y, t, step] averaged into the stored point
+var steadyRaw = [];           // the last raw samples, drawn (never stored) so the line reaches the nib
+var STEADY_MS = 45;           // the window never reaches further back in time than this
+/* THE WINDOW IS CAPPED THREE WAYS. By sample count (the slider), by time - at
+   60 Hz nine samples is 150 ms of lag, at 240 Hz it is 37 - and by the
+   follower's travel, so a sharp corner taken slowly is not averaged away with
+   the straight runs either side of it: only what the hand did in the last
+   moment and the last few pixels shapes the point. */
+function steadyDist(rS){ return Math.max(2.5 * rS, 3); }
+function bufPush(buf, x, y, t, step){ buf.push(x, y, t, step); }
+function bufPrune(buf, win, tNow, rS){
+  var cap = steadyDist(rS);
+  while (buf.length > win * 4) buf.splice(0, 4);
+  while (buf.length > 8) {
+    var len = 0; for (var i = 4; i < buf.length; i += 4) len += buf[i + 3];
+    if ((tNow - buf[2]) > STEADY_MS || len > cap) buf.splice(0, 4); else break;
+  }
+}
+function bufMean(buf){
+  var sx = 0, sy = 0, c = buf.length / 4;
+  for (var i = 0; i < buf.length; i += 4) { sx += buf[i]; sy += buf[i + 1]; }
+  return { x: sx / c, y: sy / c };
+}
 function steadyAlpha(){ return steadyAmt() > 0 ? 0 : 1; }   // kept for the API: 1 = raw
 var steadyF = null;           // the follower for the stroke in flight
 function steadyName(v){ return v <= 0.02 ? 'Off \u2014 raw' : v < 0.34 ? 'Light' : v < 0.67 ? 'Medium' : 'Strong'; }
@@ -70953,7 +70975,7 @@ function wireInk(){
     var isHl = (tool === 'hl');
     snapped = (tool === 'line');                  // the ╱ tool is straight from the first touch
     clearStill();
-    steadyF = { x: p.x, y: p.y }; steadyBuf = [];
+    steadyF = { x: p.x, y: p.y }; steadyBuf = []; steadyRaw = [];
     live = { type: isHl ? 'hl' : 'pen',
              color: isHl ? hlColor() : penColor(),
              width: isHl ? hlWidth() : penWidth(),
@@ -70985,13 +71007,14 @@ function wireInk(){
     for (var k = 0; k < evs.length; k++) {
       var p = pt(evs[k]);
       if (rS > 0 && steadyF) {
-        var fx = p.x - steadyF.x, fy = p.y - steadyF.y, fd = Math.sqrt(fx*fx + fy*fy);
-        if (fd > rS) { var tow = (fd - rS) / fd; steadyF.x += fx * tow; steadyF.y += fy * tow; }
-        steadyBuf.push(steadyF.x, steadyF.y);
-        var win = steadyWin(); while (steadyBuf.length > win * 2) steadyBuf.splice(0, 2);
-        var sx = 0, sy = 0, cnt = steadyBuf.length / 2;
-        for (var b2 = 0; b2 < steadyBuf.length; b2 += 2) { sx += steadyBuf[b2]; sy += steadyBuf[b2 + 1]; }
-        p = { x: sx / cnt, y: sy / cnt, p: p.p };
+        steadyRaw.push(p.x, p.y); while (steadyRaw.length > 40) steadyRaw.splice(0, 2);
+        var fx = p.x - steadyF.x, fy = p.y - steadyF.y, fd = Math.sqrt(fx*fx + fy*fy), step = 0;
+        if (fd > rS) { var tow = (fd - rS) / fd; steadyF.x += fx * tow; steadyF.y += fy * tow; step = fd - rS; }
+        var tk = (evs[k] && typeof evs[k].timeStamp === 'number' && evs[k].timeStamp) || e.timeStamp || 0;
+        bufPush(steadyBuf, steadyF.x, steadyF.y, tk, step);
+        bufPrune(steadyBuf, steadyWin(), tk, rS);
+        var mean = bufMean(steadyBuf);
+        p = { x: mean.x, y: mean.y, p: p.p };
       }
       var last = live.points[live.points.length - 1];
       var dx = p.x - last.x, dy = p.y - last.y;
@@ -71014,6 +71037,17 @@ function wireInk(){
        stroke is exactly her hand and a wrong guess is gone next frame.
        Capped at four points so a sharp turn cannot flick a long spur out. */
     var tail = '';
+    /* THE LINE SHE SEES REACHES THE NIB. The stored point trails the pen by
+       the string and half the window - a dozen pixels at the default - and a
+       straight jump from there to the predicted tip was a rubber band that
+       swung on every frame. The last few RAW samples are drawn from the stored
+       point to the nib instead, so the visible ink is her exact path at the
+       tip and settles into the steadied line a moment behind it. Drawn only:
+       the stroke that is kept is still the steadied one. */
+    if (rS > 0 && steadyF && steadyRaw.length) {
+      var back = (Math.ceil(steadyWin() / 2) + 1) * 2;
+      for (var r0 = Math.max(0, steadyRaw.length - back); r0 < steadyRaw.length; r0 += 2) tail += ' L ' + steadyRaw[r0].toFixed(1) + ' ' + steadyRaw[r0 + 1].toFixed(1);
+    }
     try {
       var pe = e.getPredictedEvents ? e.getPredictedEvents() : null;
       if (pe && pe.length) {
@@ -71032,7 +71066,8 @@ function wireInk(){
     var tip = null;
     try { if (live && !snapped && steadyF && steadyPx() > 0 && e && typeof e.clientX === 'number' && tool !== 'erase') tip = pt(e); } catch (err0) { tip = null; }
     var drainF = steadyF ? { x: steadyF.x, y: steadyF.y } : null, drainB = steadyBuf.slice();
-    steadyF = null; steadyBuf = [];
+    var drainR = (steadyF && steadyPx() > 0) ? steadyPx() * ((svgBox().width || 0) ? (UNITS / svgBox().width) : 1) : 0;
+    steadyF = null; steadyBuf = []; steadyRaw = [];
     drawing = false; penId = null;
     penGesture = false; penRect = null;
     clearStill();
@@ -71060,10 +71095,9 @@ function wireInk(){
       var lp0 = live.points[live.points.length - 1], gx = tip.x - lp0.x, gy = tip.y - lp0.y;
       if (gx*gx + gy*gy < 360000) {
         var pr = (typeof tip.p === 'number') ? tip.p : (lp0.p || 0.5), win2 = steadyWin(), guard = 0;
+        var tEnd = (e && typeof e.timeStamp === 'number' && e.timeStamp) || (drainB.length ? drainB[drainB.length - 2] : 0);
         var pushMean = function(){
-          var sx = 0, sy = 0, c = drainB.length / 2;
-          for (var i2 = 0; i2 < drainB.length; i2 += 2) { sx += drainB[i2]; sy += drainB[i2 + 1]; }
-          var q = { x: sx / c, y: sy / c, p: pr }, lq = live.points[live.points.length - 1];
+          var m2 = bufMean(drainB), q = { x: m2.x, y: m2.y, p: pr }, lq = live.points[live.points.length - 1];
           if ((q.x - lq.x) * (q.x - lq.x) + (q.y - lq.y) * (q.y - lq.y) >= 0.0001) live.points.push(q);
         };
         // tow the follower to the nib, a sample's travel at a time
@@ -71071,11 +71105,11 @@ function wireInk(){
           var ex = tip.x - drainF.x, ey = tip.y - drainF.y, ed = Math.sqrt(ex*ex + ey*ey);
           if (ed <= 0.5) break;
           var stp = Math.min(1.6, ed); drainF.x += ex / ed * stp; drainF.y += ey / ed * stp;
-          drainB.push(drainF.x, drainF.y); while (drainB.length > win2 * 2) drainB.splice(0, 2);
+          bufPush(drainB, drainF.x, drainF.y, tEnd, stp); bufPrune(drainB, win2, tEnd, drainR);
           pushMean();
         }
         // then drain the window on the nib itself
-        for (var d2 = 0; d2 < win2; d2++) { drainB.push(tip.x, tip.y); while (drainB.length > win2 * 2) drainB.splice(0, 2); pushMean(); }
+        for (var d2 = 0; d2 < win2; d2++) { bufPush(drainB, tip.x, tip.y, tEnd, 0); bufPrune(drainB, win2, tEnd, drainR); pushMean(); if (drainB.length <= 8) break; }
       }
     }
     if (live && live.points.length >= 2) {
