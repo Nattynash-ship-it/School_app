@@ -1,0 +1,45 @@
+What does SY0-701 objective 1.3 cover?	Change management processes and their impact on security
+Name the business processes in SY0-701 change management.	Approval process, ownership, stakeholders, impact analysis, test results, backout plan, maintenance window, standard operating procedure
+What is a backout plan?	The written way to undo a change if it fails
+What is a maintenance window?	The agreed time when a change may be made with the least disruption
+What is a CAB?	Change Advisory Board — the group that approves changes
+What is impact analysis in change management?	Working out what the change could break, how badly, and what risk it adds or removes
+Name the technical implications of a change on the SY0-701 list.	Allow/deny lists, restricted activities, downtime, service restart, application restart, legacy applications, dependencies
+A patch breaks a different system that relied on the old version. What was missed?	Dependencies (through impact analysis)
+What documentation must be updated after a change?	Diagrams, and policies and procedures
+Why use version control for configurations?	To see exactly what changed and to roll back to a known-good version
+What is MOC in a plant?	Management of Change — the process-safety version of change management
+What are the three jobs of cryptography?	Keep it secret (encryption), prove it is unchanged (hashing), prove who sent it (digital signatures)
+Symmetric encryption uses how many keys?	One shared key, used to lock and unlock
+Name the standard symmetric algorithm.	AES — Advanced Encryption Standard
+Asymmetric encryption uses what?	A key pair: a public key anyone may have and a private key only the owner holds
+Name two asymmetric algorithms.	RSA and ECC (elliptic-curve cryptography)
+Why is ECC attractive?	It gives the same strength as RSA with much shorter keys
+What problem does Diffie-Hellman solve?	Agreeing a shared secret key over an open network
+How does TLS combine the two kinds of encryption?	Asymmetric to agree a key, then symmetric to move the data
+To send Bob a secret, whose key do you encrypt with?	Bob's public key
+To sign a message, whose key does the sender use?	The sender's own private key
+What two things does a digital signature prove?	Integrity (unchanged) and non-repudiation (the sender cannot deny sending it)
+Is hashing encryption?	No — hashing is one-way; encryption is two-way with the key
+What is a hash used for on the exam?	Proving integrity, and storing passwords without storing the password itself
+What is a salt?	A random value added to each password before hashing, so identical passwords hash differently
+What is key stretching?	Running a hash many times (PBKDF2, bcrypt) so each password guess is slow
+List the encryption levels on the SY0-701 list.	Full-disk, partition, file, volume, database, record — plus transport/communication for data in motion
+What does full-disk encryption protect against?	A lost or stolen device being read
+What is a TPM?	Trusted Platform Module — a chip in one computer that stores keys and supports secure boot and disk encryption
+What is an HSM?	Hardware Security Module — a dedicated tamper-resistant device that generates and protects keys for many systems
+What is a secure enclave?	An isolated area of a processor that protects keys and code even from the main operating system
+What is key escrow?	A copy of a key held by a trusted third party so data can be recovered if the key is lost
+What is steganography?	Hiding data inside other data, such as a message in an image
+What is tokenization?	Replacing a sensitive value with a meaningless token; the real value is kept in a separate vault
+What is data masking?	Showing only part of a value, such as the last four digits of a card
+What is PKI?	Public Key Infrastructure — CAs, certificates and the trust between them
+What does a certificate authority do?	Signs certificates to vouch that a public key belongs to an identity
+What is the root of trust?	The root CA certificate your device already trusts; every chain ends there
+What is a self-signed certificate?	A certificate signed by its own key — fine in a lab, not trusted by strangers
+What is a CSR?	Certificate Signing Request — sent to a CA with your public key; the private key stays with you
+What does a wildcard certificate *.example.com cover?	Every name one level under the domain, such as www and mail — not a.b.example.com
+What is a CRL?	Certificate Revocation List — the CA's published list of cancelled certificates
+What is OCSP?	Online Certificate Status Protocol — asks the CA about one certificate in real time
+Why is blockchain an integrity technology?	Records are chained by hashes, so changing an old entry breaks every later one
+Why does OT often prioritise authentication over encryption?	Classic protocols like Modbus accept commands from anyone who can reach the device, so proving a command is genuine matters most
