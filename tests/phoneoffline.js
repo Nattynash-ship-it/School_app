@@ -131,12 +131,20 @@ const LESSON = { name: 'section', courseId: 'D286', chId: 'u1', secId: 'z1_1' };
     if (!O || typeof O.mine !== 'function' || typeof O.urlsFor !== 'function') return { missing: true, mine: 0, few: 0, all: 0 };
     const mine = O.mine();
     const few = O.urlsFor(mine);
-    return { missing: false, mine: mine.length, few: few.length, all: O.urls().length,
+    /* a course may declare files of its own that travel with it (the OT/ICS
+       track's Anki decks); those belong on the train too, and only for courses
+       she is taking */
+    const CF = O.files || {};
+    const extra = [].concat(...mine.map(c => CF[c] || []));
+    const notMine = [].concat(...Object.keys(CF).filter(c => mine.indexOf(c) === -1).map(c => CF[c]));
+    return { missing: false, mine: mine.length, few: few.length, all: O.urls().length, extra: extra.length,
              manifest: few.filter(u => /content-manifest/.test(u)).length,
-             onlyMine: few.every(u => /content-manifest/.test(u) || mine.some(c => u.indexOf('/content-' + c + '.json') === 0)) };
+             strangers: few.filter(u => notMine.indexOf(u) !== -1).length,
+             onlyMine: few.every(u => /content-manifest/.test(u) || extra.indexOf(u) !== -1 || mine.some(c => u.indexOf('/content-' + c + '.json') === 0)) };
   });
   ok('the app knows which classes she is actually taking', !api.missing && api.mine > 0 && api.mine < api.all, api);
-  ok('saving those asks for exactly them, plus the manifest they need', api.manifest === 1 && api.onlyMine && api.few === api.mine + 1, api);
+  ok('saving those asks for exactly them, plus the manifest they need - and their own files, nobody else\'s',
+     api.manifest === 1 && api.onlyMine && api.strangers === 0 && api.few === api.mine + 1 + api.extra, api);
 
   const menu = await p.evaluate(async () => {
     const w = ms => new Promise(r => setTimeout(r, ms));
