@@ -70842,6 +70842,16 @@ function splitStroke(s, p, R){
   var out = [];
   for (var k = 0; k < runs.length; k++) {
     if (runs[k].length < 2) continue;
+    /* A CRUMB IS A CRUMB HOWEVER MANY POINTS IT HAS. Fragments were kept by
+       point count, which was the same as by length while points sat 16 px
+       apart. The steady hand stores the end of a stroke densely (the lag is
+       drained along the path), so the few pixels the eraser did not reach at
+       a stroke's end came back as a many-point speck instead of vanishing as
+       the single leftover point used to. Under three page units of ink is not
+       a stroke she wants to keep. */
+    var rl = 0;
+    for (var m2 = 1; m2 < runs[k].length; m2++) { var ux = runs[k][m2].x - runs[k][m2-1].x, uy = runs[k][m2].y - runs[k][m2-1].y; rl += Math.sqrt(ux*ux + uy*uy); }
+    if (rl < 3) continue;
     out.push({ type: s.type || 'pen', color: s.color, width: s.width, points: runs[k],
                ts: s.ts || Date.now(), _ts: Date.now(), _uid: (typeof inkUid === 'function') ? inkUid() : undefined });
   }
