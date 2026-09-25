@@ -41,7 +41,7 @@ const { chromium } = require('playwright');
   r.consoleErrors = errs.length;
   console.log(JSON.stringify(r,null,1));
   const ok = r.c959_oa_prac && r.d286_lab && r.d684_sims && r.c959_practQ===30 && r.d286_labQ===16 && r.d286_paQ===6 &&
-             r.d684_oaQ===50 && r.d684_oaBank>500 && r.c959_oaDraw===72 && r.locked.length===0 && r.codeTextarea && r.c959SectionSvg>=2 && r.d684SimRenders && errs.length===0;
+             r.d684_oaQ===50 && r.d684_oaBank>=50 /* a full sitting of exam-style items; the 900+ bank was the practice questions re-labelled, gone with the 18.630 audit */ && r.c959_oaDraw===72 && r.locked.length===0 && r.codeTextarea && r.c959SectionSvg>=2 && r.d684SimRenders && errs.length===0;
   console.log(ok ? 'RESULT: new content reachable, unlocked and rendering' : 'RESULT: FAIL ' + JSON.stringify(errs.slice(0,3)));
   await b.close(); process.exit(ok?0:1);
 })().catch(e=>{console.log('ERR '+e);process.exit(2);});

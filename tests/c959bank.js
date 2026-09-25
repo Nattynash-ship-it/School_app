@@ -22,7 +22,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     o.paGrew = pa.length >= 65;
     o.pracInSims = oa.some(q => /^oa\d_/.test(String(q.id||''))) && pa.some(q => /^oa\d_/.test(String(q.id||'')));
     const nx = oa.concat(pa).filter(q => String(q.id||'').startsWith('nx_'));
-    o.nxCount = nx.length === 82;
+    // 82 until the 18.630 audit; six were copies or near-copies of section
+    // questions and left with it - a practice exam must not be the practice.
+    o.nxCount = nx.length === 76;
     o.shapes = nx.every(q =>
       Array.isArray(q.options) && q.options.length === 4 &&
       typeof q.correct === 'number' && q.correct >= 0 && q.correct <= 3 &&
@@ -32,7 +34,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
       /^(easy|medium|hard)$/.test(q.difficulty || '') &&
       typeof q.topic === 'string' && q.topic.length > 1);
     o.oaDoms = oa.filter(q => String(q.id||'').startsWith('nx_')).every(q => /^(logic|sets_fn|bool|matrix|series|relations|graphs)$/.test(q._dom));
-    o.paNoDom = pa.filter(q => String(q.id||'').startsWith('nx_')).every(q => !q._dom);
+    // the PA is dealt by the same domain blueprint as the OA now, so its
+    // items carry a valid domain too (identical to the real exam's format)
+    o.paNoDom = pa.filter(q => String(q.id||'').startsWith('nx_')).every(q => /^(logic|sets_fn|bool|matrix|series|relations|graphs)$/.test(q._dom));
 
     // stratified OA draw still deals exactly 50, and new items can appear
     let sawNx = false, sizesOk = true;
@@ -56,8 +60,9 @@ const F=[]; const ok=(n,c,x)=>F.push({n,pass:!!c,x:x===undefined?'':String(x)});
     o.paShuffles = JSON.stringify(p1.map(q=>q.id)) !== JSON.stringify(p2.map(q=>q.id));
 
     // spot-check two facts so a data regression can't slip through silently
-    const k5 = oa.find(q => q.id && /nx_/.test(q.id) && /K₅/.test(q.text||''));
-    o.k5Right = !!k5 && k5.options[k5.correct] === '10';
+    // (the K₅ item left in the 18.630 audit as a near-copy of a section question)
+    const tree = oa.find(q => q.id && /nx_/.test(q.id) && /tree with 12 vertices/i.test(q.text||''));
+    o.k5Right = !!tree && tree.options[tree.correct] === '11';
     const gauss = oa.find(q => /nx_/.test(q.id||'') && /100\?$/.test(q.text||'') && /⋯/.test(q.text||''));
     o.gaussRight = !!gauss && gauss.options[gauss.correct] === '5050';
     return o;
