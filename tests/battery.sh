@@ -128,6 +128,7 @@ run helperui helperui.js 1
 run padtools padtools.js 1
 run penweight penweight.js 1
 run steady steady.js 1
+run penidle penidle.js 1
 run scrollkeep scrollkeep.js 1
 run renderguard renderguard.js 1
 run hlreadable hlreadable.js 1

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.636">
+<meta name="app-build" content="18.637">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -40814,6 +40814,11 @@ function getQuestions(courseId, chId, secId) {
   }
   function unlock(){
     try{
+      /* Once sound is running there is nothing to unlock. This ran on EVERY
+         pointerdown - so every time the Pencil touched the glass, an audio
+         graph was built before the first dot of ink. iOS re-suspends audio
+         when the app is backgrounded; the state check lets it run again then. */
+      if (window.__sharedAudioCtx && window.__sharedAudioCtx.state === 'running') return;
       var ctx = ensureCtx(); if(!ctx) return;
       if (ctx.state === 'suspended'){ ctx.resume().catch(function(){}); }
       /* play a silent blip to fully unlock on iOS */
@@ -51484,7 +51489,12 @@ window.__pulseAdd = function(fn, everySec, cls){
 // `ganno` is a top-level const, so it never appears on `window` - this used to
 // read window.ganno and was therefore always false, which meant the pulse kept
 // running UI work in the middle of a pen stroke.
-function drawing(){ try { return typeof ganno !== 'undefined' && !!ganno.drawing; } catch (e) { return false; } }
+function drawing(){
+  try { if (typeof ganno !== 'undefined' && ganno.drawing) return true; } catch (e) {}
+  // the notebook pen too: this checked only the lesson pen, so the upkeep ran
+  // in the middle of every sentence she wrote in Notes
+  try { return !!(window.__padPenBusy && window.__padPenBusy()); } catch (e) { return false; }
+}
 var t = 0;
 function beat(force){
   t++;
@@ -63702,10 +63712,26 @@ try {
 
 // ---- 3. clobber guard + 1. mirroring, wrapped around every save ----
 var _mirrorT = null;
+/* THE BACKUP WAITS FOR A PAUSE IN HER WRITING. It re-reads every page of ink
+   and copies it into IndexedDB in one block on the main thread - 50-65ms on a
+   full notebook at iPad speed, which is the pencil falling behind mid-word.
+   While a pen is busy it steps back and tries again; it never waits more than
+   30 seconds, so a long unbroken stretch of writing is still backed up. */
+var _mirrorT = null, _mirrorWantedAt = 0;
+function penBusy(){
+  try { if (typeof ganno !== 'undefined' && ganno && (ganno.drawing || (Date.now() - (ganno.lastPenAt || 0)) < 1500)) return true; } catch (e) {}
+  try { return !!(window.__padPenBusy && window.__padPenBusy()); } catch (e) { return false; }
+}
 function mirrorSoon(){
   if (_mirrorT) return;
+  if (!_mirrorWantedAt) _mirrorWantedAt = Date.now();
   _mirrorT = setTimeout(function(){
     _mirrorT = null;
+    if (penBusy() && (Date.now() - _mirrorWantedAt) < 30000) {
+      try { window.__fortress.mirrorDeferred = (window.__fortress.mirrorDeferred || 0) + 1; } catch (e) {}
+      mirrorSoon(); return;
+    }
+    _mirrorWantedAt = 0;
     mirrorWrite().then(function(){ window.__fortress.mirroredAt = Date.now(); }).catch(function(){});
   }, 2000);
 }
@@ -68826,6 +68852,11 @@ var pendingSel='', seq=0, draftTimer=null, covered=false;
 var side=false, shiftPx=0;      // side mode: a tall panel, the lesson slides left
 var maxed=false;                // big writing mode: the dock overlays the lesson
 var lastPenTs=0;                // when the pen last touched the paper
+/* THE NOTEBOOK PEN IS BUSY while it is down and for a moment after it lifts -
+   the gap between two words. Anything heavy that can wait (the backup, the
+   once-a-second upkeep) asks this and waits, so it never lands mid-sentence.
+   "The pencil in the notes is delayed when writing." */
+window.__padPenBusy = function(){ try { return !!drawing || (Date.now() - lastPenTs) < 1500; } catch (e) { return false; } };
 var autoGrowMute=0;             // addPage scrolls to the foot; that pull is not hers
 var toldMinimizeOnce=false;     // the reassurance toast fires once, not every tap
 var strokeEls=null;             // stroke object -> its <path> node, for erasing one at a time
