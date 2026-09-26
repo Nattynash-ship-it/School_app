@@ -1,0 +1,39 @@
+What does EFFAK stand for, and who publishes it?	Emergency Financial First Aid Kit; a free checklist and forms from Ready.gov and FEMA (ready.gov/emergency-financial-first-aid-kit, or (800) 480-2520)
+Name the four sections of the EFFAK.	Household Identification; Financial and Legal Documentation; Medical Information; Household Contacts
+Where do Ready.gov and FEMA say to keep paper copies of critical documents?	In a fireproof, waterproof box or safe at home, in a bank safe-deposit box, or with a trusted friend or relative
+How should electronic copies of documents be stored?	Password-protected on a flash drive or external drive kept in the fireproof, waterproof box, or in a secure cloud service
+Why keep cash in small bills for an emergency?	ATMs and card machines may not work and businesses may not be able to make change (Ready.gov)
+What does the Insurance Information Institute say a home inventory should record for each item?	Type of item, original price (receipt if possible), year purchased, and serial number; keep a copy outside the home
+What are two-factor backup codes and how many does Google issue?	Single-use codes generated in advance for when the phone is lost; Google gives ten eight-digit codes
+Where does Google advise keeping printed backup codes?	Where you keep your passport or other important documents; never share them; each works once
+Which account's backup codes should be protected first, and why?	Email, because almost every other account resets through it
+What is the 'one-page summary' in the document folder?	A handwritten page with name, date of birth, address, SSN, insurance policy and claims line, bank, doctor, pharmacy and out-of-town contact
+How do you sign up for Notify NYC by text?	Text NOTIFYNYC to 692-692; text your ZIP code to 692-692 for neighbourhood alerts
+When to call 911 and when to call 311?	911 for a life-threatening emergency; 311 for city services, housing complaints and finding open centers
+Does a standard renters insurance policy cover flooding?	No. It covers water from burst pipes or appliance leaks but excludes rising water from outside; flood needs a separate NFIP policy
+What is the NFIP?	The National Flood Insurance Program, run by FEMA; renters can buy contents-only cover through an agent (floodsmart.gov)
+What is the maximum NFIP contents coverage for a renter?	$100,000 for belongings; the building is the landlord's responsibility
+How long is the NFIP waiting period for a new flood policy?	Usually 30 days from purchase; a policy bought days before a storm pays nothing for that storm
+First step once a flooded home is safe, per NYC flood-claims guidance?	Take pictures and detailed notes of damage to the home and belongings before cleaning up; then register the claim with the insurer
+Should you repair flood damage before the adjuster visits?	No. Stop further damage but make no permanent repairs before talking to the insurer or the adjuster has seen it
+What two steps does NYC Emergency Management ask flood-hit residents to take?	Submit a damage report at reportdamage.nyc.gov AND file a 311 service request
+Does a NYC damage report replace an insurance claim?	No. It is used only for assessment and planning and does not guarantee financial help
+Four ways to apply for FEMA Individual Assistance?	Online at DisasterAssistance.gov (fastest), phone 1-800-621-3362, the FEMA app, or in person at a Disaster Recovery Center
+What information should be ready before applying to FEMA?	Home, mailing and email addresses; phone; Social Security number; bank details; insurance information
+Why must you file an insurance claim before FEMA will help?	By law FEMA cannot duplicate benefits; it pays only for uninsured or under-insured losses
+If the insurance settlement is delayed, can FEMA help?	FEMA may help if the settlement is delayed more than 30 days
+How long do you have to send FEMA your insurance settlement or denial?	60 days from the date on the FEMA letter requesting it
+How long do you have to appeal a FEMA decision?	60 days from the date of the decision letter
+What is a Disaster Recovery Center (DRC)?	A temporary FEMA office near the disaster where staff help one-on-one with applications and documents
+How do you find the nearest Disaster Recovery Center by text?	Text DRC and your ZIP code to 43362 (e.g. DRC 11221); or use the locator at FEMA.gov/DRC
+What should you bring to a Disaster Recovery Center?	Nothing is required, but insurance information and the address and ZIP of the damaged home make it faster
+Which New York State hotline helps with insurance problems after a disaster?	NYS Department of Financial Services Disaster Hotline, (800) 339-1759, in 200-plus languages
+What are the dates of NYC heat season?	1 October to 31 May
+NYC daytime heat rule (6 a.m. to 10 p.m.)?	Inside at least 68°F whenever the outside temperature is below 55°F
+NYC night-time heat rule (10 p.m. to 6 a.m.)?	Inside at least 62°F regardless of the outside temperature
+What hot-water temperature must a NYC landlord provide, and when?	At least 120°F at the tap, 365 days a year
+How do you report no heat or hot water in NYC?	Call 311, or use the 311 website or app, with address, apartment number and a phone number; HPD contacts the owner and inspects if not restored
+What can a tenant do if the landlord ignores HPD violations?	Bring an HP Action in Housing Court to force repairs; get free legal advice first
+Who is responsible for building-related flood damage in a NYC rental?	The landlord, under the Housing Maintenance Code (HPD flooding guidance for renters)
+Why is a cheap indoor thermometer part of the document chapter?	A dated log of room temperature and every call to the super is the evidence for a heat complaint
+What killed most of the New Yorkers who died in Hurricane Ida (Sept 2021)?	Drowning in basement apartments; 10 of 14 deaths. Never store the only copies of documents below street level

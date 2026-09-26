@@ -1,0 +1,40 @@
+How many NYC hurricane evacuation zones are there, and which is highest risk?	Six zones, 1 to 6; zone 1 is highest risk and evacuated first; zone 6 floods only in the most severe, unlikely hurricane
+When did NYC switch from evacuation zones A, B, C to numbers?	In 2013
+Where do you look up your hurricane evacuation zone online?	finder.nyc.gov/hurricane or nyc.gov/knowyourzone
+What do the NYC evacuation zones measure?	Risk of storm-surge (sea water) flooding, not rain flooding
+Phone numbers for a zone lookup by 311 if you are Deaf or use TTY?	Video Relay Service 212-639-9675; TTY 212-504-4115
+Wind forecast that triggers the MTA hurricane plan to suspend service?	Sustained winds of 39 mph or more; above 60 mph some bridges may close
+How long does a full MTA subway shutdown take?	About eight hours
+When did the MTA shut down for Hurricane Sandy in 2012?	Started 7 p.m. Sunday; all service stopped by 3 a.m. Monday, before the storm
+Hurricane Ida (1-2 Sep 2021): NYC deaths and where most drowned?	14 deaths; 10 drowned in basement apartments
+Ida rainfall rate versus what NYC sewers were designed for?	3.5 inches per hour versus 1.75 inches per hour
+What happened to high-rise water in the 14 August 2003 blackout?	Pumps stopped, so high-rises lost water pressure
+Who should you go to first when your zone is ordered to evacuate?	A friend or relative outside every evacuation zone; public centers are for people with no other option
+What is a hurricane evacuation center in NYC's plan?	A school or public building where evacuees are processed, then transported to a hurricane shelter if they need one
+Only current list of open evacuation centers?	finder.nyc.gov/hurricane or 311 at the time; centers open per emergency
+NYC Open Data dataset ids for hurricane evacuation centers?	p5md-weyf (list) and ayer-cga7 (map) at data.cityofnewyork.us
+How do you get accessible transport to an evacuation center?	Call 311 as soon as the evacuation order is issued
+Are pets allowed at NYC evacuation shelters?	Yes, service animals and pets are welcome; pets are kept in a separate area, so bring a carrier, food, leash and medication
+How much medication should you bring to an evacuation center?	At least a week's supply, plus medical supplies or equipment you use regularly
+Staten Island evacuation centers seen in a 2015 NYCEM brochure?	IS 51 (20 Houston St), Curtis HS (105 Hamilton Ave), PS 80 Petrides (715 Ocean Terrace); confirm via 311 or the finder at the time
+When do NYC cooling centers open?	When the National Weather Service issues a Heat Advisory or Excessive Heat Warning for NYC, or the city declares a heat emergency
+Where is the NYC cooling center finder?	finder.nyc.gov/coolingcenters (also nyc.gov/cooloptions), or call 311
+Define Code Blue.	In effect when the temperature including wind chill is at or below 32 F between 4 p.m. and 8 a.m.
+What changes during Code Blue?	DHS drop-in centers take as many people as possible, shelter intake is simplified, and more than 50 hospitals keep an open-door policy
+Manhattan 24-hour drop-in center at 257 West 30th Street?	Olivieri Center; confirm via 311 at the time
+Brooklyn drop-in center in the DHS pocket guide?	The Gathering Place, 2402 Atlantic Ave; confirm via 311 at the time
+DHS intake center for families with children?	PATH, 151 East 151st St, Bronx; confirm via 311 at the time
+DHS intake for single adult men?	8 East 3rd St, Manhattan; confirm via 311 at the time
+How many NYC Health + Hospitals acute-care hospitals have emergency departments?	11: Bellevue, Elmhurst, Harlem, Jacobi, Kings County, Lincoln, Metropolitan, North Central Bronx, Queens, South Brooklyn Health, Woodhull
+Signs of heat stroke and the action?	Confusion, hot skin, temperature 103 F or above, may stop sweating: call 911 and cool at once; no fluids if confused
+How far from windows and doors must a generator run?	Outdoors only, at least 20 feet from any window, door or vent, never in a garage
+How do you sign up for Notify NYC by text?	Text NOTIFYNYC to 692-692, then reply with your ZIP code for neighbourhood alerts
+Notify NYC text keywords for Spanish and French?	NOTIFYNYCESP and NOTIFYNYCFRE to 692-692
+NOAA Weather Radio station and frequency for New York City?	KWO35 on 162.550 MHz, transmitting from the Empire State Building
+911 or 311: which is for a life-threatening emergency?	911 for life-threatening emergencies, crime in progress and fire; 311 for all other city services
+Since when has Text-to-911 worked in NYC, and in which languages?	Since June 2020, in English and Spanish, in all five boroughs
+What should the first Text-to-911 message contain?	The emergency, full address with cross streets, and borough, in complete words; no photos, video, GIFs, emoji or group chats
+Text-to-911 slogan?	Call if you can, text if you can't
+Which river crossings never allow pedestrians?	Vehicle tunnels: Lincoln, Holland, Queens-Midtown, Hugh L. Carey
+Three parts of a plan that works without a phone?	A near meeting place, a far meeting place outside every zone, and an out-of-city contact everyone texts
+What does a flooded NYC street hide?	Open manholes and drains, live wires, sewage, subway stairs and cellar hatches

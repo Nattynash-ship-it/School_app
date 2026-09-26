@@ -1,0 +1,39 @@
+In Manhattan, which way do the numbered streets run and which way do the numbers rise?	Streets run east-west; numbers rise as you go north (uptown), from 1st Street to 228th Street.
+Which avenue divides Manhattan addresses into East and West?	Fifth Avenue (Broadway below 8th Street). Building numbers start again at Fifth Avenue.
+How many Manhattan street blocks make about one mile?	About 20 north-south street blocks (each about 264 feet).
+How many Manhattan avenue blocks make about one mile?	Roughly 7 avenue blocks; ten avenue blocks is about 1.4 miles.
+How far off true north is the Manhattan grid?	About 29 degrees east of true north; 'uptown' is north-north-east.
+What does the Queens address 38-01 35th Avenue mean?	On 35th Avenue near 38th Street (number before the hyphen); building 01 on that block (number after the hyphen).
+Which river is on the west side of Manhattan and which is on the east?	Hudson River on the west; East River on the east.
+How long is the Brooklyn Bridge walk and how long does it take at a regular pace?	About 1.1 miles; about 20-30 minutes without stopping. The walkway is above the traffic lanes.
+Which Manhattan neighbourhoods do the Manhattan and Williamsburg Bridges leave from?	Manhattan Bridge from Chinatown to Downtown Brooklyn; Williamsburg Bridge from the Lower East Side to Williamsburg.
+Since 18 May 2025, where do pedestrians walk on the Ed Koch Queensboro Bridge?	The south outer roadway is pedestrians only; the north outer roadway is cyclists only.
+Name four Harlem River bridges that pedestrians can use to reach the Bronx.	Willis Avenue, Third Avenue, Macombs Dam (West 155th Street) and Broadway Bridge.
+At what sustained wind speed may the MTA close its bridges to all traffic?	60 mph or more (certain vehicles are barred from 50 mph).
+Where do you check whether NYC Ferry is running?	ferry.nyc/live-ferry-status or the NYC Ferry app; expect boats to stop in high wind.
+How should you read a compass in a city of steel?	In an open space away from cars, fences and grates; flat at waist height; take three readings and trust them only if they agree.
+What should you do this week to learn your own walking pace?	Time yourself walking 20 Manhattan street blocks with your usual bag; that is your personal mile.
+How much moving water can knock an adult off her feet, and how much can carry away a small car?	6 inches of fast-moving water; 12 inches for a small car; 2 feet carries away most vehicles.
+What share of flood deaths does the NWS say are vehicle-related?	More than 50 percent.
+What is the NWS slogan for flooded roads?	Turn Around, Don't Drown.
+How far should you stay from a downed wire, and whom do you call?	Stay 30 feet away, keep others away, call 911 first, then Con Edison at 1-800-752-6633 (1-800-75-CONED).
+Why is a flooded NYC street more dangerous than it looks?	It can hide manhole covers pushed off by water pressure and downed wires covered by water or leaves.
+When did the MTA stop subways and buses before Hurricane Sandy?	Subways at 7 p.m. and buses at 9 p.m., hours before the storm; people were told to stay off the roads.
+How many people died in NYC in Hurricane Ida and where did most drown?	14 deaths; 10 drowned in basement apartments (1-2 September 2021).
+What is the ten-mile rule for an evacuation bag?	Carry only what you can walk ten miles with; weigh it and walk 20 blocks with it to test.
+Which socks prevent blisters and which cause them?	Moisture-wicking wool or synthetic socks prevent them; cotton holds sweat and rubs.
+What do you do the moment you feel a hot spot on your foot?	Stop and cover it with moleskin or tape; change damp socks.
+Signs of heat stroke and the first action?	Confusion, hot skin, temperature 103 F or above, may stop sweating; call 911 and cool the person; no fluids if confused.
+When is Code Blue in effect in NYC?	When the temperature including wind chill is at or below 32 F between 4 p.m. and 8 a.m.; shelters and drop-in centers accept walk-ins.
+What does Ready.gov say to leave when you evacuate?	A note telling others when you left and where you are going; lock doors and windows; unplug small appliances; take your pets.
+Should the fridge be unplugged when you evacuate?	No, leave the refrigerator and freezer plugged in unless there is a risk of flooding.
+How do you sign up for Notify NYC by text?	Text NOTIFYNYC to 692-692, or text your ZIP code to 692-692 for neighbourhood alerts.
+What is the international distress signal?	Three of anything, evenly spaced: three whistle blasts, three flashes, three fires.
+What is the SOS pattern in Morse code?	Three short, three long, three short (short about 1 second, long about 3 seconds).
+What do the ground-to-air signals X, SOS and an arrow mean?	X = medical emergency; SOS = need help; arrow = direction of travel. Make them large and high-contrast.
+Trapped under debris: what does FEMA say to do?	Send a text, bang on a pipe or wall, use a whistle instead of shouting, cover your mouth with your shirt, do not move about or kick up dust.
+Why should you not shout when trapped under rubble?	Shouting makes you inhale dangerous amounts of dust and wastes strength; tap and whistle instead.
+In what order do you give your location to 911 in NYC?	Borough, street address, cross streets, floor, apartment number, side of the building; then the problem and how many people.
+Since when has Text-to-911 worked in NYC?	Since June 2020. Call if you can, text if you can't.
+Why use an out-of-town contact in a citywide emergency?	Local lines jam; one long-distance text can get through and the contact relays it to everyone else.
+What is the cheapest signalling item to add to your keys?	A plastic pea-less whistle; it works wet and frozen and carries farther than a voice.
