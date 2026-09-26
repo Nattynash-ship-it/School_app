@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.637">
+<meta name="app-build" content="18.638">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -59612,9 +59612,26 @@ function rewrite(rk, strokes){
     }
     cache[rk] = strokes;
     var gen = ((gens[rk] || 0) + 1) % 1000000;
-    var p = pack({ g: gen, s: strokes });
+    /* SAVE NOW, COMPRESS LATER. Compressing a whole page on the main thread
+       was 218 of the 300ms an eraser lift cost on a full page at iPad speed.
+       A big page is written as plain JSON at once - the reader takes either
+       form - and compressed off the main thread; the compressed copy replaces
+       the plain one only if no newer rewrite of the page has happened since.
+       If storage is too full for the plain copy, it compresses here as before. */
+    var p = null, plain = null;
+    try { plain = json({ g: gen, s: strokes }); } catch (e0) { plain = null; }
+    if (plain != null && plain.length > 8000 && typeof window.__packAsync === 'function') {
+      try { localStorage.setItem(PREFIX + rk, plain); p = plain; } catch (eq) { p = null; }
+      if (p != null) {
+        (function(myGen, text){
+          window.__packAsync(text).then(function(c){
+            try { if (c && gens[rk] === myGen && localStorage.getItem(PREFIX + rk) === text) localStorage.setItem(PREFIX + rk, c); } catch (e2) {}
+          });
+        })(gen, plain);
+      }
+    }
+    if (p == null) { p = pack({ g: gen, s: strokes }); if (p != null) localStorage.setItem(PREFIX + rk, p); }
     if (p != null) {
-      localStorage.setItem(PREFIX + rk, p);
       // The generation is live the moment the slot is, so anything appended
       // from here on is stamped with it - including a write that lands before
       // the log below is cleared.
@@ -68862,6 +68879,22 @@ var toldMinimizeOnce=false;     // the reassurance toast fires once, not every t
 var strokeEls=null;             // stroke object -> its <path> node, for erasing one at a time
 var past=[], future=[];         // the action journal: what Undo and Redo step through
 var eraseBatch=null;            // strokes removed by the eraser gesture in progress
+var eraseDirty=false;           // the gesture has changed the page; saved once, on lift
+/* THE ERASER MUST KEEP UP WITH HER HAND. "Can you also fix the eraser, it's
+   also delayed, I'd like it to be as swift as the main page erase." Every
+   eraser movement that touched ink saved the whole page - rewriting it in
+   storage and fingerprinting every stroke on it for the erase record - and
+   tested every point of every stroke, near or not. On a full page at iPad
+   speed that was 256ms a movement. The lesson eraser saves once, on lift;
+   so does this one now, and a stroke whose box the eraser is nowhere near is
+   skipped without looking at its points. */
+var inkBox = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+function boxOf(s){
+  var b = inkBox && inkBox.get(s); if (b) return b;
+  var pts = s.points || [], x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (var i = 0; i < pts.length; i++) { var q = pts[i]; if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y; }
+  b = { x0: x0, y0: y0, x1: x1, y1: y1 }; if (inkBox) inkBox.set(s, b); return b;
+}
 
 /* ---------- keys ---------- */
 /* WRITING ANYWHERE, NOT JUST IN THE LESSON.
@@ -71029,6 +71062,7 @@ function eraseAt(p){
   try {
     for (var i = 0; i < strokes.length; i++) {
       var s = strokes[i];
+      if (s && s.points) { var bx = boxOf(s); if (p.x < bx.x0 - R || p.x > bx.x1 + R || p.y < bx.y0 - R || p.y > bx.y1 + R) { next.push(s); continue; } }
       var parts = (s && s.points) ? splitStroke(s, p, R) : null;
       if (!parts) { next.push(s); continue; }
       removed.push({ s: s, i: i });
@@ -71062,6 +71096,7 @@ function eraseAt(p){
   } else {
     redraw();  // no map yet (first paint hasn't happened) - fall back once
   }
+  if (eraseBatch) { eraseDirty = true; return; }   // mid-gesture: saved once, on lift
   persist(); paintBadge();
 }
 function wireInk(){
@@ -71184,6 +71219,7 @@ function wireInk(){
       // the gesture is over: everything it took is ONE Undo step
       if (eraseBatch && eraseBatch.removed.length) logOp({ op: 'erase', removed: eraseBatch.removed, added: eraseBatch.added });
       eraseBatch = null;
+      if (eraseDirty) { eraseDirty = false; persist(); paintBadge(); }
       live = null; liveEl = null; return;
     }
     if (wasLine && live && live.points.length === 2) {
@@ -71256,7 +71292,15 @@ function wireInk(){
          rests on the glass while she is actually writing
      This also covers the stylus itself, which the app-wide Pencil-scroll
      blocker deliberately skips inside the dock (it is a UI surface to it). */
-  var toldTwoFinger = false;
+  /* "When I try scrolling on the note it's hard to scroll, then the entire
+     screen becomes zoomed in." Within a moment of writing a single finger was
+     refused outright and a toast said to use two - and the notebook, unlike
+     the lesson page, never blocked the iPad's pinch-zoom, so two fingers on
+     the glass zoomed the whole app. Now a finger that TRAVELS scrolls (a
+     resting palm drifts a few pixels; a scroll moves tens), moved by hand
+     from the finger so the palm can never nudge the paper; and pinch-zoom is
+     cancelled while the notebook is open. Two fingers still scroll. */
+  var fs = null, TRAVEL = 24;
   function guardTouch(e){
     try {
       if (tab !== 'write') return;
@@ -71272,10 +71316,13 @@ function wireInk(){
           if (Date.now() - lastPenTs > idleMs) return;   // browsing, not writing
         }
         e.preventDefault();
-        if (!toldTwoFinger && e.type === 'touchmove') {
-          toldTwoFinger = true;
-          try { if (typeof toast === 'function') toast('Scroll the page with two fingers while writing'); } catch (err2) {}
-        }
+        if (t1 && t1.touchType === 'stylus') { fs = null; return; }
+        if (e.type === 'touchstart' || !fs) { fs = { x: t1.clientX, y: t1.clientY, top: pagesEl.scrollTop, left: pagesEl.scrollLeft, go: false }; return; }
+        var ddy = t1.clientY - fs.y, ddx = t1.clientX - fs.x;
+        if (!fs.go && Math.abs(ddy) < TRAVEL && Math.abs(ddx) < TRAVEL) return;   // a resting palm, not a scroll
+        fs.go = true;
+        pagesEl.scrollTop = fs.top - ddy;
+        if (pagesEl.classList.contains('mn-zoomed') && Math.abs(ddx) > Math.abs(ddy) * 2) pagesEl.scrollLeft = fs.left - ddx;
         return;
       }
       /* Two fingers must actually scroll - but the annotation layer (active by
@@ -71286,6 +71333,20 @@ function wireInk(){
       e.stopPropagation();
     } catch (err) {}
   }
+  try {
+    pagesEl.addEventListener('touchend', function(){ fs = null; }, { passive: true });
+    pagesEl.addEventListener('touchcancel', function(){ fs = null; }, { passive: true });
+  } catch (err) {}
+  /* NO ZOOM WHILE THE NOTEBOOK IS OPEN. iOS Safari zooms from its own gesture
+     events, before any touchmove can object; cancelling those stops the
+     pinch-zoom and leaves two-finger panning native. Double-tap zoom too. */
+  try {
+    var dockUp = function(){ var d = document.getElementById('mn-dock'); return !!(d && d.getClientRects().length); };
+    var noZoom = function(ev){ if (dockUp()) { try { ev.preventDefault(); } catch (e3) {} } };
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(t){ document.addEventListener(t, noZoom, { passive: false }); });
+    document.addEventListener('dblclick', function(ev){ var d = document.getElementById('mn-dock'); if (d && ev.target && d.contains(ev.target)) { try { ev.preventDefault(); } catch (e4) {} } }, { passive: false });
+    window.__padNoZoom = noZoom;
+  } catch (err) {}
   try {
     pagesEl.addEventListener('touchstart', guardTouch, { capture: true, passive: false });
     pagesEl.addEventListener('touchmove', guardTouch, { capture: true, passive: false });
