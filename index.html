@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.639">
+<meta name="app-build" content="18.640">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -59847,7 +59847,7 @@ function writeInk(rk, strokes){
   }
 }
 window.__inkKeys = function(){ return Object.keys(index()); };
-window.__inkDrop = function(rk){ writeInk(rk, null); };
+window.__inkDrop = function(rk){ try { var was = readInk(rk); if (was && was.length) binKeep(rk, was, 'removed by a reset'); } catch (e) {} writeInk(rk, null); };
 // Erase every page's ink. Sweeps the storage slots directly rather than
 // trusting the index, so a page whose index entry was lost still gets cleared.
 window.__inkDropAll = function(){
@@ -59922,11 +59922,110 @@ try {
    record is told that too. A copy dropped in favour of an identical one is
    not an erase. Appending a stroke costs one Set of the page - microseconds. */
 var lastRefs = Object.create(null);
+/* NOTE_KEEP_V1 - NOTHING LEAVES A PAGE FOR GOOD.
+   "My notes are disappearing." Every stroke that leaves a notebook page -
+   erased by her, taken by an erase from the other device, cleared by a reset,
+   or lost to anything nobody has found yet - is copied first into a recovery
+   bin in IndexedDB, which is not the small localStorage the pages live in.
+   The notebook's "Recover erased writing" puts it back. Kept 45 days. */
+var BIN_DB = 'sh-inkbin', BIN_OS = 'bin', BIN_DAYS = 45, BIN_MAX = 4000;
+var binQ = [], binT = null;
+function binOpen(){
+  return new Promise(function(res, rej){
+    try {
+      var r = indexedDB.open(BIN_DB, 1);
+      r.onupgradeneeded = function(){ var db = r.result; if (!db.objectStoreNames.contains(BIN_OS)) { var os = db.createObjectStore(BIN_OS, { keyPath: 'id', autoIncrement: true }); os.createIndex('rk', 'rk'); } };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    } catch (e) { rej(e); }
+  });
+}
+function binKeep(rk, list, why){
+  if (!rk || !list || !list.length || typeof indexedDB === 'undefined') return;
+  var copy = null;
+  try { copy = JSON.parse(json(list)); } catch (e) { return; }
+  binQ.push({ rk: rk, at: Date.now(), why: why || 'erased', n: copy.length, strokes: copy });
+  if (!binT) binT = setTimeout(binFlush, 300);
+}
+function binFlush(){
+  if (binT) { clearTimeout(binT); binT = null; }
+  var q = binQ; binQ = [];
+  if (!q.length) return Promise.resolve(0);
+  return binOpen().then(function(db){
+    return new Promise(function(res){
+      var tx = db.transaction(BIN_OS, 'readwrite'), os = tx.objectStore(BIN_OS);
+      q.forEach(function(r){ try { os.add(r); } catch (e) {} });
+      tx.oncomplete = function(){ db.close(); res(q.length); binPrune(); };
+      tx.onerror = tx.onabort = function(){ db.close(); res(0); };
+    });
+  }).catch(function(){ return 0; });
+}
+var _binPruned = 0;
+function binPrune(){
+  if (Date.now() - _binPruned < 60000) return; _binPruned = Date.now();
+  binOpen().then(function(db){
+    var tx = db.transaction(BIN_OS, 'readwrite'), os = tx.objectStore(BIN_OS), old = Date.now() - BIN_DAYS * 864e5, keys = [];
+    os.openCursor().onsuccess = function(ev){
+      var c = ev.target.result; if (!c) {
+        var over = keys.length - BIN_MAX; for (var i = 0; i < over; i++) try { os.delete(keys[i]); } catch (e) {}
+        return;
+      }
+      if ((c.value.at || 0) < old) { try { c.delete(); } catch (e) {} } else keys.push(c.key);
+      c.continue();
+    };
+    tx.oncomplete = tx.onerror = function(){ db.close(); };
+  }).catch(function(){});
+}
+function binList(rk){
+  return binOpen().then(function(db){
+    return new Promise(function(res){
+      var out = [], tx = db.transaction(BIN_OS, 'readonly'), os = tx.objectStore(BIN_OS);
+      var src = rk ? os.index('rk').openCursor(IDBKeyRange.only(rk)) : os.openCursor();
+      src.onsuccess = function(ev){ var c = ev.target.result; if (!c) return; out.push(c.value); c.continue(); };
+      tx.oncomplete = function(){ db.close(); out.sort(function(a, b){ return b.at - a.at; }); res(out); };
+      tx.onerror = function(){ db.close(); res(out); };
+    });
+  }).catch(function(){ return []; });
+}
+function binTake(id){
+  return binOpen().then(function(db){
+    return new Promise(function(res){
+      var rec = null, tx = db.transaction(BIN_OS, 'readwrite'), os = tx.objectStore(BIN_OS);
+      var g = os.get(id); g.onsuccess = function(){ rec = g.result || null; if (rec) os.delete(id); };
+      tx.oncomplete = function(){ db.close(); res(rec); };
+      tx.onerror = function(){ db.close(); res(null); };
+    });
+  }).catch(function(){ return null; });
+}
+window.__inkBin = { list: function(rk){ return binFlush().then(function(){ return binList(rk); }); }, take: binTake, flush: binFlush, keep: binKeep };
+try {
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') binFlush(); });
+  window.addEventListener('pagehide', function(){ binFlush(); });
+} catch (e) {}
+/* What a save removed, by content: a copy kept in the new list (moved, re-
+   anchored, tidied - same id, same number of points) is not a removal. */
+function removedBy(prev, next){
+  if (!prev || !prev.length) return [];
+  var have = new Set(next), out = [], i, uids = null;
+  for (i = 0; i < prev.length; i++) if (prev[i] && !have.has(prev[i])) out.push(prev[i]);
+  if (!out.length) return out;
+  var keys = Object.create(null);
+  for (i = 0; i < next.length; i++) { try { keys[json(next[i])] = 1; } catch (e) {} var u = next[i] && next[i]._uid; if (u) { if (!uids) uids = Object.create(null); uids[u + '|' + ((next[i].points || []).length)] = 1; } }
+  return out.filter(function(st){
+    try { if (keys[json(st)]) return false; } catch (e) {}
+    if (uids && st._uid && uids[st._uid + '|' + ((st.points || []).length)]) return false;
+    return true;
+  });
+}
 function noteErasures(rk, next){
   var E = window.__erase;
   next = next || [];
   var prev = lastRefs[rk];
   lastRefs[rk] = next.slice();
+  try {
+    var gone = removedBy(prev, next);
+    if (gone.length) binKeep(rk, gone, (E && E.isQuiet && E.isQuiet()) ? 'erased on your other device' : (next.length ? 'erased' : 'page cleared'));
+  } catch (e) {}
   if (!E || typeof E.markStrokes !== 'function' || (E.isQuiet && E.isQuiet())) return;
   if (!prev || !prev.length) return;
   try {
@@ -64072,6 +64171,7 @@ function runRecover(){
           } catch (e) {}                                 // per-page: one quota error must not kill the rest
         }
         if (back > 0) {
+          try { if (window.__notesPanel && typeof window.__notesPanel.reloadInk === 'function') window.__notesPanel.reloadInk(); } catch (e) {}
           window.__fortress.inkRecovered = back;
           try { saveStore(); } catch (e) {}
           try { if (typeof toast === 'function') toast('Recovered ' + back + ' page' + (back === 1 ? '' : 's') + ' of handwriting from the backup mirror ✓', 6000); } catch (e) {}
@@ -65263,6 +65363,18 @@ function mergeInk(remoteInk, when, remoteErased){
     }
     var merged = local.concat(placed), grew = placed.length;
     try { gannoSaveStrokes(rk, merged); added += grew; pages++; } catch (e) {}
+    /* NOTE_KEEP_V1 - THE OPEN NOTEBOOK HAS TO SEE WHAT ARRIVED. The notebook
+       holds its own copy of the page it is showing. A pull that merged the
+       other device's writing into that page left the copy as it was, so her
+       next stroke saved the old copy over the page - and the missing strokes,
+       now absent, went on the erase record and were deleted on the other
+       device too. Measured: the phone's three strokes gone from both devices
+       one stroke after the iPad pulled them. The arrivals are handed over. */
+    try {
+      var AR = window.__inkArrivals || (window.__inkArrivals = {});
+      AR[rk] = (AR[rk] || []).concat(placed);
+      if (window.__notesPanel && typeof window.__notesPanel.adopt === 'function') window.__notesPanel.adopt(rk, dropped ? 'reload' : '');
+    } catch (e) {}
     // keep the notebook's own index honest, so counts and page totals are
     // right before she next opens the pad on this page
     try {
@@ -69318,8 +69430,29 @@ function loadStrokes(k){
   } catch (e) {}
   return [];
 }
+/* NOTE_KEEP_V1 - strokes the sync added to this page while the notebook was
+   holding it are added to the notebook's own list, so they are shown and so
+   the next save carries them. Called by the sync the moment it merges, and
+   again before every save in case the notebook was not listening then. */
+function adopt(rk, how){
+  if (!curKey || rk !== padKey(curKey)) return 0;
+  var AR = window.__inkArrivals, got = AR && AR[rk];
+  if (how === 'reload') { if (AR) delete AR[rk]; strokes = loadStrokes(curKey); pageH = Math.max(pageH, pageHFor()); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); return -1; }
+  if (!got || !got.length) return 0;
+  delete AR[rk];
+  var mine = new Set(strokes), ids = Object.create(null), added = 0, i;
+  for (i = 0; i < strokes.length; i++) if (strokes[i] && strokes[i]._uid) ids[strokes[i]._uid + '|' + ((strokes[i].points || []).length)] = 1;
+  for (i = 0; i < got.length; i++) {
+    var st = got[i]; if (!st || mine.has(st)) continue;
+    if (st._uid && ids[st._uid + '|' + ((st.points || []).length)]) continue;
+    strokes.push(st); mine.add(st); added++;
+  }
+  if (added) { pageH = Math.max(pageH, pageHFor()); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); }
+  return added;
+}
 function persist(){
   if (!curKey) return;
+  try { adopt(padKey(curKey)); } catch (e) {}
   // the page she last wrote on is the one she means when she opens the pad
   // somewhere else - no setting to find, it just follows her
   try { if (lessonKey() === curKey && strokes.length) { var pr = prefs(); if (pr.pinned !== curKey) { pr.pinned = curKey; } } } catch (e) {}
@@ -70302,6 +70435,79 @@ function openPagePop(anchor){
     if (n > 1 || inkOn[cur - 1]) pop.appendChild(del);
     if (strokes.length > 1)
       pop.appendChild(sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '⇅ Split this page by sitting', false, function(){ closePop(); splitSessions(); }));
+    var rec = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\u267B Recover erased writing', false, function(){ closePop(); openRecover(); });
+    rec.setAttribute('data-page-act', 'recover');
+    pop.appendChild(rec);
+    var allp = sizeRow(mk('span', 'mn-dot mn-dot-pg', null), '\uD83D\uDCDA All my notebook pages', false, function(){ closePop(); openAllPages(); });
+    allp.setAttribute('data-page-act', 'allpages');
+    pop.appendChild(allp);
+  });
+}
+
+/* NOTE_KEEP_V1 - the recovery sheet and the page list. */
+function nkSheet(title, sub){
+  var old = document.getElementById('nk-sheet'); if (old) old.remove();
+  var bg = document.createElement('div'); bg.id = 'nk-sheet'; bg.className = 'modal-bg'; bg.style.zIndex = '90';
+  bg.innerHTML = '<div class="modal nk-modal" role="dialog" aria-label="' + esc(title) + '" style="max-width:560px; width:calc(100vw - 32px); max-height:82vh; display:flex; flex-direction:column;">' +
+    '<div style="display:flex; align-items:center; gap:10px;"><h3 style="margin:0; flex:1;">' + esc(title) + '</h3><button type="button" data-nk-x class="icon-btn" aria-label="Close" style="font-size:18px;">\u2715</button></div>' +
+    (sub ? '<p style="margin:6px 0 10px; font-size:13px; color:var(--text-3); line-height:1.5;">' + esc(sub) + '</p>' : '') +
+    '<div data-nk-body style="overflow:auto; flex:1; min-height:60px;"><p style="color:var(--text-3); font-size:13px;">Loading\u2026</p></div></div>';
+  document.body.appendChild(bg);
+  bg.addEventListener('click', function(e){ if (e.target === bg || e.target.closest('[data-nk-x]')) bg.remove(); });
+  return bg.querySelector('[data-nk-body]');
+}
+function nkPreview(list){
+  var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, i, j, p;
+  for (i = 0; i < list.length; i++) for (j = 0; j < ((list[i] && list[i].points) || []).length; j++) { p = list[i].points[j]; if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y; if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y; }
+  if (!isFinite(x0)) return '';
+  var w = Math.max(40, x1 - x0 + 16), h = Math.max(24, y1 - y0 + 16), d = '';
+  for (i = 0; i < list.length; i++) { var pts = (list[i] && list[i].points) || []; if (!pts.length) continue;
+    d += '<path d="M' + pts.map(function(q){ return (q.x - x0 + 8).toFixed(1) + ' ' + (q.y - y0 + 8).toFixed(1); }).join(' L') + (pts.length === 1 ? ' l0.1 0' : '') + '" fill="none" stroke="currentColor" stroke-width="' + Math.max(1.5, (list[i].width || 2)) + '" stroke-linecap="round" stroke-linejoin="round"/>'; }
+  return '<svg viewBox="0 0 ' + w.toFixed(0) + ' ' + h.toFixed(0) + '" preserveAspectRatio="xMinYMid meet" style="width:100%; height:84px; color:var(--text); background:var(--surface-2); border-radius:8px; display:block;">' + d + '</svg>';
+}
+function openRecover(){
+  if (!curKey) { try { toast('Open a lesson\u2019s notebook page first'); } catch (e) {} return; }
+  var rk = padKey(curKey), key0 = curKey;
+  var body = nkSheet('Recover erased writing', 'Everything that has left this page in the last 45 days \u2014 erased, cleared, or removed by a sync \u2014 newest first. Put back returns it to exactly where it was.');
+  if (!window.__inkBin) { body.innerHTML = '<p>Recovery is not available on this device.</p>'; return; }
+  window.__inkBin.list(rk).then(function(recs){
+    if (!recs.length) { body.innerHTML = '<p style="font-size:14px; color:var(--text-2);">Nothing has been erased from this page since recovery started keeping copies.</p>'; return; }
+    body.innerHTML = recs.slice(0, 60).map(function(r){
+      return '<div data-nk-rec="' + r.id + '" style="border:1px solid var(--border); border-radius:12px; padding:10px; margin:0 0 10px;">' +
+        '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px;"><strong>' + esc(stamp(r.at)) + '</strong><span style="color:var(--text-3);">' + r.n + ' stroke' + (r.n === 1 ? '' : 's') + ' \u00b7 ' + esc(r.why || 'erased') + '</span>' +
+        '<button type="button" class="dash-act" data-nk-put="' + r.id + '" style="margin-left:auto; padding:6px 12px;">Put back</button></div>' + nkPreview(r.strokes || []) + '</div>';
+    }).join('');
+    body.addEventListener('click', function(e){
+      var b = e.target.closest('[data-nk-put]'); if (!b) return;
+      b.disabled = true;
+      window.__inkBin.take(+b.getAttribute('data-nk-put')).then(function(rec){
+        if (!rec || curKey !== key0) { b.disabled = false; return; }
+        var have = Object.create(null); for (var i = 0; i < strokes.length; i++) { try { have[JSON.stringify(strokes[i].points)] = 1; } catch (e2) {} }
+        var back = 0;
+        (rec.strokes || []).forEach(function(st){ var k; try { k = JSON.stringify(st.points); } catch (e3) { k = null; } if (k && have[k]) return; strokes.push(st); back++; });
+        pageH = Math.max(pageH, pageHFor()); sizeSvg(); redraw(); persist(); paintBadge();
+        var card = body.querySelector('[data-nk-rec="' + rec.id + '"]'); if (card) card.remove();
+        try { toast(back ? ('Put back ' + back + ' stroke' + (back === 1 ? '' : 's') + ' \u2713') : 'That writing is already on the page'); } catch (e4) {}
+      });
+    });
+  });
+}
+function openAllPages(){
+  var pn = store.padNotes || {}, keys = Object.keys(pn).filter(function(k){ return pn[k] && pn[k].n > 0; });
+  keys.sort(function(a, b){ return (pn[b].ts || 0) - (pn[a].ts || 0); });
+  var body = nkSheet('All my notebook pages', 'Each lesson has its own notebook page. These are the pages with writing on them, most recent first \u2014 tap one to open it.');
+  if (!keys.length) { body.innerHTML = '<p style="font-size:14px; color:var(--text-2);">No notebook page has writing on it yet.</p>'; return; }
+  body.innerHTML = keys.map(function(k){
+    var p = k.split('/'), c = COURSES[p[0]];
+    return '<button type="button" data-nk-go="' + esc(k) + '" style="display:flex; width:100%; text-align:left; gap:10px; align-items:center; padding:11px 12px; margin:0 0 8px; border-radius:12px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer;' + (k === curKey ? ' outline:2px solid var(--accent);' : '') + '">' +
+      '<span style="flex:1; min-width:0;"><span style="display:block; font-weight:700; font-size:14px;">' + esc(secTitle(k)) + '</span><span style="display:block; font-size:12px; color:var(--text-3);">' + esc((c && c.code) || p[0]) + ' \u00b7 ' + pn[k].n + ' stroke' + (pn[k].n === 1 ? '' : 's') + ' \u00b7 ' + esc(stamp(pn[k].ts)) + (k === curKey ? ' \u00b7 open now' : '') + '</span></span><span aria-hidden="true">\u203A</span></button>';
+  }).join('');
+  body.addEventListener('click', function(e){
+    var b = e.target.closest('[data-nk-go]'); if (!b) return;
+    var k = b.getAttribute('data-nk-go'), p = k.split('/');
+    var sheet = document.getElementById('nk-sheet'); if (sheet) sheet.remove();
+    try { go({ name: 'section', courseId: p[0], chId: p[1], secId: p[2] }); } catch (e2) {}
+    setTimeout(function(){ try { if (curKey !== k) loadSection(k); setOpen(true); } catch (e3) {} }, 400);
   });
 }
 
@@ -71803,6 +72009,7 @@ function loadSection(k){
   if (k !== curKey) { past = []; future = []; eraseBatch = null; }   // the journal is per section
   curKey = k;
   strokes = loadStrokes(k);
+  try { if (window.__inkArrivals) delete window.__inkArrivals[padKey(k)]; } catch (e) {}   // a fresh load already holds them
   pageH = pageHFor();
   paintUndo();
   if (taEl) taEl.value = draftGet(k);
@@ -72128,7 +72335,10 @@ window.__notesPanel = {
   tidyQueue: function(st){ tidySoon(st); },
   ruleYs: function(y){ return ruleYsAt(y || 0); },
   ruleGap: function(){ return ruleGap(); },
-  reloadInk: function(){ if (!curKey) return 0; strokes = loadStrokes(curKey); pageH = pageHFor(); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); return strokes.length; },
+  adopt: function(rk, how){ return adopt(rk, how); },
+  recover: function(){ openRecover(); },
+  allPages: function(){ openAllPages(); },
+  reloadInk: function(){ if (!curKey) return 0; try { if (window.__inkArrivals) delete window.__inkArrivals[padKey(curKey)]; } catch (e) {} strokes = loadStrokes(curKey); pageH = pageHFor(); if (isOpen) { sizeSvg(); redraw(); } paintBadge(); return strokes.length; },
   paper: function(){ return paperId(); },
   pin: function(k){ return setPinned(k); },
   pinned: function(){ return pinnedKey(); },
