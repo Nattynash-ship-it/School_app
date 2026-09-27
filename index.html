@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.640">
+<meta name="app-build" content="18.641">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -13955,6 +13955,24 @@ function storageCheck(){
   });
 }
 window.storageCheck = storageCheck;
+function storageBanner(){
+  if (document.getElementById('sd-banner')) return;
+  var b = document.createElement('div'); b.id = 'sd-banner'; b.setAttribute('role', 'status');
+  b.style.cssText = 'position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom, 0px)); z-index:9998; max-width:640px; margin:0 auto; background:var(--surface); color:var(--text); border:1px solid var(--danger); border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,.25); padding:12px 14px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:14px; line-height:1.4;';
+  b.innerHTML = '<span style="flex:1 1 260px;"><strong>Storage is still full.</strong> Handwriting that cannot be saved is kept in the notebook\u2019s \u267B Recover erased writing. Open Storage check to free space.</span>' +
+    '<button type="button" class="dash-act" data-sd="check" style="padding:7px 12px;">Storage check</button>' +
+    '<button type="button" class="dash-act" data-sd="backup" style="padding:7px 12px;">Back up</button>' +
+    '<button type="button" data-sd="x" aria-label="Dismiss" style="background:none; border:none; color:var(--text-3); font-size:18px; cursor:pointer; padding:2px 6px;">\u2715</button>';
+  document.body.appendChild(b);
+  b.addEventListener('click', function(e){
+    var t = e.target.closest('[data-sd]'); if (!t) return;
+    var k = t.getAttribute('data-sd');
+    if (k === 'check') { b.remove(); storageCheck(); }
+    else if (k === 'backup') { try { exportData(); } catch (e2) {} }
+    else b.remove();
+  });
+}
+window.storageBanner = storageBanner;
 function saveStore() {
  try {
  _persistStore();
@@ -13965,18 +13983,16 @@ function saveStore() {
  console.error('saveStore failed:', e);
  // QuotaExceededError or similar: warn user immediately to avoid data loss
  const isQuota = e && (e.name === 'QuotaExceededError' || (e.message || '').toLowerCase().includes('quota'));
- if (isQuota) { try { var _dr = (window.__storageDoctor ? window.__storageDoctor.run({ quiet: true }) : (_freeStorageSpace(), null)); _persistStore(); _saveErrorCount = 0; if (typeof toast === 'function') toast('Storage was full \u2014 ' + (_dr && _dr.freed > 1024 ? 'freed ' + Math.round(_dr.freed / 1024) + ' KB' : 'tidied up') + ' and saved \u2713', 5000); return; } catch (eHeal) {}
- const now = Date.now();
- // Don't spam — show warning at most once per 60 seconds
- if (now - _lastQuotaWarning > 60000) {
- _lastQuotaWarning = now;
- // Defer to next tick so we don't disrupt the current render
- setTimeout(() => {
- if (confirm('⚠ STORAGE STILL FULL after an automatic clean-up.\n\nHandwriting that cannot be saved is being kept in the notebook\u2019s \u267B Recover erased writing, so it is not lost.\n\nOK downloads a backup of everything now. Then open Settings \u2192 Storage check and send a screenshot of it so this can be fixed properly.')) {
- try { exportData(); } catch (_) {}
- }
- }, 0);
- }
+ if (isQuota) {
+   /* STORAGE_DOCTOR_V2 - a save that hits the limit while the app is still
+      starting waits for the clean-up (it is installed a moment later)
+      instead of telling her storage is full. */
+   if (!window.__storageDoctor && (window.__quotaDefer = (window.__quotaDefer || 0) + 1) <= 6) { setTimeout(function(){ try { saveStore(); } catch (e3) {} }, 2000); return; }
+   try { var _dr = (window.__storageDoctor ? window.__storageDoctor.run({ quiet: true }) : (_freeStorageSpace(), null)); _persistStore(); _saveErrorCount = 0; if (typeof toast === 'function') toast('Storage was full \u2014 ' + (_dr && _dr.freed > 1024 ? 'freed ' + Math.round(_dr.freed / 1024) + ' KB' : 'tidied up') + ' and saved \u2713', 5000); return; } catch (e2) {}
+   // Still full after the clean-up: a banner she can act on, never a box
+   // that stops the app every minute.
+   const now = Date.now();
+   if (now - _lastQuotaWarning > 600000 && now - (window.__sdBannerAt || 0) > 600000) { _lastQuotaWarning = now; window.__sdBannerAt = now; setTimeout(function(){ try { storageBanner(); } catch (e4) {} }, 0); }
  } else if (_saveErrorCount === 3) {
  // 3 consecutive save failures (not quota) — alert user
  setTimeout(() => {
@@ -59985,15 +60001,17 @@ function doctorRun(opt){
 window.__storageDoctor = { report: doctorReport, run: doctorRun };
 /* Once a launch, when the storage is already heavy, before anything needs to be saved. */
 try {
-  setTimeout(function(){
-    try {
-      var t = lsSizes().total;
-      if (t > 1500000) {
-        var r = doctorRun({ quiet: true });
-        if (r.freed > 100000 && typeof toast === 'function') toast('Freed ' + Math.round(r.freed / 1024) + ' KB of storage so your notes keep saving \u2713', 5000);
-      }
-    } catch (e) {}
-  }, 6000);
+  var _full = false;
+  try { localStorage.setItem('__sd_probe', 'x'.repeat(20000)); localStorage.removeItem('__sd_probe'); } catch (e) { _full = true; try { localStorage.removeItem('__sd_probe'); } catch (e2) {} }
+  if (_full || lsSizes().total > 1500000) {
+    var _r0 = doctorRun({ quiet: true });
+    window.__storageDoctorBoot = _r0;
+    // a second pass once the rest of the app (the erase record) is loaded
+    setTimeout(function(){
+      try { var _r1 = doctorRun({ quiet: true }); _r0.freed += Math.max(0, _r1.freed); _r0.steps = _r0.steps.concat(_r1.steps); } catch (e) {}
+      try { if (_r0.freed > 50000 && typeof toast === 'function') toast('Freed ' + Math.round(_r0.freed * 2 / 1024) + ' KB of storage so your notes keep saving \u2713', 6000); } catch (e) {}
+    }, 3500);
+  }
 } catch (e) {}
 
 window.__inkDrop = function(rk){ try { var was = readInk(rk); if (was && was.length) binKeep(rk, was, 'removed by a reset'); } catch (e) {} writeInk(rk, null); };
@@ -68885,15 +68903,27 @@ function heal(){
   _dbg.heals++;
   try { _dbg.healLen = (typeof window.__storeJSON === 'function') ? window.__storeJSON().length : JSON.stringify(store).length; } catch (e) {}
   // The original quota machinery, without recursing into the wrapper.
+  if (Date.now() < healBackoff) return false;
   try { _orig(); dirty = false; return true; } catch (e) {
     try {
-      if (typeof _freeStorageSpace === 'function') _freeStorageSpace();
+      /* STORAGE_DOCTOR_V2: the real clean-up, not just the quiz-history trim */
+      var dr = null;
+      if (window.__storageDoctor) dr = window.__storageDoctor.run({ quiet: true });
+      else if (typeof _freeStorageSpace === 'function') _freeStorageSpace();
       _orig(); dirty = false;
-      try { if (typeof toast === 'function') toast('Storage was full — trimmed old history and saved ✓', 5000); } catch (e2) {}
+      try { if (typeof toast === 'function') toast('Storage was full \u2014 ' + (dr && dr.freed > 1024 ? 'freed ' + Math.round(dr.freed * 2 / 1024) + ' KB' : 'tidied up') + ' and saved \u2713', 5000); } catch (e2) {}
       return true;
-    } catch (e3) { return false; }
+    } catch (e3) {
+      /* Still full. This used to return false and be rescheduled 0.7s later,
+         forever - recompressing everything she has several times a second on
+         a device that could not save it. Back off, and tell her once. */
+      healBackoff = Date.now() + 30000;
+      try { if (Date.now() - (window.__sdBannerAt || 0) > 600000 && typeof window.storageBanner === 'function') { window.__sdBannerAt = Date.now(); window.storageBanner(); } } catch (e4) {}
+      return false;
+    }
   }
 }
+var healBackoff = 0;
 
 function flushSync(){
   _dbg.flushes++;
@@ -68936,7 +68966,7 @@ function run(){
       window.__lastPacked = { blob: packed, at: Date.now() };
       try { if (typeof cloudSyncSoon === 'function') cloudSyncSoon(); } catch (e) {}
     } catch (e) { dirty = true; heal(); }
-    if (dirty) schedule();
+    if (dirty) { if (Date.now() < healBackoff) { if (!timer) timer = setTimeout(run, 30000); } else schedule(); }
   };
   try { worker.postMessage({ id: id, s: s }); }
   catch (e) { delete jobs[id]; busy = false; dirty = true; worker = null; schedule(); }

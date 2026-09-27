@@ -102,6 +102,31 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   });
   ok('when nothing more can be freed, the page is kept in the recovery bin, whole, once', K.bin.length === 1 && K.bin[0] === K.mem, K);
   ok('and she is told where it is', K.toast.length === 1 && /Recover/.test(K.toast[0]), K.toast);
+  // ---------- 6. the app opens on a full device ----------
+  await p.evaluate(() => {
+    const junk = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^__(fill|fs|more|boot|stuck)/.test(k)) junk.push(k); } junk.forEach(k => localStorage.removeItem(k));
+    const mkStroke = (i, j) => ({ type: 'pen', color: '#1d4ed8', width: 3, ts: 1780000000000 + i * 1000 + j, _uid: 'b' + i + '_' + j, points: Array.from({ length: 60 }, (_, k) => ({ x: 40 + k * 3 + j, y: 80 + i * 11 + (k % 7) })) });
+    for (let i = 0; i < 10; i++) localStorage.setItem('gsk:pad_C959/ch9/b' + i, JSON.stringify({ g: 1, s: Array.from({ length: 30 }, (_, j) => mkStroke(i, j)) }));
+    for (const size of [20000, 1000, 50, 1]) { try { for (let q = 0; q < 3000; q++) localStorage.setItem('__boot' + size + '_' + q, 'b'.repeat(size)); } catch (e) {} }
+  });
+  const d0 = dialogs.length;
+  await p.reload({ waitUntil: 'load', timeout: 240000 }); await p.waitForTimeout(9000); await hookToast();
+  const BT = await p.evaluate(() => ({ boot: window.__storageDoctorBoot || null, banner: !!document.getElementById('sd-banner'), pages: localStorage.getItem('gsk:pad_C959/ch9/b0').charAt(0) }));
+  ok('opening the app on a full device cleans up straight away, with no warning box', !!BT.boot && BT.boot.freed > 0 && BT.pages !== '{' && dialogs.length === d0, { boot: BT.boot && BT.boot.freed, page: BT.pages, dialogs: dialogs.slice(d0) });
+
+  // ---------- 7. still full after the clean-up: a banner, never a box ----------
+  const ST = await p.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms));
+    for (const size of [20000, 1000, 50, 1]) { try { for (let q = 0; q < 4000; q++) localStorage.setItem('__stuck' + size + '_' + q, 's'.repeat(size)); } catch (e) {} }
+    store.__bigNote = 'n'.repeat(300000); try { saveStore(); if (saveStore.flushNow) saveStore.flushNow(); } catch (e) {}
+    await w(2500);
+    const b = document.getElementById('sd-banner');
+    const out = { banner: !!b, buttons: b ? [...b.querySelectorAll('[data-sd]')].map(x => x.getAttribute('data-sd')) : [] };
+    if (b) { b.querySelector('[data-sd="check"]').click(); await w(400); out.check = !!document.querySelector('[aria-label="Storage check"]'); const m = document.querySelector('[aria-label="Storage check"]'); if (m) m.closest('.modal-bg').remove(); }
+    delete store.__bigNote;
+    return out;
+  });
+  ok('when storage is still full a banner offers Storage check and a backup, and no box stops the app', ST.banner && ST.buttons.includes('check') && ST.buttons.includes('backup') && ST.check && !dialogs.some(d => /STORAGE/.test(d)), { ST, dialogs });
   ok('no page errors', errs.length === 0, errs.slice(0, 3));
   await br.close();
   console.log(`storagefull: ${pass}/${pass + fail} passed`);
