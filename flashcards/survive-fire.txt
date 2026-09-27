@@ -1,0 +1,37 @@
+In a NON-fireproof NYC building, what does FDNY advise if the fire is not in your apartment?	Usually safer to leave immediately: feel door and knob, if not hot open slightly, check hallway, exit if safe, close doors, call 911 from outside
+In a FIREPROOF NYC building, what does FDNY advise if the fire is not in your apartment?	Usually safer to stay inside with the door shut and listen for firefighter instructions, unless your apartment becomes dangerous
+Where do you find out whether your NYC building is fireproof or non-fireproof?	The fire safety / Emergency Preparedness Notice posted inside your apartment entrance door and in the lobby; ask the owner or 311 if missing
+FDNY's four steps when the fire is in YOUR apartment	Get everyone out; stay low as you go; use the safest, most accessible exit; close all doors as you leave
+Why does FDNY tell you to close the door behind you in a fire?	A closed door contains the fire and keeps the hallway clear of flames, heat and smoke long enough for neighbours to get out and firefighters to get in
+How long may you have to escape after a smoke alarm sounds (NFPA)?	Less than 2 minutes
+How often should you test a smoke alarm?	Once a month, using the test button
+How often should you replace a smoke alarm's replaceable battery?	At least once a year
+How old can a smoke alarm be before it must be replaced?	10 years, replace the whole unit
+Where should smoke alarms be placed in a home (NFPA/USFA)?	Inside every bedroom, outside each sleeping area, and on every level; interconnected is best
+NYC rule: how close must the owner-installed smoke detector be to a bedroom?	Within 15 feet of the primary entrance to each room used for sleeping
+How often should a carbon monoxide alarm be replaced (CDC)?	Per the manufacturer's instructions or every 5 years
+What does P.A.S.S. stand for when using a fire extinguisher?	Pull the pin; Aim low at the base of the fire; Squeeze the handle; Sweep side to side
+Which way should you check an apartment door before opening it in a fire?	Feel the door and doorknob for heat with the back of your hand; if hot, do not open it
+How many NYC deaths from lithium-ion battery fires in 2023, and how many fires?	18 deaths, 268 fires
+Where must you never charge an e-bike or lithium-ion battery (FDNY)?	Near exits or paths to them: the apartment door, bedroom doors, windows, especially a fire-escape window; and not in the bedroom
+Two FDNY rules on when and how to charge a lithium-ion battery	Do not charge overnight or overcharge; use only the manufacturer's cord and adapter
+What mark shows an e-bike battery was tested to a national safety standard?	The UL Mark (Underwriters Laboratories)
+What does NYC Local Law 39 require for e-bikes and e-scooters?	Devices and batteries must meet UL safety standards before being sold, leased or rented in the city
+Can a damaged lithium-ion battery be repaired?	No; FDNY says never repair it, replace it
+First three actions if you smell gas (Con Edison)	Leave the area immediately with others; do not touch switches, doorbells, phones, matches or appliances; call 911 or the gas company once outside
+Con Edison gas emergency number	1-800-75-CONED (1-800-752-6633), or 911
+National Grid gas emergency number for Brooklyn, Queens and Staten Island	1-718-643-4050, 24 hours a day; or 911
+Who delivers gas in Brooklyn, Queens (National Grid areas) and Staten Island, and who delivers the electricity?	Gas: National Grid. Electricity: Con Edison
+Should you leave for a faint gas smell?	Yes; Con Edison says leave even if the odour is not strong, then call. You need not give your name
+NYC Local Law 157: what does it require and by when?	Natural gas detectors in residential buildings; compliance deadline extended to 1 January 2027
+Common carbon monoxide symptoms (CDC)	Headache, dizziness, weakness, upset stomach, vomiting, chest pain, confusion; feels flu-like
+Why can carbon monoxide kill without warning?	It is odourless, colourless and tasteless; people asleep or drunk can die before they feel symptoms
+What to do when the CO alarm sounds	Everyone out into fresh air, call 911, do not go back in until the fire department says it is safe
+Generator rule for carbon monoxide	Outdoors only, at least 20 feet from any window, door or vent, exhaust pointed away, never in a garage; battery CO alarm indoors
+What AQI value does AirNow call good air quality?	50 or below
+Above what AQI value does AirNow say the air is unhealthy?	Above 100 (at or below 100 is satisfactory for almost everyone)
+What AQI value does AirNow call hazardous?	Over 300
+Where do you check today's Air Quality Index?	airnow.gov (enter your ZIP code)
+Core of a wildfire-smoke clean room	Stay inside, close windows and the front door, pick a room with few windows, no candles, incense, frying or smoking
+How do you get NYC air quality and emergency alerts by text?	Text NOTIFYNYC to 692-692, or your ZIP code to 692-692 for neighbourhood alerts
+Two clues that point to carbon monoxide rather than a virus	Everyone in the apartment sick at the same time; feeling better outside and worse at home

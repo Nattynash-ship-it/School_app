@@ -1,0 +1,41 @@
+How much water should you store per person per day, and for how long?	At least 1 gallon per person per day; 3 days is the minimum, 14 days (14 gallons per person) is the goal (Ready.gov, CDC)
+How does the daily water need change in very hot weather?	Ready.gov: needs can double in very hot temperatures; plan about 2 gallons a day in a summer blackout
+Who needs more than the base gallon per day?	Children, nursing mothers and sick people (Ready.gov); anyone in a hot apartment
+How do you sanitize a food-grade container before filling it with water?	Wash with dish soap, rinse, sanitize with 1 teaspoon unscented bleach in 1 quart of water, rinse well, fill, write the date
+How often should water you bottled yourself be replaced?	Every six months (Ready.gov); store-bought bottled water: keep in original container until the printed date
+How much does 14 gallons of water weigh?	About 117 lb (8.34 lb per gallon); store it low and on the floor, never on a high shelf
+How many cases of 24 half-litre bottles make a 14-day supply for one person?	Five cases (each case is about 3.2 gallons)
+Name three places to store water in a small apartment and one place never to store it.	Under the bed, closet floor, behind the sofa; never under the sink beside chemicals, never on a fire escape or by a radiator
+Why did high-rise apartments lose water in the 14 August 2003 blackout?	The electric pumps that fill rooftop tanks stopped; gravity emptied the tanks floor by floor and nothing refilled them
+What is the difference between potable and non-potable water?	Potable is safe to drink; non-potable can flush toilets and wash floors but must not go in your mouth
+How do you sign up for NYC water-main and boil-water alerts?	Text NOTIFYNYC to 692-692, or text your ZIP code to 692-692; app or a858-nycnotify.nyc.gov
+Why should stored water be kept away from gasoline, pesticides and cleaners?	Plastic can absorb fumes; contaminated water cannot be fixed by boiling
+In a blackout on a high floor, what is the very first action for water?	Plug the bathtub and run the cold tap; fill pots and bottles; the rooftop tank drains top floors first once the pump stops
+Why do New York buildings above about six stories lose water in a blackout?	Street pressure only reaches about the sixth floor; higher floors depend on an electric pump filling a rooftop tank
+List the EPA's safe alternative water sources in order.	Bottled water; melted ice cubes; the hot-water tank; water drained from the pipes
+How do you drain water from the pipes of an apartment?	Open the highest tap to let air in, then drain from the lowest tap into a clean container
+What must you do before draining a water heater?	Turn off its electricity (breaker) or gas, open a hot tap for air, let it cool; do not turn it back on until it is full
+Which household water sources does the EPA say never to use?	Toilet flush tanks and bowls, radiators, waterbeds, swimming pools and spas
+Can boiling make flood water safe?	No. CDC: flood water may contain sewage and chemicals; EPA: boiling and bleach do not remove chemicals, fuel, salt or heavy metals
+Why is the East River not a drinking-water source even after boiling?	It is a salt-water tidal strait with combined sewer overflows; boiling concentrates salt; only distillation removes it
+What is the penalty for opening a fire hydrant without a spray cap in NYC?	Illegal: fine up to $1,000, up to 30 days in jail, or both (NYC DEP)
+How is a hydrant opened legally in a NYC heat wave?	An adult 18 or over asks the local firehouse for a free spray cap; it releases 20-25 gallons a minute instead of more than 1,000
+What are the rules during a boil-water notice?	Rolling boil 1 minute then cool; boiled or bottled water for drinking, teeth, food, formula; discard ice made during it; usually 24-48 hours
+Is rainwater safe to drink straight from a bowl?	No. CDC: rainwater is not necessarily safe; filter and disinfect it; catch it in the open, not from a roof or gutter
+Where do you report a water-main break or an open hydrant in NYC?	311 (call, app or online); the DEP responds
+How long do you boil water to make it safe in New York City?	Rolling boil for 1 minute (3 minutes only above 6,500 ft, which is not NYC); let it cool
+What is the bleach dose for one gallon of clear water?	8 drops (a little less than 1/8 teaspoon) of plain unscented 5-9% bleach; stir, wait 30 minutes
+What is the bleach dose for one gallon of cloudy water?	Settle and pour through cloth first, then 16 drops (about 1/4 teaspoon); wait 30 minutes
+What is the bleach dose for one quart of water?	2 drops if clear, 4 drops if cloudy; wait 30 minutes
+Which bleach must never be used to treat drinking water?	Scented, colour-safe, splashless or added-cleaner bleach, and pool chlorine; only plain unscented 5-9% sodium hypochlorite
+Treated water has no chlorine smell after 30 minutes. What now?	Repeat the dose and wait 15 more minutes; if still no smell the bleach may be spent, so boil, filter and disinfect, or use sunlight
+What contaminants do boiling and bleach NOT remove?	Fuel, oil, solvents, heavy metals, salt and most chemicals (EPA, CDC); do not treat water that smells of chemicals
+What pore size does a filter need to remove Cryptosporidium and Giardia?	Absolute 1 micron or smaller (CDC); a nominal 1-micron filter can pass 20-30% of 1-micron particles
+What do most portable water filters miss, and what do you do about it?	Viruses (and often bacteria); add a chemical disinfectant such as bleach after filtering, or boil
+How does solar disinfection (SODIS) work?	Clear water in clear plastic bottles laid on their side in direct sun for at least 6 hours; 2 consecutive days if cloudy; no effect on chemicals
+What is the only home method that removes salt and most chemicals?	Distillation: boil in a pot with the lid upside down so steam drips into a cup; slow, and still misses some volatile chemicals
+What is the order of treatment for dirty water?	Filter or settle to make it clear, then disinfect (boil, bleach or sun); never treat chemical-smelling water
+Why is the bleach kit, not the stove, the reliable NYC method?	Many apartments have electric stoves, gas can be shut off building-wide, and no flame can be run indoors without carbon monoxide risk
+Who do you call if someone swallows strong bleach?	911 if they are struggling; Poison Control 1-800-222-1222
+Does a carbon pitcher filter make water safe from germs?	No; it improves taste and removes some chemicals but is not a disinfection device
+Can a camping stove be used indoors to boil water in a blackout?	No; carbon monoxide from a flame in a closed apartment kills; use it at a wide-open window or balcony with a battery CO alarm, or use bleach

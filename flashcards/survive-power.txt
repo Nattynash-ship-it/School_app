@@ -1,0 +1,44 @@
+What is the first thing to reach for when the lights go out?	A flashlight or headlamp kept in a fixed place; never a candle (Ready.gov: only flashlights for emergency lighting)
+Why switch off the stove, iron and space heater the moment power fails?	They restart by themselves when power returns, possibly while you sleep or are out
+Why unplug electronics during an outage, and what do you leave on?	Power can return with surges that damage equipment; leave one lamp or radio on to show when service is back
+FDNY: how far must a candle be from anything that burns?	At least 4 feet from curtains, bedding, papers, books and decorations
+FDNY: when do you put a candle out?	Before leaving the room or lying down, and when the flame is within 2 inches of the holder
+What share of candle fires start with an unattended candle (FDNY)?	More than 33 percent
+Why pick one battery size for every light and radio in the kit?	Any spare then fits any device, and you stock only one kind of battery
+When should you test the kit's lights and radio and swap weak batteries?	Twice a year, when the clocks change
+How often should the power bank be topped up?	Charge it fully now and top it up on the first of every month
+Where must a generator run (CDC/CPSC)?	Outdoors only, more than 20 feet from any window, door or vent, exhaust pointed away
+Where may a generator never run, even with fans or open windows?	Inside a home, garage, basement, crawlspace or shed
+About how many people die each year in the US from portable-generator carbon monoxide (CPSC)?	About 100
+What fraction of non-fatal CO poisonings in hurricanes involved generators within 7 feet of the home (CDC)?	Nearly half
+How long can carbon monoxide linger indoors after a generator is switched off?	Hours
+What kind of CO alarm and where (CPSC)?	Battery-powered or battery-backup, on every level of the home and outside sleeping areas
+CO alarm sounds or everyone feels dizzy and sick near a running engine: what do you do?	Get everyone outside into fresh air first, then call 911; do not go back in
+FDNY lithium-ion rules for charging a power bank, phone or e-bike?	UL-marked device, manufacturer's cord, no overnight or unattended charging, room temperature, away from flammables, never blocking the exit
+How many lithium-ion battery fires and deaths did NYC report in 2023?	268 fires and 18 deaths; 133 fires started in batteries that were not charging
+What does NYC Emergency Management say about candles and gas lanterns in an outage?	Use flashlights instead of candles or gas lanterns
+Why send a text instead of a call in a disaster (FEMA)?	Phone networks are overloaded; texts need less bandwidth and are more likely to get through
+How do you reach 911 in NYC when calls fail?	Text-to-911, available since June 2020: call if you can, text if you can't
+What is an out-of-area contact?	One relative or friend outside the region (FEMA: out of state) whom everyone texts with their location and status
+How do you sign up for Notify NYC by text?	Text NOTIFYNYC to 692-692, or your ZIP code to 692-692 for neighbourhood alerts
+What are Wireless Emergency Alerts (WEA)?	Free, area-targeted government alerts pushed by cell towers; no app or sign-up; not stuck in congestion; keep them switched on
+How do you register for and use Con Edison outage texts?	Text REG to OUTAGE (688243) to register; text OUT to 688243 to report an outage
+What are the NOAA Weather Radio frequencies?	Seven frequencies: 162.400, 162.425, 162.450, 162.475, 162.500, 162.525 and 162.550 MHz
+What does SAME on a weather radio do?	Specific Area Message Encoding: the alarm sounds only for the county you program
+Can an ordinary AM/FM radio receive NOAA Weather Radio?	No; you need a receiver built for it (NOAA runs more than 1,000 transmitters)
+FRS radio: licence and power limit?	No licence; 2 watts or less (on channels 1-7 and 15-22)
+GMRS radio: licence terms?	FCC licence required: $35, valid 10 years, no test; immediate family may use it
+Real range of FRS walkie-talkies among city buildings?	About half a mile to a mile (roughly 0.5-1.5 km once buildings block the path), despite 'up to 35 miles' on the box
+Con Edison outage phone number?	1-800-75-CONED (1-800-752-6633); also coned.com/reportoutage, the app, or outagemap.coned.com for status
+When should you ride an elevator after the lights flicker or power is restored?	Not until the building confirms the elevators have been reset; take the stairs with a headlamp
+How many elevators got stuck in the July 2019 Manhattan blackout (FDNY)?	More than 400; everyone was removed safely
+Why do upper floors of tall buildings lose water in a blackout?	Electric pumps lift water to the roof tank or upper floors; when they stop, the tank drains and taps run dry
+What do you do with water in the first minute of an outage in a high-rise?	Fill the bathtub, pots and bottles while water still flows; use tub water to flush with a bucket
+How long does a closed refrigerator keep food safe in an outage (FDA)?	About 4 hours
+How long does a freezer keep food frozen with the door shut (FDA)?	About 48 hours if full, about 24 hours if half full
+When must perishable food be discarded (FDA)?	Above 40 F for more than 2 hours, or 1 hour if the room is above 90 F; never taste to check
+How do you register life-support equipment with Con Edison?	coned.com/SpecialServices or 1-800-75-CONED; clinician certifies within 30 days, renew yearly; register even if electricity is in your rent
+What does Con Edison's Life-Sustaining Equipment registration give you, and what does it not?	Contact in emergencies, priority restoration, planned-outage alerts; it does not power the device, so you still need batteries or tanks
+When did the 2003 blackout start and how many people lost power?	Just after 4:10 p.m. on 14 August 2003; about 50 million in the Northeast and Ontario
+How many people were in subway cars when the MTA stopped in 2003, and when did limited service return?	Up to 400,000; limited subway service around 8 p.m.; full NYC power back on 16 August
+If only your apartment is dark and the hallway has power, what is the first check?	Your own circuit-breaker panel, then the super; it is not a Con Edison outage
