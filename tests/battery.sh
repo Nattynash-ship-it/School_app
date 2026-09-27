@@ -153,6 +153,7 @@ run d286rat d286rat.js 1
 run choose2 choose2.js 1
 run survive survive.js 1
 run notekeep notekeep.js 1
+run storagefull storagefull.js 1
 run javaunits javaunits.js 1
 if [ -n "$FAILED" ]; then
   echo "BATTERY FAILURES:$FAILED"
