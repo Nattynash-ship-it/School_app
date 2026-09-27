@@ -21,7 +21,7 @@ const pack = JSON.parse(fs.readFileSync(path.join(ROOT, 'content-SURVIVE.json'),
 const L = JSON.parse(pack.l), Q = JSON.parse(pack.q);
 const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'content-manifest.json'), 'utf8'));
 ok('the course file is stamped through the manifest', man.fv.SURVIVE === pack.build && /^18\.\d+$/.test(pack.build), { fv: man.fv.SURVIVE, build: pack.build });
-const lessonKeys = Object.keys(L);
+const lessonKeys = Object.keys(L).filter(k => !/_sim\//.test(k)); // the two simulation chapters carry a short intro, not a lesson
 const thin = lessonKeys.filter(k => (L[k].body || '').replace(/<[^>]*>/g, '').trim().length < 2500);
 ok('fifty lessons across sixteen chapters, none a stub', lessonKeys.length === 50 && thin.length === 0 && MINE.every(c => lessonKeys.some(k => k.startsWith('SURVIVE/' + c + '/'))), { n: lessonKeys.length, thin: thin.slice(0, 5) });
 const noSources = lessonKeys.filter(k => !/✅ VERIFIED/.test(L[k].body) || !/https?:\/\//.test(L[k].body));
@@ -96,8 +96,8 @@ ok('the decks are listed for offline holding', decks.every(f => idx.includes("'/
     const url = '/content-SURVIVE.json?v=' + encodeURIComponent(man.fv.SURVIVE);
     const r = await fetch(url); const pk = await r.json();
     const stayed = !!(typeof view === 'object' && view && view.courseId === 'SURVIVE');
-    const inApp = Object.keys(JSON.parse(pk.l)).filter(k => { const [c, ch, sc] = k.split('/'); try { const g = getQuestions(c, ch, sc); return !(g && g.length >= 6); } catch (e) { return true; } });
-    const lessonInApp = Object.keys(JSON.parse(pk.l)).filter(k => { try { const v = SAMPLE_LESSON[k]; return !(v && (v.body || v).length > 2000); } catch (e) { return true; } });
+    const inApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => { const [c, ch, sc] = k.split('/'); try { const g = getQuestions(c, ch, sc); return !(g && g.length >= 6); } catch (e) { return true; } });
+    const lessonInApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => { try { const v = SAMPLE_LESSON[k]; return !(v && (v.body || v).length > 2000); } catch (e) { return true; } });
     return { status: r.status, stayed, inApp, lessonInApp, title: (document.body.innerText.match(/Survival[^\n]*/) || [''])[0] };
   });
   ok('opening the course stays on the course (no lock redirect) and serves the stamped pack', load.status === 200 && load.stayed, load);
