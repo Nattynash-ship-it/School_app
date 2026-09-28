@@ -66,7 +66,7 @@ const ok = (n, c, d) => { c ? (pass++, console.log('PASS ' + n)) : (fail++, cons
   const R = await p.evaluate(async (pages) => {
     const out = { page: (gannoGetStrokes('pad_C959/ch4/s1') || []).length, recomp: 0, plain: 0, intact: 0 };
     for (const rk of Object.keys(pages)) { const v = localStorage.getItem('gsk:' + rk) || ''; if (v.charAt(0) === '{') out.plain++; else out.recomp++; if ((gannoGetStrokes(rk) || []).length === pages[rk]) out.intact++; }
-    const er = JSON.parse(localStorage.getItem('sh_erased_v1') || '{}'); out.eraseMarks = Object.values(er.strokes || {}).reduce((a, m) => a + Object.keys(m).length, 0); out.recentKept = !!(er.strokes && er.strokes['pad_C959/ch9/e0'] && er.strokes['pad_C959/ch9/e0']['recent.key.1']);
+    const _raw = localStorage.getItem('sh_erased_v1') || '{}'; const er = JSON.parse(_raw.charAt(0) === '{' ? _raw : (LZString.decompressFromUTF16(_raw) || '{}')); out.eraseMarks = Object.values(er.strokes || {}).reduce((a, m) => a + Object.keys(m).length, 0); out.recentKept = !!(er.strokes && er.strokes['pad_C959/ch9/e0'] && er.strokes['pad_C959/ch9/e0']['recent.key.1']);
     out.rescueLS = localStorage.getItem('sh_store_rescue_v1') === null; out.diag = localStorage.getItem('diagBuf') === null;
     const bin = await window.__inkBin.list('__store_rescue'); out.rescueIDB = bin.length > 0 && (bin[0].blob || '').length === 400000;
     return out;

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.641">
+<meta name="app-build" content="18.642">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -13937,21 +13937,28 @@ function storageCheck(){
       '<p style="margin:0 0 6px; font-size:14px;">Using about <strong>' + kb(R.total * 2) + '</strong> of roughly 5 MB (' + pct + '%).</p>' +
       '<div style="height:8px; border-radius:99px; background:var(--surface-3); overflow:hidden; margin:0 0 12px;"><div style="height:100%; width:' + pct + '%; background:' + (pct > 85 ? 'var(--danger)' : 'var(--accent)') + ';"></div></div>' +
       '<table style="width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums;">' + R.groups.map(function(g){ return '<tr><td style="padding:5px 0; border-bottom:1px solid var(--border);">' + esc(g.name) + '</td><td style="padding:5px 0; text-align:right; border-bottom:1px solid var(--border);">' + kb(g.n * 2) + '</td></tr>'; }).join('') + '</table>' +
+      (R.coldN ? '<p style="margin:10px 0 0; font-size:13px;">\uD83D\uDCE6 <strong>' + R.coldN + ' older handwriting page' + (R.coldN === 1 ? '' : 's') + '</strong> (' + kb(R.cold * 2) + ') are kept in the iPad\u2019s larger storage and do not count against this limit.</p>' : '') +
       '<p style="margin:12px 0 4px; font-size:12px; color:var(--text-3);">Largest items: ' + R.top.slice(0, 6).map(function(x){ return esc(x.k.length > 34 ? x.k.slice(0, 34) + '\u2026' : x.k) + ' ' + kb(x.n * 2); }).join(' \u00b7 ') + '</p>';
   };
   var bg = document.createElement('div'); bg.className = 'modal-bg'; bg.style.zIndex = '95';
   bg.innerHTML = '<div class="modal" role="dialog" aria-label="Storage check" style="max-width:520px; width:calc(100vw - 32px); max-height:84vh; overflow:auto;">' +
     '<h3 style="margin-top:0;">Storage check</h3><div data-sc-body></div>' +
-    '<p style="font-size:12px; color:var(--text-3); line-height:1.5;">Free space removes the app\u2019s own diagnostic logs, moves its emergency copy into the larger IndexedDB storage, drops erase marks older than a month, and recompresses handwriting. Nothing you wrote or scored is deleted.</p>' +
+    '<p style="font-size:12px; color:var(--text-3); line-height:1.5;">Free space moves handwriting you are not using into the iPad\u2019s larger storage, removes the app\u2019s own diagnostic logs, moves its emergency copy into the larger IndexedDB storage, drops erase marks older than a month, and recompresses handwriting. Nothing you wrote or scored is deleted.</p>' +
     '<div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;"><button data-sc-close>Close</button><button class="primary" data-sc-run>Free space now</button></div></div>';
   document.body.appendChild(bg);
   var body = bg.querySelector('[data-sc-body]');
   paint(body, D.report());
   bg.addEventListener('click', function(e){ if (e.target === bg || e.target.closest('[data-sc-close]')) bg.remove(); });
   bg.querySelector('[data-sc-run]').addEventListener('click', function(){
+    var before = D.report().total, btn = this; btn.disabled = true;
     var r = D.run({});
-    try { saveStore(); } catch (e) {}
-    paint(body, D.report(), 'Freed ' + kb(Math.max(0, r.freed) * 2) + (r.steps.length ? ' \u2014 ' + r.steps.map(function(x){ return x.step + (x.note ? ' (' + x.note + ')' : ''); }).join(', ') : '') + '.');
+    var done = function(){
+      try { saveStore(); } catch (e) {}
+      var R = D.report();
+      paint(body, R, 'Freed ' + kb(Math.max(0, before - R.total) * 2) + (r.steps.length ? ' \u2014 ' + r.steps.map(function(x){ return x.step; }).join(', ') : '') + '.');
+      btn.disabled = false;
+    };
+    try { if (window.__inkTier) window.__inkTier.evict(true).then(done, done); else done(); } catch (e) { done(); }
   });
 }
 window.storageCheck = storageCheck;
@@ -28968,9 +28975,10 @@ function exportData() {
  const payload = JSON.parse(storeJSON());
  try {
    const pad = {};
-   for (const k in localStorage) {
-     if (k.indexOf('gsk:pad_') !== 0) continue;
-     const rk = k.slice(4);
+   const _padKeys = [];
+   for (const k in localStorage) { if (k.indexOf('gsk:pad_') === 0) _padKeys.push(k.slice(4)); }
+   try { (window.__inkTier ? window.__inkTier.coldKeys() : []).forEach(function(rk){ if (rk.indexOf('pad_') === 0 && _padKeys.indexOf(rk) < 0) _padKeys.push(rk); }); } catch (e) {}
+   for (const rk of _padKeys) {
      let v = null;
      try { v = (typeof gannoGetStrokes === 'function') ? gannoGetStrokes(rk) : null; } catch (e) {}
      if (v && v.length) pad[rk] = v;
@@ -59780,8 +59788,202 @@ function index(){
   try { if (!store.gannoInkIndex) store.gannoInkIndex = {}; return store.gannoInkIndex; }
   catch (e) { return {}; }
 }
+
+/* INK_TIER_V1 - HANDWRITING NO LONGER HAS TO FIT IN 5 MB.
+   Her Storage check: 4.67 MB of roughly 5 MB used, 3.77 MB of it handwriting,
+   one page alone 604 KB. localStorage is capped at about 5 MB for the whole
+   app and her notes only grow, so no clean-up could keep up. Pages now live in
+   two tiers:
+     - HOT: pages in use stay in localStorage, exactly as before - instant.
+     - COLD: when hot handwriting passes a budget, the pages least recently
+       written move to IndexedDB (hundreds of MB on an installed app). They
+       are loaded back into memory as the app opens, read exactly like any
+       other page, and move back to hot the moment she writes on one.
+   A page written on before its cold copy has loaded is merged with it, never
+   replaced (the same rule that fixed the sync). Nothing is removed from
+   localStorage until IndexedDB has confirmed the copy. */
+var COLD_DB = 'sh-ink', COLD_OS = 'pages', COLD_IDX = 'sh_ink_cold';
+var HOT_BUDGET = 900000;          // characters of handwriting kept in localStorage (~1.8 MB)
+var coldIdx = (function(){ try { var o = JSON.parse(localStorage.getItem(COLD_IDX) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } })();
+var coldMem = Object.create(null), coldLoaded = false, mergeOnLoad = Object.create(null);
+var writeSeq = Object.create(null), touched = Object.create(null), hotSize = null, evictT = null, evictBusy = false, lastScan = 0;
+function coldSaveIdx(){ try { localStorage.setItem(COLD_IDX, JSON.stringify(coldIdx)); return true; } catch (e) { return false; } }
+function coldOpen(){
+  return new Promise(function(res, rej){
+    try {
+      var r = indexedDB.open(COLD_DB, 1);
+      r.onupgradeneeded = function(){ var db = r.result; if (!db.objectStoreNames.contains(COLD_OS)) db.createObjectStore(COLD_OS, { keyPath: 'rk' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+      r.onblocked = function(){ rej(new Error('blocked')); };
+    } catch (e) { rej(e); }
+  });
+}
+function coldTx(fn){
+  return coldOpen().then(function(db){
+    return new Promise(function(res){
+      var tx = db.transaction(COLD_OS, 'readwrite'), os = tx.objectStore(COLD_OS), out = null;
+      try { out = fn(os); } catch (e) {}
+      tx.oncomplete = function(){ db.close(); res(out == null ? true : out); };
+      tx.onerror = tx.onabort = function(){ db.close(); res(false); };
+    });
+  }).catch(function(){ return false; });
+}
+function coldDel(rk){ return coldTx(function(os){ os.delete(rk); }); }
+function isCold(rk){ return !!coldIdx[rk]; }
+function strokeId(st){ try { return (st && st._uid) ? ('u' + st._uid + '|' + ((st.points || []).length)) : ('j' + json(st)); } catch (e) { return null; } }
+function unionInk(a, b){
+  var out = (a || []).slice(), seen = Object.create(null), i, k;
+  for (i = 0; i < out.length; i++) { k = strokeId(out[i]); if (k) seen[k] = 1; }
+  for (i = 0; i < (b || []).length; i++) { k = strokeId(b[i]); if (k && seen[k]) continue; if (k) seen[k] = 1; out.push(b[i]); }
+  return out;
+}
+/* The cold page stops being cold: its content is in localStorage now. */
+function coldRetire(rk){
+  if (!coldIdx[rk]) return;
+  delete coldIdx[rk]; delete coldMem[rk]; coldSaveIdx(); coldDel(rk);
+}
+function hotSizes(){
+  if (hotSize) return hotSize;
+  hotSize = Object.create(null);
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i), rk = null;
+      if (k.indexOf(PREFIX) === 0) rk = k.slice(PREFIX.length); else if (k.indexOf(LOG) === 0) rk = k.slice(LOG.length);
+      if (rk === null) continue;
+      hotSize[rk] = (hotSize[rk] || 0) + (localStorage.getItem(k) || '').length;
+    }
+  } catch (e) {}
+  return hotSize;
+}
+function hotTotal(){ var h = hotSizes(), t = 0; for (var k in h) t += h[k]; return t; }
+function noteHot(rk){
+  touched[rk] = Date.now(); writeSeq[rk] = (writeSeq[rk] || 0) + 1;
+  if (!hotSize) return;
+  try { hotSize[rk] = (localStorage.getItem(PREFIX + rk) || '').length + (localStorage.getItem(LOG + rk) || '').length; if (!hotSize[rk]) delete hotSize[rk]; } catch (e) {}
+  evictSoon();
+}
+function openKeys(){
+  var out = Object.create(null);
+  try { var st = window.__notesPanel && window.__notesPanel.state(); if (st && st.key) out['pad_' + String(st.key).replace(/[^a-zA-Z0-9_/-]/g, '_')] = 1; } catch (e) {}
+  try { if (typeof ganno === 'object' && ganno && ganno.routeKey) out[ganno.routeKey] = 1; } catch (e) {}
+  return out;
+}
+function evictSoon(){
+  if (evictT || !coldLoaded) return;
+  evictT = setTimeout(function(){ evictT = null; evictRun(); }, 1500);
+}
+/* Move the least recently written pages out until hot handwriting is well
+   under the budget. The page open in the notebook or on the lesson stays. */
+function evictRun(force){
+  if (evictBusy || !coldLoaded || typeof indexedDB === 'undefined') return Promise.resolve(0);
+  if (force || Date.now() - lastScan > 60000) { hotSize = null; lastScan = Date.now(); }   // measure what is really there
+  var total = hotTotal(), limit = force ? 0 : HOT_BUDGET;
+  if (total <= limit) return Promise.resolve(0);
+  var target = force ? 0 : Math.floor(HOT_BUDGET * 0.6), open = openKeys(), h = hotSizes(), now = Date.now();
+  var cands = Object.keys(h).filter(function(rk){ return !open[rk] && (force || now - (touched[rk] || 0) > 10000); });
+  cands.sort(function(a, b){ return ((touched[a] || 0) - (touched[b] || 0)) || (h[b] - h[a]); });
+  var pick = [], after = total;
+  for (var i = 0; i < cands.length && after > target; i++) { pick.push(cands[i]); after -= h[cands[i]]; }
+  if (!pick.length) return Promise.resolve(0);
+  evictBusy = true;
+  var recs = [];
+  pick.forEach(function(rk){
+    try {
+      var list = readInk(rk); if (!list || !list.length) return;
+      var slot = localStorage.getItem(PREFIX + rk), hasLog = !!localStorage.getItem(LOG + rk);
+      var packed = (slot && !hasLog && slot.charAt(0) !== '{' && slot.charAt(0) !== '[') ? slot : pack({ g: gens[rk] || 0, s: list });
+      if (packed == null) return;
+      recs.push({ rk: rk, data: packed, n: list.length, at: Date.now(), seq: writeSeq[rk] || 0, list: list });
+    } catch (e) {}
+  });
+  return coldTx(function(os){ recs.forEach(function(r){ os.put({ rk: r.rk, data: r.data, n: r.n, at: r.at }); }); }).then(function(ok){
+    var moved = 0;
+    if (ok) recs.forEach(function(r){
+      if ((writeSeq[r.rk] || 0) !== r.seq) return;            // written while moving: stays hot
+      coldIdx[r.rk] = { n: r.n, at: r.at, b: r.data.length };
+      coldMem[r.rk] = r.list;
+      moved++;
+    });
+    if (moved && coldSaveIdx()) {
+      recs.forEach(function(r){
+        if (!coldIdx[r.rk] || coldMem[r.rk] !== r.list) return;
+        try { localStorage.removeItem(PREFIX + r.rk); localStorage.removeItem(LOG + r.rk); } catch (e) {}
+        if (hotSize) delete hotSize[r.rk];
+        delete tail[r.rk];
+      });
+    } else if (moved) {
+      // the index could not be written: nothing is removed, the copies are simply spare
+      recs.forEach(function(r){ delete coldIdx[r.rk]; delete coldMem[r.rk]; });
+      moved = 0;
+    }
+    evictBusy = false;
+    try { window.__inkTierLast = { moved: moved, hot: hotTotal(), cold: Object.keys(coldIdx).length }; } catch (e) {}
+    return moved;
+  }, function(){ evictBusy = false; return 0; });
+}
+/* Load every cold page into memory as the app opens, merge any page that was
+   written before it arrived, and refresh whatever is on screen. */
+var _inkReadyRes = null;
+window.__inkReady = new Promise(function(res){ _inkReadyRes = res; });
+function coldLoad(){
+  var want = Object.keys(coldIdx);
+  var finish = function(){
+    coldLoaded = true;
+    for (var rk in mergeOnLoad) {
+      try {
+        var cold = coldMem[rk] || [], hot = null;
+        delete cache[rk];
+        hot = readInk(rk) || [];
+        var merged = unionInk(cold, hot);
+        rewrite(rk, merged);                                   // now hot, cold retired
+        try { if (store.gannoStrokes) store.gannoStrokes[rk] = merged; } catch (e) {}
+        lastRefs[rk] = merged.slice();
+        var AR = window.__inkArrivals || (window.__inkArrivals = {});
+        AR[rk] = (AR[rk] || []).concat(cold);
+        try { if (window.__notesPanel && window.__notesPanel.adopt) window.__notesPanel.adopt(rk); } catch (e) {}
+      } catch (e) {}
+    }
+    mergeOnLoad = Object.create(null);
+    // whatever is open read an empty page before its ink arrived
+    try { if (window.__notesPanel && window.__notesPanel.reloadInk) { var st = window.__notesPanel.state(); if (st && st.key && coldIdx['pad_' + String(st.key).replace(/[^a-zA-Z0-9_/-]/g, '_')]) window.__notesPanel.reloadInk(); } } catch (e) {}
+    try { if (typeof ganno === 'object' && ganno && ganno.routeKey && coldIdx[ganno.routeKey] && typeof gannoRender === 'function') { if (store.gannoStrokes) delete store.gannoStrokes[ganno.routeKey]; gannoRender(gannoGetStrokes(ganno.routeKey), null); } } catch (e) {}
+    try { window.__inkReadyDone = true; _inkReadyRes(true); } catch (e) {}
+    setTimeout(function(){ evictRun(); }, 4000);
+  };
+  if (!want.length) { finish(); return; }
+  if (typeof indexedDB === 'undefined') { try { _inkReadyRes(false); } catch (e) {} return; }
+  coldOpen().then(function(db){
+    var tx = db.transaction(COLD_OS, 'readonly'), os = tx.objectStore(COLD_OS), got = Object.create(null);
+    var req = os.openCursor();
+    req.onsuccess = function(ev){ var c = ev.target.result; if (!c) return; got[c.value.rk] = c.value; c.continue(); };
+    tx.oncomplete = function(){
+      db.close();
+      var stray = [];
+      want.forEach(function(rk){ var r = got[rk], w = r && unwrap(r.data); if (w) coldMem[rk] = w.s; });
+      for (var k in got) if (!coldIdx[k]) stray.push(k);
+      if (stray.length) coldTx(function(o){ stray.forEach(function(k){ o.delete(k); }); });
+      finish();
+    };
+    tx.onerror = function(){ db.close(); try { _inkReadyRes(false); } catch (e) {} };
+  }).catch(function(){ try { _inkReadyRes(false); } catch (e) {} });
+}
+window.__inkTier = {
+  isCold: isCold, coldKeys: function(){ return Object.keys(coldIdx); }, ready: function(){ return coldLoaded; },
+  hot: function(){ return hotTotal(); }, budget: function(v){ if (v > 0) HOT_BUDGET = v; return HOT_BUDGET; },
+  evict: function(force){ return evictRun(!!force); },
+  dropAll: function(prefix){
+    var ks = Object.keys(coldIdx).filter(function(k){ return !prefix || k.indexOf(prefix) === 0; });
+    ks.forEach(function(k){ delete coldIdx[k]; delete coldMem[k]; });
+    coldSaveIdx(); coldTx(function(os){ ks.forEach(function(k){ os.delete(k); }); });
+    return ks.length;
+  },
+  bytes: function(){ var t = 0; for (var k in coldIdx) t += (coldIdx[k].b || 0); return t; }
+};
+
 function readInk(rk){
   if (cache[rk]) return cache[rk];
+  touched[rk] = touched[rk] || 1;
   var w = unwrap(localStorage.getItem(PREFIX + rk));
   var v = w ? w.s.slice() : [];
   var gen = w ? w.g : 0;
@@ -59808,6 +60010,14 @@ function readInk(rk){
       v.push(e.s);
     }
   }
+  if (coldIdx[rk]) {
+    if (coldMem[rk]) {
+      v = v.length ? unionInk(coldMem[rk], v) : coldMem[rk].slice();
+    } else if (!coldLoaded) {
+      mergeOnLoad[rk] = mergeOnLoad[rk] || (v.length ? 1 : 0);
+      if (!v.length) return null;                 // arrives with the load
+    }
+  }
   if (v.length) {
     cache[rk] = v;
     tail[rk] = { n: v.length, last: v[v.length - 1] };
@@ -59819,6 +60029,8 @@ function readInk(rk){
 function rewrite(rk, strokes){
   try {
     if (!strokes || !strokes.length) {
+      if (coldIdx[rk]) coldRetire(rk);
+      if (hotSize) delete hotSize[rk];
       localStorage.removeItem(PREFIX + rk);
       localStorage.removeItem(LOG + rk);
       delete cache[rk];
@@ -59842,12 +60054,14 @@ function rewrite(rk, strokes){
       if (p != null) {
         (function(myGen, text){
           window.__packAsync(text).then(function(c){
-            try { if (c && gens[rk] === myGen && localStorage.getItem(PREFIX + rk) === text) localStorage.setItem(PREFIX + rk, c); } catch (e2) {}
+            try { if (c && gens[rk] === myGen && localStorage.getItem(PREFIX + rk) === text) { localStorage.setItem(PREFIX + rk, c); if (hotSize) hotSize[rk] = c.length + (localStorage.getItem(LOG + rk) || '').length; } } catch (e2) {}
           });
         })(gen, plain);
       }
     }
     if (p == null) { p = pack({ g: gen, s: strokes }); if (p != null) localStorage.setItem(PREFIX + rk, p); }
+    if (p != null && coldIdx[rk]) { if (coldLoaded) coldRetire(rk); else mergeOnLoad[rk] = 1; }
+    if (p != null) noteHot(rk);
     if (p != null) {
       // The generation is live the moment the slot is, so anything appended
       // from here on is stamped with it - including a write that lands before
@@ -59872,6 +60086,7 @@ function inkQuota(rk, strokes, where){
     window.__storageTight = Date.now();
     var ok = false;
     try { if (window.__storageDoctor && Date.now() - (window.__doctorRanAt || 0) > 20000) { window.__doctorRanAt = Date.now(); window.__storageDoctor.run({ quiet: true }); } } catch (e0) {}
+    try { evictRun(true); } catch (e0b) {}              // INK_TIER_V1: the cure, not a trim
     try {
       if (strokes && strokes.length) {
         var p2 = pack({ g: ((gens[rk] || 0) + 1) % 1000000, s: strokes });
@@ -59907,6 +60122,7 @@ function inkQuota(rk, strokes, where){
 function writeInk(rk, strokes){
   try {
     if (!strokes || !strokes.length) { rewrite(rk, strokes); return; }
+    if (coldIdx[rk]) { rewrite(rk, strokes); return; }
     var t = tail[rk];
     var appended = t && t.n > 0 && strokes.length > t.n && strokes[t.n - 1] === t.last;
     if (!appended) { rewrite(rk, strokes); return; }
@@ -59919,6 +60135,8 @@ function writeInk(rk, strokes){
     cache[rk] = strokes;
     index()[rk] = 1;
     tail[rk] = { n: strokes.length, last: strokes[strokes.length - 1] };
+    touched[rk] = Date.now(); writeSeq[rk] = (writeSeq[rk] || 0) + 1;
+    if (hotSize) { hotSize[rk] = (hotSize[rk] || 0) + add.length; evictSoon(); }
     if (needsCompaction(rk)) compactSoon(rk);
   } catch (e) {
     // Log write failed (quota). Fall back to a full rewrite so nothing is lost.
@@ -59927,6 +60145,7 @@ function writeInk(rk, strokes){
   }
 }
 window.__inkKeys = function(){ return Object.keys(index()); };
+try { coldLoad(); } catch (e) { coldLoaded = false; }
 /* STORAGE_DOCTOR_V1 - WHAT FILLS THE STORAGE, AND WHAT CAN SAFELY GO.
    Nothing she wrote or scored is deleted. In order:
      - diagnostic logs the app keeps about itself
@@ -59943,7 +60162,7 @@ function lsSizes(){
 }
 function lsGroup(k){
   if (k === 'studysmart_v1') return 'Your progress and settings';
-  if (k.indexOf(PREFIX) === 0) return 'Handwriting pages';
+  if (k.indexOf(PREFIX) === 0) return 'Handwriting pages in use';
   if (k.indexOf(LOG) === 0) return 'Handwriting not yet compressed';
   if (k === 'sh_erased_v1') return 'Erase record (keeps erased ink from syncing back)';
   if (k === 'sh_store_rescue_v1') return 'Emergency copy of your data';
@@ -59955,12 +60174,17 @@ function doctorReport(){
   var z = lsSizes(), g = {};
   z.keys.forEach(function(x){ var name = lsGroup(x.k); g[name] = (g[name] || 0) + x.n; });
   var groups = Object.keys(g).map(function(k){ return { name: k, n: g[k] }; }).sort(function(a, b){ return b.n - a.n; });
-  return { total: z.total, groups: groups, top: z.keys.slice(0, 12) };
+  var cold = 0, coldN = 0; try { cold = window.__inkTier.bytes(); coldN = window.__inkTier.coldKeys().length; } catch (e) {}
+  return { total: z.total, groups: groups, top: z.keys.slice(0, 12), cold: cold, coldN: coldN };
 }
 function doctorRun(opt){
   opt = opt || {};
   var before = lsSizes().total, steps = [];
   var step = function(name, fn){ var b = lsSizes().total, extra = null; try { extra = fn(); } catch (e) { extra = 'failed'; } var f = b - lsSizes().total; if (f > 0 || extra) steps.push({ step: name, freed: f, note: extra }); };
+  step('older handwriting moved to the larger storage', function(){
+    try { if (coldLoaded && hotTotal() > HOT_BUDGET * 0.6) { evictRun(true); return 'moving'; } } catch (e) {}
+    return null;
+  });
   step('diagnostic logs', function(){
     var ks = []; for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^(diagBuf|diagCrash|diagFreeze|diagSlow|__reloadLog)$|^shCoachReport:/.test(k)) ks.push(k); }
     ks.forEach(function(k){ localStorage.removeItem(k); });
@@ -60026,9 +60250,11 @@ window.__inkDropAll = function(){
     }
     for (var i = 0; i < kill.length; i++) { try { localStorage.removeItem(kill[i]); n++; } catch (e) {} }
   } catch (e) {}
+  try { n += window.__inkTier.dropAll(); } catch (e) {}
   try { cache = Object.create(null); } catch (e) {}
   try { tail = Object.create(null); } catch (e) {}
   try { lastRefs = Object.create(null); } catch (e) {}
+  hotSize = null;
   try { store.gannoInkIndex = {}; } catch (e) {}
   try { store.gannoStrokes = {}; } catch (e) {}
   return n;
@@ -64327,6 +64553,7 @@ function runRecover(){
             var pair = pageSlots[rk];
             if (pair.gsk == null) continue;             // a log with no page of its own is not a page
             if (localStorage.getItem('gsk:' + rk) !== null) continue;  // still here: local wins, whole
+            try { if (window.__inkTier && window.__inkTier.isCold(rk)) continue; } catch (e) {}  // kept in the larger storage
             var pAt = 0;
             try { pAt = (E2 && E2.pageAt) ? (E2.pageAt(rk) || 0) : 0; } catch (e) {}
             if (pAt && (inkRec.at || 0) < pAt) continue; // she erased this page after the mirror
@@ -64708,7 +64935,12 @@ var _rc = null;                  // the parsed record; re-parsing it on every st
 function read(){
   if (_rc) return _rc;
   var o = null;
-  try { o = JSON.parse(localStorage.getItem(LKEY) || 'null'); } catch (e) {}
+  try {
+    var raw = localStorage.getItem(LKEY) || 'null';
+    // INK_TIER_V1: stored compressed now (it was 619 KB of plain JSON on her iPad)
+    if (raw.charAt(0) !== '{' && raw !== 'null' && typeof LZString !== 'undefined') raw = LZString.decompressFromUTF16(raw) || 'null';
+    o = JSON.parse(raw);
+  } catch (e) {}
   if (!o || typeof o !== 'object') o = {};
   if (!o.pages || typeof o.pages !== 'object') o.pages = {};
   if (!o.courses || typeof o.courses !== 'object') o.courses = {};
@@ -64719,7 +64951,7 @@ function read(){
 }
 function write(o){
   _rc = o;
-  try { localStorage.setItem(LKEY, JSON.stringify(o)); } catch (e) {}
+  try { var _j = JSON.stringify(o); localStorage.setItem(LKEY, (typeof LZString !== 'undefined' && LZString.compressToUTF16 && _j.length > 2000) ? LZString.compressToUTF16(_j) : _j); } catch (e) {}
   try { store.__erased = o; } catch (e) {}
   idbSave(o);
 }
@@ -65374,8 +65606,10 @@ function normCode(s){ return String(s || '').toLowerCase().replace(/[^a-z0-9]/g,
 
 /* ---------- snapshot ---------- */
 function inkKeys(){
-  var out = [];
-  try { for (var k in (store.gannoInkIndex || {})) out.push(k); } catch (e) {}
+  var out = [], seen = {};
+  try { for (var k in (store.gannoInkIndex || {})) { out.push(k); seen[k] = 1; } } catch (e) {}
+  // INK_TIER_V1: pages in the larger storage travel too, index or not
+  try { (window.__inkTier ? window.__inkTier.coldKeys() : []).forEach(function(rk){ if (!seen[rk]) { out.push(rk); seen[rk] = 1; } }); } catch (e) {}
   return out;
 }
 function snapshot(){
@@ -65628,6 +65862,7 @@ function blobHash(str){
   } catch (e) { return ''; }
 }
 function pull(){
+  if (window.__inkReady && !window.__inkReadyDone) return window.__inkReady.then(function(){ window.__inkReadyDone = true; return pull(); });
   var c = cfg();
   if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
   return fetch(EP + '?k=' + encodeURIComponent(c.hash), { method: 'GET', cache: 'no-store' })
@@ -65645,6 +65880,7 @@ function pull(){
     });
 }
 function push(){
+  if (window.__inkReady && !window.__inkReadyDone) return window.__inkReady.then(function(){ window.__inkReadyDone = true; return push(); });
   var c = cfg();
   if (!c) return Promise.reject(new Error('Sync is not set up on this device yet.'));
   // The snapshot (store + every page of ink) is the biggest thing this app
@@ -72666,11 +72902,10 @@ try {
          deletes a page of her handwriting. */
       var saved = {};
       try {
-        for (var lk in localStorage) {
-          if (lk.indexOf('gsk:pad_') !== 0) continue;
-          var rk = lk.slice(4);
-          try { var v = gannoGetStrokes(rk); if (v && v.length) saved[rk] = v; } catch (e) {}
-        }
+        var _pk = [];
+        for (var lk in localStorage) { if (lk.indexOf('gsk:pad_') === 0) _pk.push(lk.slice(4)); }
+        try { (window.__inkTier ? window.__inkTier.coldKeys() : []).forEach(function(rk){ if (rk.indexOf('pad_') === 0 && _pk.indexOf(rk) < 0) _pk.push(rk); }); } catch (e) {}
+        _pk.forEach(function(rk){ try { var v = gannoGetStrokes(rk); if (v && v.length) saved[rk] = v; } catch (e) {} });
       } catch (e) {}
       var n = 0;
       try { n = _dropAll.apply(this, arguments); } catch (e) {}
@@ -72698,6 +72933,7 @@ window.__padDropAll = function(){
       if (k.indexOf('gsk:pad_') === 0 || k.indexOf('gsl:pad_') === 0) kill.push(k);
     }
     for (var i = 0; i < kill.length; i++) { try { localStorage.removeItem(kill[i]); n++; } catch (e) {} }
+    try { if (window.__inkTier) n += window.__inkTier.dropAll('pad_'); } catch (e) {}
     if (store.gannoInkIndex) for (var ik in store.gannoInkIndex) if (ik.indexOf('pad_') === 0) delete store.gannoInkIndex[ik];
     if (store.gannoStrokes) for (var sk in store.gannoStrokes) if (sk.indexOf('pad_') === 0) delete store.gannoStrokes[sk];
     store.padNotes = {};
