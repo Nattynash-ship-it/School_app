@@ -1,0 +1,34 @@
+Definition of the QFT on n qubits (N = 2^n)	QFT|j⟩ = (1/√N) ∑_k e^{2πi jk/N} |k⟩, for j = 0, …, N−1.
+What is the one-qubit QFT?	The Hadamard gate H (N = 2, ω = −1).
+Write F4, the two-qubit QFT matrix	(1/2)[[1,1,1,1],[1,i,−1,−i],[1,−1,1,−1],[1,−i,−1,i]]; column j is QFT|j⟩.
+QFT|01⟩ on two qubits (big-endian)	(|00⟩ + i|01⟩ − |10⟩ − i|11⟩)/2
+How does the QFT relate to numpy's FFT?	QFT x = √N · np.fft.ifft(x). np.fft.fft has the opposite sign (e^{−2πijk/N}) and no normalisation.
+Product form of QFT|j1…jn⟩	(1/2^{n/2})(|0⟩+e^{2πi 0.jn}|1⟩)⊗(|0⟩+e^{2πi 0.j(n−1)jn}|1⟩)⊗…⊗(|0⟩+e^{2πi 0.j1…jn}|1⟩)
+Is the QFT of a computational basis state entangled?	No. The product form shows it is a product state; each qubit carries its own phase.
+Define the rotation R_k used in the QFT circuit	R_k = diag(1, e^{2πi/2^k}); R_1 = Z, R_2 = S, R_3 = T.
+Gate count of the exact n-qubit QFT	n Hadamards, n(n−1)/2 controlled phases, ⌊n/2⌋ SWAPs: Θ(n²) gates.
+Why does the QFT circuit end with SWAPs?	The circuit produces the product-form factors in reverse qubit order; the SWAPs restore the order.
+How do you build the inverse QFT?	Run the QFT circuit backwards with every rotation angle negated (R_k†); H and SWAP are self-inverse.
+What does the approximate QFT drop, and what does it cost?	Controlled-R_k with k > m. Error ≤ about 2πn/2^m in operator norm; with m ≈ log₂ n + c, O(n log n) gates.
+Why is the QFT not a faster classical FFT?	Loading N numbers costs about N, and measurement returns one sampled index k, not the N Fourier coefficients.
+State the phase estimation problem	Given controlled powers of U and an eigenstate |u⟩ with U|u⟩ = e^{2πiφ}|u⟩, estimate φ ∈ [0, 1).
+What is phase kickback?	Controlled-U on (|0⟩+|1⟩)|u⟩/√2 gives (|0⟩ + e^{2πiφ}|1⟩)|u⟩/√2: the eigenphase moves onto the control qubit.
+QPE counting register after the controlled-U^{2^j} gates	(1/√2^t) ∑_k e^{2πiφk}|k⟩, which equals QFT|2^t φ⟩ when 2^t φ is an integer.
+QPE on T with target |1⟩ and t = 3: outcome?	φ = 1/8, so m = 1 (binary 001) with probability 1.
+QPE outcome probability formula	P(m) = sin²(π2^tδ)/(2^{2t} sin²(πδ)) with δ = φ − m/2^t; P = 1 when δ = 0.
+QPE with φ = 1/3 and t = 3: most likely outcome?	m = 3 (estimate 0.375) with probability 0.6878; m ∈ {2,3,4} with 0.9097.
+Worst-case probability of the nearest t-bit QPE estimate	At least 4/π² ≈ 0.405 (phase halfway between grid points); the two nearest together ≈ 8/π² ≈ 0.81.
+Counting qubits for n bits of φ with failure ≤ ε	t = n + ⌈log₂(2 + 1/(2ε))⌉, e.g. n = 3, ε = 0.1 gives t = 6.
+When is QPE efficient?	Only when U^{2^j} has a short circuit; repeating U 2^j times makes t counting qubits cost 2^t − 1 uses of U.
+QPE on a superposition ∑ c_u|u⟩ of eigenstates gives…	An estimate of φ_u with probability |c_u|².
+Why can a global phase of U change the QPE result?	Controlled-U applies it only when the control is 1, making it relative: T gives φ = 1/8, RZ(π/4) gives 1/16 on |1⟩.
+Define the order of a modulo N	The smallest r > 0 with a^r ≡ 1 (mod N); it exists when gcd(a, N) = 1.
+Define the modular multiplication unitary U_a	U_a|y⟩ = |ay mod N⟩ for y < N and |y⟩ for N ≤ y < 2^L; a permutation, hence unitary.
+Eigenvectors and eigenvalues of U_a	|u_s⟩ = (1/√r)∑_k e^{−2πisk/r}|a^k mod N⟩ with eigenvalue e^{2πis/r}, s = 0…r−1.
+Why start order finding with the target in |1⟩?	|1⟩ = (1/√r)∑_s |u_s⟩, so QPE returns s/r for a random s without needing r to prepare the input.
+Order of 7 mod 15 and the QPE outcomes with t = 8	r = 4 (7, 4, 13, 1). Outcomes 0, 64, 128, 192 each with probability 0.25.
+Continued-fraction guarantee used in order finding	If |s/r − m/2^t| ≤ 1/(2r²), then s/r is a convergent of m/2^t; t = 2L + 1 ensures this.
+a = 2, N = 21, t = 11, m = 341: candidate r?	341/2048 = [0; 6, 170, 2], convergent 1/6, so r = 6; check 2^6 = 64 ≡ 1 (mod 21).
+The continued fraction gave q but a^q ≢ 1 mod N. Why, and what next?	q = r/gcd(s, r) because s shared a factor with r. Test multiples of q or take the lcm of denominators from reruns.
+What dominates the cost of order finding?	Reversible modular exponentiation, O(L³) gates with schoolbook arithmetic; the QFT is only O(L²).
+Is order finding proven hard classically?	No. It is in BQP (polynomial quantum time); no polynomial classical algorithm is known, but none is proven impossible.

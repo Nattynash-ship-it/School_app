@@ -1,0 +1,35 @@
+What does a ≡ b (mod N) mean?	N divides a − b: a and b leave the same remainder when divided by N.
+What is the order r of a modulo N?	The smallest r > 0 with a^r ≡ 1 (mod N); it exists when gcd(a, N) = 1 and it divides φ(N).
+Order of 7 modulo 15?	r = 4: powers are 1, 7, 4, 13, 1, ...
+Order of 2 modulo 21?	r = 6: powers are 1, 2, 4, 8, 16, 11, 1, ...
+What identity does Euclid's algorithm repeat?	gcd(a, b) = gcd(b, a mod b), until the second number is 0; takes O(log N) steps.
+How is a^x mod N computed efficiently?	Repeated squaring: square to get a^(2^j) mod N, multiply those for the 1-bits of x, reducing mod N at every step.
+φ(N) for N = pq with distinct primes p, q?	φ(N) = (p − 1)(q − 1), e.g. φ(15) = 8, φ(21) = 12, φ(55) = 40.
+Convergent recurrence for continued fractions?	h_k = a_k h_(k−1) + h_(k−2), k_k = a_k k_(k−1) + k_(k−2), starting 0/1 and 1/0 for (h, k).
+Continued fraction and convergents of 427/512?	[0; 1, 5, 42, 2]; convergents 0/1, 1/1, 5/6, 211/253, 427/512. Candidate order for N = 21: 6.
+When is s/r guaranteed to be a convergent of y/2^t?	When |y/2^t − s/r| ≤ 1/(2r^2); choosing 2^t ≥ N^2 makes phase estimation accurate enough.
+Why can continued fractions return a wrong order?	They give s/r in lowest terms; if gcd(s, r) > 1 you get a divisor of r. Always check a^r mod N = 1.
+Key identity behind Shor's reduction?	a^r ≡ 1 gives (a^(r/2) − 1)(a^(r/2) + 1) ≡ 0 (mod N); factors are gcd(a^(r/2) ± 1, N).
+Two ways a base a can fail in Shor's algorithm?	r is odd, or a^(r/2) ≡ −1 (mod N). Then pick a new random a.
+Probability a random coprime a works (N with two distinct odd prime factors)?	At least 1/2. For N = 15 it is 6/8; for N = 21 exactly 6/12.
+What unitary does Shor's phase estimation use?	U_a|y⟩ = |a·y mod N⟩, a permutation; eigenvalues e^(2πis/r).
+Why start the work register in |1⟩?	|1⟩ = (1/√r) Σ_s |u_s⟩, the uniform sum of U_a's eigenstates, so phase estimation returns s/r for random s.
+Register sizes for Shor on N = 21?	n = ⌈log2 21⌉ = 5 work qubits; t = 9 counting qubits since 441 ≤ 512 < 882.
+Outcomes for N = 15, a = 7, t = 8?	y = 0, 64, 128, 192, each with probability 0.25. 64 and 192 give r = 4; 128 gives wrong 2; 0 gives nothing.
+Factor 15 with a = 7: final gcds?	7^2 mod 15 = 4; gcd(3, 15) = 3 and gcd(5, 15) = 5.
+Factor 21 with a = 2: final gcds?	2^3 = 8; gcd(7, 21) = 7 and gcd(9, 21) = 3.
+Qiskit bit-order warning for Shor circuits?	Qiskit is little-endian: qubit 0 is the rightmost bit, so y = 64 prints as 01000000 on 8 qubits.
+Gidney-Ekerå 2019 estimate for RSA-2048?	About 20 million noisy qubits and about 8 hours (published in Quantum, 2021).
+Gidney 2025 estimate for RSA-2048 and its assumptions?	Under 1 million noisy qubits, under a week; 0.1% gate error, 1 μs cycle, 10 μs reaction, nearest-neighbour grid.
+Why do elliptic curves fall with fewer qubits than RSA?	Shor's discrete-log version works on shorter keys: a 256-bit curve matches about 3072-bit RSA classically.
+How does Shor attack a discrete log h = g^s?	2-D period finding on f(x1, x2) = g^x1 h^x2, constant along the hidden period (−s, 1).
+Toy RSA: p = 5, q = 11, e = 3. Find d.	φ = 40; d = 27 since 3·27 = 81 ≡ 1 (mod 40). m = 9 encrypts to 14.
+Grover iterations for a 128-bit key?	About (π/4)·2^64 ≈ 1.45 × 10^19 sequential iterations: square-root speed-up only.
+What is 'harvest now, decrypt later'?	Record encrypted traffic today, decrypt it once a large quantum computer exists.
+State Mosca's inequality.	If X (secrecy lifetime) + Y (migration time) > Z (time to a quantum attacker), you are already exposed.
+FIPS 203: algorithm and job?	ML-KEM (from Kyber): lattice-based key encapsulation. Approved 13 Aug 2024.
+FIPS 204: algorithm and job?	ML-DSA (from Dilithium): lattice-based general-purpose digital signatures. Approved 13 Aug 2024.
+FIPS 205: algorithm and job?	SLH-DSA (from SPHINCS+): stateless hash-based signatures, a conservative backup. Approved 13 Aug 2024.
+What is HQC and why was it chosen?	Code-based KEM selected by NIST on 11 Mar 2025 as a non-lattice backup to ML-KEM.
+NIST IR 8547 draft timeline for RSA/ECC?	112-bit quantum-vulnerable schemes deprecated after 2030; RSA and ECC disallowed after 2035 (initial public draft, Nov 2024).
+Post-quantum cryptography versus quantum cryptography?	PQC is classical maths on ordinary computers; quantum key distribution uses quantum hardware.

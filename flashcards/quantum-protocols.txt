@@ -1,0 +1,35 @@
+What resources does superdense coding consume and what does it deliver?	1 ebit (a shared Bell pair) + 1 transmitted qubit → 2 classical bits.
+What resources does teleportation consume and what does it deliver?	1 ebit + 2 classical bits → 1 qubit state moved from Alice to Bob.
+Write the four Bell states.	Φ⁺ = (|00⟩+|11⟩)/√2, Φ⁻ = (|00⟩−|11⟩)/√2, Ψ⁺ = (|01⟩+|10⟩)/√2, Ψ⁻ = (|01⟩−|10⟩)/√2.
+In superdense coding, which gate does Alice apply for message b₁b₂?	Z^b₁ X^b₂ on her qubit: 00→I, 01→X, 10→Z, 11→X then Z.
+What circuit performs a Bell measurement?	CNOT (first qubit control), then H on the first qubit, then measure both in the computational basis.
+Superdense coding, message 01: what does Qiskit print?	'10', because Qiskit bitstrings are little-endian (qubit 0 is the rightmost character).
+Why does superdense coding not violate the Holevo bound?	Bob measures two qubits (d = 4, at most 2 bits); one of them was the pre-shared half of the ebit.
+Holevo bound for a d-dimensional system sent alone?	At most log₂ d classical bits accessible: 1 bit per qubit.
+What is Bob's reduced state for any Bell state?	I/2, the maximally mixed state: local measurements give 50/50 results.
+In superdense coding, what goes wrong if Bob forgets the final H?	The first bit becomes random (50/50); for message 01 he sees 01 or 11 with probability 0.5 each.
+Teleportation: state after CNOT and H, grouped by Alice's bits?	(1/2) ∑ |m₁m₂⟩ ⊗ X^m₂ Z^m₁ |ψ⟩.
+Teleportation: Bob's correction for outcome m₁m₂?	Z^m₁ X^m₂: apply X if m₂ = 1, then Z if m₁ = 1.
+Teleportation: probability of each of Alice's four outcomes?	1/4 each, independent of α and β, so Alice learns nothing about |ψ⟩.
+Why is teleportation not faster than light?	Until the 2 classical bits arrive, Bob's averaged state is I/2, identical to before Alice acted.
+Why does teleportation not violate no-cloning?	Alice's measurement leaves her qubits in |m₁m₂⟩; the original state is destroyed, so only Bob holds |ψ⟩.
+Teleporting 0.6|0⟩ + 0.8i|1⟩, outcome 10: Bob's uncorrected state?	Z|ψ⟩ = 0.6|0⟩ − 0.8i|1⟩; Bob applies Z.
+Does the order of X and Z corrections matter in teleportation?	Only up to a global phase: XZ = −ZX, and a global −1 is unobservable.
+What is the deferred measurement principle?	Measure-then-classically-control equals quantum-control-then-measure; used to simulate teleportation with CX and CZ.
+What is entanglement swapping?	A Bell measurement on B1, B2 from pairs A–B1 and B2–C leaves A and C entangled though they never interacted.
+Why does entanglement swapping matter for networks?	Chaining swaps across stations extends entanglement over long distances: the core of a quantum repeater.
+State the CHSH combination S.	S = E(0,0) + E(0,1) + E(1,0) − E(1,1), with E the average product of ±1 outcomes.
+Classical and quantum bounds on |S|?	Local hidden variables: 2. Quantum (Tsirelson): 2√2 ≈ 2.8284. Algebraic maximum: 4.
+CHSH game winning condition?	a ⊕ b = x · y: answers agree unless both inputs are 1, then they must differ.
+Winning probability of the CHSH game: classical vs quantum?	Classical 0.75; quantum cos²(π/8) ≈ 0.8536. In general P_win = 1/2 + S/8.
+Correlator E(a,b) for Φ⁺ with Bloch angles a, b in the x-z plane?	E = cos(a − b). For the singlet Ψ⁻ it is −cos(a − b).
+Optimal CHSH Bloch angles for Φ⁺?	Alice 0° (Z) and 90° (X); Bob 45° and −45°, i.e. (Z ± X)/√2.
+Key step in proving |S| ≤ 2 for local hidden variables?	A₀(B₀+B₁) + A₁(B₀−B₁): one bracket is 0, the other ±2, for every λ.
+Visibility needed to violate CHSH with v·Φ⁺ + (1−v)·I/4?	v > 1/√2 ≈ 0.7071, since S = 2√2·v.
+Name three loopholes in Bell tests.	Locality (settings not space-like separated), detection/fair sampling (losses), freedom of choice (settings correlated with λ).
+Delft 2015 loophole-free Bell test: system and result?	NV electron spins 1.3 km apart; 245 trials, S = 2.42 ± 0.20, P ≤ 0.039 (Hensen et al., Nature 2015).
+Which other groups reported loophole-free Bell tests in 2015?	Vienna (Giustina et al., PRL 115, 250401) and NIST (Shalm et al., PRL 115, 250402), both with entangled photons.
+Who won the 2022 Nobel Prize in Physics, and for what?	Aspect, Clauser and Zeilinger, for experiments with entangled photons establishing the violation of Bell inequalities.
+Does a Bell violation allow signalling?	No: each party's marginal outcomes are 50/50 regardless of the other's setting.
+Polariser angle versus Bloch angle for photons?	Bloch angle = 2 × polariser angle; optimal bench settings are 0°, 45° (Alice) and ±22.5° (Bob).
+Standard deviation of an estimated S with N trials per setting pair?	≈ √(4(1 − E²)/N); about 0.18 for N ≈ 61 and E = 0.7071.

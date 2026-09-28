@@ -1,0 +1,32 @@
+What does FIPS 203 standardise?	ML-KEM, a module-lattice key-encapsulation mechanism (from CRYSTALS-Kyber); approved 13 Aug 2024; replaces RSA/DH/ECDH key establishment.
+What does FIPS 204 standardise?	ML-DSA, a module-lattice digital signature algorithm (from CRYSTALS-Dilithium); approved 13 Aug 2024.
+What does FIPS 205 standardise?	SLH-DSA, a stateless hash-based signature (from SPHINCS+); conservative backup relying only on hash functions; approved 13 Aug 2024.
+What is HQC and when was it selected?	A code-based KEM selected by NIST on 11 March 2025 as a backup to ML-KEM, for mathematical diversity.
+Why does Shor's algorithm threaten RSA and ECC but not AES?	RSA/DH/ECC rest on factoring and discrete logs, which Shor solves in polynomial time; AES only faces Grover's square-root search.
+State Mosca's inequality.	If x + y > z (secrecy lifetime + migration time > years to a CRQC), data protected today is at risk; exposure = x + y − z.
+Grover cost to search a k-bit key?	About (π/4)·2^(k/2) sequential iterations, so a k-bit key keeps about k/2 bits of strength; hence AES-256.
+What is harvest now, decrypt later?	Recording encrypted traffic today to decrypt it once a CRQC exists; it makes long-lived secrets urgent now.
+What is crypto-agility?	Being able to change algorithms, parameters and keys by configuration and update, without redesigning systems or replacing hardware.
+What is hybrid key exchange, e.g. X25519 + ML-KEM-768?	Combining a classical and a PQC key exchange so the session key is safe if either one holds; client share 32 + 1,184 = 1,216 bytes.
+NSM-10 and CNSA 2.0 end date for US national security systems?	NSM-10 (May 2022) sets a 2035 goal; CNSA 2.0 expects all NSS quantum-resistant by 2035.
+CNSA 2.0 deadline for exclusive use in software/firmware signing?	2030 (support and prefer by 2025), using LMS or XMSS stateful hash-based signatures.
+Why is firmware signing an early PQC priority in OT/ICS?	Roots of trust are fused into long-lived devices and cannot be patched after signatures become forgeable.
+What is a cryptographic inventory (CBOM)?	A list of every algorithm, key, certificate, library and protocol in use, per asset, used to prioritise PQC migration.
+BB84 encoding used in this course?	Z basis: 0 → |0⟩, 1 → |1⟩. X basis: 0 → |+⟩, 1 → |−⟩. Bob measures X by applying H then measuring Z.
+What is sifting in BB84?	Publicly comparing bases (never bits) and keeping only rounds where they match; about half survive.
+QBER caused by full intercept-resend in BB84?	25%: Eve picks the wrong basis half the time, and then Bob's bit is wrong half the time (½ × ½).
+Asymptotic one-way BB84 secret fraction?	r = 1 − 2h(Q), with h the binary entropy; one h(Q) for error correction, one for privacy amplification.
+Where does the 11% BB84 threshold come from?	Solving 1 − 2h(Q) = 0 gives Q = 0.1100 (Shor-Preskill 2000, one-way post-processing).
+What does privacy amplification do?	Hashes the corrected key with a random universal hash into a shorter key about which Eve knows essentially nothing.
+Why does QKD still need authentication?	An unauthenticated classical channel allows man-in-the-middle; QKD grows a pre-shared or PQC-authenticated key.
+Maximum CHSH value for |Φ+⟩ in E91, and the local bound?	Quantum: 2√2 = 2.8284. Any local (pre-programmed) model: |S| ≤ 2.
+What is the photon-number-splitting attack and its fix?	Eve takes one photon from multi-photon laser pulses and waits for the basis; decoy states detect it.
+What does MDI-QKD protect against?	All detector side channels (e.g. blinding), by moving the measurement to an untrusted relay.
+Fibre transmittance formula?	η = 10^(−αL/10); at 0.2 dB/km, 100 km gives 20 dB, η = 0.01.
+Why can't quantum signals be amplified?	An amplifier would clone unknown states; linearity forbids copying both |0⟩/|1⟩ and |+⟩/|−⟩ (no-cloning).
+What is entanglement swapping?	A Bell measurement on halves of two pairs leaves the far halves entangled; each outcome has probability ¼ and needs a Pauli fix.
+Trusted node versus quantum repeater?	A trusted node knows the key and must be secured; a repeater extends entanglement and never learns the key.
+Repeaterless bound for point-to-point QKD?	Key per channel use ≤ −log2(1 − η) ≈ 1.44η: linear in transmittance.
+When was Micius launched?	16 August 2016, into an orbit of about 500 km.
+Jinan-1 microsatellite result?	12,900 km China-South Africa QKD link with ~100 kg ground stations, published in Nature, March 2025.
+Fibre QKD distance record verified in this course?	Twin-field QKD over 1,002 km, PRL 2023, about 9.53 × 10^-12 secret bits per pulse.

@@ -1,0 +1,34 @@
+What problem does Grover's algorithm solve?	Find one of M marked inputs of a black-box f on N = 2^n inputs, using about (π/4)√(N/M) oracle calls instead of order N/M classically.
+What does the phase oracle O_f do to a basis state |x⟩?	O_f|x⟩ = (−1)^f(x)|x⟩: marked inputs get a minus sign, unmarked ones are unchanged.
+How do you turn the bit oracle U_f into a phase oracle?	Put the target qubit in |−⟩ = (|0⟩ − |1⟩)/√2; phase kickback gives U_f|x⟩|−⟩ = (−1)^f(x)|x⟩|−⟩.
+Define the Grover diffusion operator D.	D = 2|s⟩⟨s| − I, with |s⟩ = H^⊗n|0…0⟩ the uniform superposition. It reflects about |s⟩.
+Why is D called inversion about the mean?	(Dv)_x = 2μ − v_x, where μ is the mean amplitude: every amplitude is reflected about μ.
+What is one Grover iterate G, and what does it cost?	G = D·O_f (oracle first, then diffusion). It costs exactly one oracle call.
+How is D built from gates?	H^⊗n, X^⊗n, a multi-controlled Z, X^⊗n, H^⊗n. This circuit equals −D, a harmless global phase.
+Define the Grover angle θ.	sin θ = √(M/N), the square root of the fraction of marked inputs; θ is the angle between |s⟩ and the bad axis.
+Success probability after k Grover iterations?	P_k = sin²((2k + 1)θ), with sin θ = √(M/N).
+Optimal number of Grover iterations?	k* = ⌊π/(4θ)⌋ ≈ (π/4)√(N/M) for M ≪ N; failure probability is then at most M/N.
+Two-qubit Grover with one marked item: result after one iterate?	θ = 30°, 3θ = 90°, so the marked state is reached with probability exactly 1.
+N = 8, M = 1: best k and success probability?	k* = 2, P = sin²(5θ) = 121/128 ≈ 0.9453.
+N = 1024, M = 1: best k and success probability?	k* = 25, P ≈ 0.99946 (π/(4θ) = 25.13).
+What happens if you run too many Grover iterations?	The state rotates past the good axis and P falls; for N = 8, k = 3 gives 0.330 and k = 4 gives 0.012.
+Grover with M/N = 1/2: what does one iterate give?	θ = 45°, 3θ = 135°, P = 1/2: no better than guessing. For M/N > 1/2 sample classically.
+Name the two vectors of Grover's two-dimensional plane.	|α⟩, the normalised sum of marked states, and |β⟩, the normalised sum of unmarked states.
+Why is the Grover iterate a rotation?	O_f reflects about |β⟩ and D reflects about |s⟩; two reflections with mirrors at angle θ make a rotation by 2θ.
+Grover iterate G in the basis (|β⟩, |α⟩)?	[[cos 2θ, −sin 2θ], [sin 2θ, cos 2θ]], with eigenvalues e^(±2iθ).
+What is the BBBV lower bound?	Any quantum algorithm needs Ω(√N) oracle queries to find a unique marked item among N (Bennett, Bernstein, Brassard, Vazirani, 1997).
+Idea of the hybrid argument in BBBV?	Total spread ∑ₓ‖ψₖˣ − ψₖ‖² grows at most like 4k² but must reach order N to succeed, so k = Ω(√N).
+What does BBBV imply for NP-complete problems?	Black-box search gives only a quadratic speed-up (2^n to about 2^(n/2)); an exponential speed-up would need problem structure, and none is known.
+What did Zalka (1999) prove about Grover?	For up to about (π/4)√N queries, Grover's algorithm achieves the maximum possible success probability.
+How do you search when M is unknown?	BBHT: pick random k below m, check the answer, multiply m by about 6/5 and repeat; expected cost O(√(N/M)) calls.
+Average success when k is uniform on {0, …, m − 1}?	1/2 − sin(4mθ)/(4m sin 2θ), which is at least 1/4 when m ≥ 1/sin 2θ.
+Amplitude amplification operator Q?	Q = −A S₀ A† S_χ, where S_χ flips good states and S₀ = I − 2|0⟩⟨0|; it rotates by 2θ with sin²θ = a.
+Cost of amplitude amplification versus repetition?	About (π/4)/√a rounds, each using A and A†, against about 1/a classical reruns of A.
+What is Grover as a case of amplitude amplification?	A = H^⊗n and a = M/N.
+How does amplitude estimation work?	Run phase estimation on Q (eigenphases ±2θ) with m counting qubits; from outcome y output ã = sin²(πy/2^m).
+Error bound of amplitude estimation (BHMT)?	|ã − a| ≤ 2π√(a(1 − a))/M + π²/M² with probability ≥ 8/π² ≈ 0.81, using about M uses of Q.
+What is quantum counting?	Amplitude estimation with A = H^⊗n, giving M̃ = N sin²(πy/2^m) for the number of solutions.
+Monte Carlo scaling, classical versus amplitude estimation?	Classical error σ/√n needs order 1/ε² samples; amplitude estimation needs order 1/ε uses of Q.
+Why is quadratic quantum speed-up hard to realise in practice?	Each coherent step is slow under error correction; Babbush et al. (2021) argue quadratic speed-ups will not pay off on early fault-tolerant machines.
+Estimated resources for quantum derivative pricing (Chakrabarti et al., 2021)?	About 8k logical qubits and a T-depth of 54 million, needing to run in the order of a second.
+Why is Grover not a speed-up for a classical database lookup?	Loading N records into the oracle costs order N, and indexed classical lookups take about log N steps.

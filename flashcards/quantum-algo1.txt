@@ -1,0 +1,32 @@
+What does one query mean in the quantum query model?	One application of the oracle unitary U_f, whether its input is a basis state or a superposition.
+Define the bit (XOR) oracle U_f.	U_f|x⟩|y⟩ = |x⟩|y ⊕ f(x)⟩; x is the input string, y the target bit, ⊕ addition mod 2.
+Why is U_f its own inverse?	Applying it twice gives y ⊕ f(x) ⊕ f(x) = y, so U_f·U_f = I. It is a permutation matrix.
+State phase kickback for a Boolean oracle.	U_f|x⟩|−⟩ = (−1)^f(x)|x⟩|−⟩, because X|−⟩ = −|−⟩. The sign moves to the input register; the target is unchanged.
+What is the phase oracle O_f?	O_f|x⟩ = (−1)^f(x)|x⟩: a diagonal ±1 matrix that flips the sign of each amplitude where f(x) = 1.
+Which gate is the oracle for f(x) = x on one bit?	CNOT with the input as control and the target as target.
+Deutsch circuit, in order?	Prepare |0⟩|1⟩; H on both; U_f; H on the query qubit; measure it. 0 = constant, 1 = balanced.
+Final state of the Deutsch circuit?	(−1)^f(0) |f(0) ⊕ f(1)⟩ ⊗ |−⟩; the leading sign is a global phase.
+Classical cost of Deutsch's problem?	Deterministic: 2 queries. One randomized query: success 1/2 at best. Quantum: 1 query, success 1.
+Why does preparing the target with H then X break Deutsch's algorithm?	It gives |+⟩, the +1 eigenvector of X, so nothing is kicked back and the query qubit always reads 0.
+What is H⊗n|x⟩ in one line?	(1/√2^n) ∑_y (−1)^(x·y) |y⟩, where x·y is the bitwise AND followed by parity (mod 2).
+Define a balanced Boolean function on n bits.	It outputs 0 on exactly 2^(n−1) inputs and 1 on the other 2^(n−1).
+Deutsch-Jozsa decision rule?	Measure the n input qubits: all zeros means constant, any other string means balanced (given the promise).
+Amplitude of |0…0⟩ at the end of Deutsch-Jozsa?	(1/2^n) ∑_x (−1)^f(x): ±1 for constant f, 0 for balanced f.
+Deterministic classical worst-case cost of Deutsch-Jozsa?	2^(n−1) + 1 queries, by an adversary answering 0 to the first half.
+Bounded-error randomized classical cost of Deutsch-Jozsa?	O(1): k random queries give error at most 2^(1−k), independent of n.
+Bernstein-Vazirani problem?	Given f(x) = s·x mod 2 for hidden s ∈ {0,1}^n, find s. Quantum: 1 query; classical (deterministic or randomized): about n.
+Why does BV output s?	After the phase oracle the register is (1/√2^n)∑(−1)^(s·x)|x⟩ = H⊗n|s⟩, and H⊗n is its own inverse.
+How do you build the BV oracle for s?	A CNOT from input qubit i to the |−⟩ target for every i with s_i = 1.
+Qiskit printed '1101' for BV with s = 1011 on qubits 0-3. Why?	Qiskit is little-endian: qubit 0 is the rightmost character. Reverse the string to get s0s1s2s3 = 1011.
+Is Bernstein-Vazirani an exponential speed-up?	No: 1 versus n queries, a linear gap, though it holds against randomized algorithms too. A recursive version gives a superpolynomial oracle gap.
+State the promise in Simon's problem.	f: {0,1}^n → {0,1}^n with f(x) = f(x′) exactly when x′ = x or x′ = x ⊕ s, for a hidden string s.
+What does one run of Simon's circuit output when s ≠ 0?	A uniformly random y among the 2^(n−1) strings with y·s = 0 (mod 2).
+Amplitude of |y⟩ in Simon's algorithm after the final Hadamards?	(−1)^(x0·y)[1 + (−1)^(s·y)]/√2^(n+1): zero when s·y = 1, magnitude 2/√2^(n+1) when s·y = 0.
+How is s recovered in Simon's algorithm?	Collect n − 1 linearly independent nonzero y, solve y·s = 0 by Gaussian elimination over GF(2), then check f(0…0) = f(s).
+What is GF(2)?	Arithmetic on {0,1} mod 2: addition is XOR (1 + 1 = 0), multiplication is AND.
+Quantum query cost of Simon's problem?	O(n): about n runs (expected 10/3 for n = 3, about 50.6 for n = 50), plus O(n^3) classical post-processing.
+Classical randomized query cost of Simon's problem?	Ω(2^(n/2)) for bounded error, matched by a birthday-style collision search.
+What register does Simon's oracle write into?	An n-qubit output register starting in |0…0⟩, via |x⟩|z⟩ → |x⟩|z ⊕ f(x)⟩; no |−⟩ phase kickback.
+Why is Simon's result stronger than Deutsch-Jozsa's?	Its exponential query gap holds against bounded-error randomized classical algorithms; DJ's gap vanishes once randomness is allowed.
+Does Simon's algorithm prove BQP ≠ BPP?	No. It is an oracle (relativized) separation; the unrelativized question is open.
+How does Simon's algorithm lead to Shor's?	Both find a hidden subgroup: Simon over ({0,1}^n, ⊕) with H⊗n, Shor over the integers with the quantum Fourier transform.

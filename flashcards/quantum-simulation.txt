@@ -1,0 +1,35 @@
+What is the Hamiltonian simulation problem?	Given H = ∑ H_j, time t and error ε, build a circuit V with ‖V − e^(−iHt)‖ ≤ ε using poly(n, t, 1/ε) gates.
+Why is simulating a general n-qubit system hard classically?	A general state needs 2^n complex amplitudes; 50 qubits need about 18 PB at 16 bytes per amplitude.
+Who proved that quantum computers can efficiently simulate local Hamiltonians, and when?	Seth Lloyd, Universal Quantum Simulators, Science 273 (1996), confirming Feynman's 1982 conjecture.
+What is the first-order Lie-Trotter formula?	e^(−i(A+B)t) ≈ (e^(−iAt/n) e^(−iBt/n))^n.
+First-order Trotter error bound?	‖error‖ ≤ (t²/2n)‖[A,B]‖; it falls as 1/n and grows as t².
+What is the second-order (Strang/Suzuki) step?	S2(δ) = e^(−iAδ/2) e^(−iBδ) e^(−iAδ/2); total error O(t³/n²).
+When is a Trotter product exact?	When the terms commute ([A,B] = 0); the sizes of the terms do not matter.
+Which quantity controls Trotter error: term size or commutator?	The commutator [A,B] (nested commutators for higher orders).
+How do you compile e^(−iθ Z⊗Z)?	CNOT(0→1), RZ(2θ) on qubit 1, CNOT(0→1).
+What gate implements e^(−iθX)?	RX(2θ), because RX(φ) = e^(−iφX/2).
+Two-qubit TFIM, t = 1: steps for error ≤ 0.01?	First order n = 71 (142 CNOTs); second order n = 8 (18 CNOTs after merging half-steps). Computed with scipy.
+What does a log-log slope of −2 in error vs n tell you?	The product formula is second order (error ∝ 1/n²).
+Name two post-Trotter simulation methods.	Linear combinations of unitaries (LCU) and qubitization with quantum signal processing; also randomized qDRIFT.
+What is a spin-orbital?	A spatial orbital combined with a spin state (up or down); each spatial orbital gives two.
+How many qubits for H2 in STO-3G under Jordan-Wigner?	4: two spatial orbitals (σg, σu) × 2 spins.
+Canonical anticommutation relations?	{a_p, a_q†} = δ_pq and {a_p, a_q} = 0.
+Jordan-Wigner form of a_j?	a_j = Z_0 Z_1 ⋯ Z_(j−1) (X_j + iY_j)/2, with |1⟩ = occupied.
+Why does Jordan-Wigner need the Z string?	It supplies the fermionic sign so operators on different modes anticommute; without it they commute.
+JW number operator a_j† a_j?	(I − Z_j)/2 = |1⟩⟨1|_j.
+JW form of neighbour hopping a_0†a_1 + a_1†a_0?	(X_0X_1 + Y_0Y_1)/2.
+How many Pauli strings in the JW H2/STO-3G Hamiltonian at 0.735 Å?	15 (computed with PySCF + numpy): identity, 4 single Z, 6 ZZ, 4 XXYY-type.
+H2/STO-3G at 0.735 Å: HF and exact energies?	E_HF = −1.1170 Ha, E_FCI = −1.1373 Ha; correlation −20.3 mHa ≈ −12.7 kcal/mol.
+What is the H2/STO-3G ground state in JW (qubits σg↑ σg↓ σu↑ σu↓)?	0.9938|1100⟩ − 0.1115|0011⟩.
+What is chemical accuracy?	1 kcal/mol ≈ 1.6 mHa error in energy differences, within the chosen model.
+Hartree to kcal/mol conversion?	1 Ha = 627.5 kcal/mol.
+Which encoding shortens JW's Z strings to about log N?	The Bravyi-Kitaev encoding.
+Best-known published FeMoco resource estimate (Lee et al., PRX Quantum 2021)?	About four million physical qubits and under 4 days, assuming 1 μs cycles and 0.1% error rates.
+What does HHL output?	A quantum state |x⟩ ∝ A⁻¹|b⟩, not the classical vector x.
+HHL key equation for |x⟩?	|x⟩ ∝ ∑ (β_j/λ_j)|u_j⟩ with β_j = ⟨u_j|b⟩.
+HHL ancilla success probability?	P = ∑ |β_j|² C²/λ_j², as low as about 1/κ²; amplitude amplification needs about κ rounds.
+What is the condition number κ?	|λ|max / |λ|min; it measures how close A is to singular.
+Original HHL cost (as usually quoted)?	About log(N) s² κ²/ε, versus classical conjugate gradient about N s √κ log(1/ε) for positive-definite A.
+The four caveats of HHL (Aaronson, 2015)?	Input loading of b, output readout of x, condition number κ, and sparsity/efficient simulation of A.
+What is dequantization?	A classical algorithm with the same sampling access (ℓ²-norm sampling) matching a quantum algorithm up to polynomial slowdown, e.g. Tang 2018.
+Does dequantization remove the speed-up of sparse, full-rank HHL?	No: that problem is BQP-complete; dequantization targets low-rank problems with sampling access.

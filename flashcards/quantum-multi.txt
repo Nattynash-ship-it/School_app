@@ -1,0 +1,38 @@
+How many complex amplitudes describe a general state of n qubits?	2^n amplitudes, one per bitstring, with the squared magnitudes summing to 1.
+In the textbook (big-endian) convention, which vector index holds |10⟩ for two qubits?	Index 2 (binary 10): |1⟩ ⊗ |0⟩ = (0, 0, 1, 0).
+In a Qiskit bitstring such as '011', which character is qubit 0?	The rightmost character. Qiskit is little-endian: basis index = sum of q_k · 2^k.
+Write CNOT as a sum of tensor products (control first).	CNOT = |0⟩⟨0| ⊗ I + |1⟩⟨1| ⊗ X; on basis states |a, b⟩ → |a, a ⊕ b⟩.
+Why is CZ symmetric in its two qubits?	CZ = diag(1, 1, 1, −1) only adds a sign to |11⟩, a condition that treats both qubits the same.
+How do you build SWAP from CNOTs?	Three CNOTs with alternating control: CNOT(0→1) · CNOT(1→0) · CNOT(0→1).
+What does the Toffoli gate compute?	|a, b, c⟩ → |a, b, c ⊕ ab⟩: a reversible AND; it is universal for classical reversible logic.
+What is phase kickback?	If U|u⟩ = e^{iφ}|u⟩, controlled-U on (|0⟩+|1⟩)|u⟩/√2 gives (|0⟩ + e^{iφ}|1⟩)|u⟩/√2: the phase lands on the control.
+What does CNOT do to |+⟩|−⟩?	It gives |−⟩|−⟩: X|−⟩ = −|−⟩, so the −1 kicks back onto the control.
+When is a pure two-qubit state separable?	When it can be written |a⟩ ⊗ |b⟩; equivalently the 2×2 amplitude matrix has determinant α00α11 − α01α10 = 0.
+Which circuit maps |xy⟩ to the Bell state β_xy?	H on qubit 0, then CNOT with qubit 0 as control and qubit 1 as target.
+Write the four Bell states.	Φ± = (|00⟩ ± |11⟩)/√2, Ψ± = (|01⟩ ± |10⟩)/√2.
+What is the concurrence of a pure two-qubit state?	C = 2|α00α11 − α01α10|; 0 for product states, 1 for maximally entangled states.
+How does the Schmidt decomposition relate to the SVD?	Reshape the amplitudes into a matrix; its singular values are the Schmidt coefficients, and the rank tells product (1) versus entangled.
+What is the reduced state of one qubit of any Bell state?	The maximally mixed state I/2: each qubit alone is a fair coin.
+Why is Z-basis correlation alone not proof of entanglement?	A classical mixture of |00⟩ and |11⟩ gives the same Z statistics; entanglement shows up as correlation in a second basis too.
+Write the GHZ and W states for three qubits.	GHZ = (|000⟩ + |111⟩)/√2; W = (|001⟩ + |010⟩ + |100⟩)/√3.
+What happens to GHZ and W when one qubit is lost?	GHZ leaves a classical mixture (no entanglement); W leaves a pair that is still entangled (concurrence 2/3).
+What are ⟨Z⊗Z⟩, ⟨X⊗X⟩, ⟨Y⊗Y⟩ for the singlet Ψ−?	All three equal −1: the singlet is anticorrelated in every basis.
+State the no-cloning theorem.	No unitary U satisfies U(|ψ⟩|s⟩) = |ψ⟩|ψ⟩ for every state |ψ⟩ with a fixed blank |s⟩.
+What is the one-line inner-product proof of no-cloning?	Cloning ψ and φ forces ⟨φ|ψ⟩ = ⟨φ|ψ⟩², so the overlap must be 0 or 1.
+Which sets of states CAN be copied perfectly?	Mutually orthogonal sets (e.g. |0⟩, |1⟩ with a CNOT), and any state you know classically.
+What does CNOT do to |+⟩|0⟩, and why is it not a copy?	It gives the Bell state (|00⟩ + |11⟩)/√2, not |+⟩|+⟩; fidelity with |++⟩ is 0.5.
+What is the best universal fidelity for 1 → 2 qubit cloning?	5/6 per copy (Bužek-Hillery universal cloner, 1996).
+What is the no-deleting theorem?	Given two copies |ψ⟩|ψ⟩ of an unknown state, no unitary process yields |ψ⟩|0⟩ (Pati-Braunstein 2000).
+Why can entanglement not send a message?	Bob's reduced state Tr_A(|ψ⟩⟨ψ|) is unchanged by anything Alice does locally, so his statistics cannot change.
+Give the Helstrom bound for two pure states with equal priors.	P_max = ½(1 + √(1 − |⟨ψ|φ⟩|²)).
+Best success probability for distinguishing |0⟩ from |+⟩?	½(1 + 1/√2) ≈ 0.8536, versus 0.75 for a plain Z measurement.
+What does it mean for a finite gate set to be universal?	Any unitary can be approximated to any accuracy ε (operator norm) by a circuit from the set.
+Which gates generate the Clifford group?	H, S and CNOT; Clifford gates map Pauli products to Pauli products under conjugation.
+How many single-qubit Clifford gates are there (up to global phase)?	24, the rotational symmetries of the octahedron with vertices ±X, ±Y, ±Z.
+What is T X T†?	(X + Y)/√2, which is not a Pauli, so T is not a Clifford gate.
+State the Gottesman-Knill theorem.	Circuits of Clifford gates, Pauli measurements and |0⟩ preparations can be simulated efficiently on a classical computer.
+What does Gottesman-Knill teach about entanglement?	Entanglement is necessary but not sufficient for speed-up: Clifford circuits are highly entangled yet classically easy.
+What is the Solovay-Kitaev gate-count scaling?	O(log^c(1/ε)) gates to reach accuracy ε; Dawson-Nielsen give c ≈ 3.97.
+What is the counting lower bound on approximating single-qubit gates?	Ω(log(1/ε)): g^L sequences must cover about (1/ε)^3 ε-balls in SU(2).
+What is the T-count of the standard Toffoli decomposition?	7 (4 T and 3 T†), with 6 CNOTs and 2 H gates.
+How do gate errors accumulate in a circuit?	At most linearly: the total operator-norm error is at most the sum of the per-gate errors.

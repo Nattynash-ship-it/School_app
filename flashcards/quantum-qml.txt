@@ -1,0 +1,37 @@
+What does basis encoding do with the bitstring 101?	Prepares |101⟩: apply X to each qubit whose bit is 1. One qubit per bit.
+Angle encoding: what state does R_Y(θ) make from |0⟩?	cos(θ/2)|0⟩ + sin(θ/2)|1⟩, so P(1) = sin²(θ/2). Note the half-angle.
+Why scale angle-encoded features to [0, π] rather than [0, 2π]?	With the half-angle, [0, π] sweeps |0⟩ to |1⟩ once; [0, 2π] maps min and max to states differing only by a sign.
+Amplitude encoding of x ∈ ℝ^N: formula and qubit count?	|x⟩ = (1/‖x‖) ∑ x_i|i⟩ on n = log₂N qubits, with ‖x‖ = √(∑x_i²).
+Amplitude-encode (2, 1, 0, 2): the state?	Norm 3, so (2/3)|00⟩ + (1/3)|01⟩ + 0|10⟩ + (2/3)|11⟩; probabilities 4/9, 1/9, 0, 4/9.
+What information does amplitude encoding throw away?	The overall scale ‖x‖; store it separately if the model needs it.
+Gate cost of preparing a general N-amplitude state?	Order N gates, e.g. Möttönen et al.: 2^(n+2) − 4n − 4 CNOTs for n qubits (4,052 at n = 10).
+What is the data-loading bottleneck?	Exponential QML speed-ups often assume |x⟩ is ready; building it from classical data generally costs O(N) gates, erasing the saving.
+What is QRAM, and does it exist at scale?	A memory queryable in superposition (e.g. bucket-brigade, O(log N) switches per query). Proposed, not built at scale.
+Angle-encoded customer (age 34, spend £120) on two qubits: the state?	0.8188|00⟩ + 0.4172|01⟩ + 0.3514|10⟩ + 0.1790|11⟩ (big-endian |q0 q1⟩).
+In Qiskit output, which bit is qubit 0?	The rightmost bit (little-endian). Qiskit '01' means q0 = 1, q1 = 0.
+Why is a pure angle-encoded state easy to simulate classically?	It is a product state; every probability is a product of one-qubit factors.
+Definition of the fidelity quantum kernel?	k(x, x') = |⟨φ(x)|φ(x')⟩|², between 0 and 1, with k(x, x) = 1.
+How is a kernel entry estimated on hardware (compute-uncompute)?	Run U(x) then U(x')†, measure all qubits; the fraction of all-zero outcomes estimates k.
+Closed form of the product angle-encoding kernel?	k(x, x') = ∏_j cos²((x_j − x'_j)/2), O(d) classical work.
+Standard error of a kernel entry estimated with N shots?	√(k(1 − k)/N), a binomial proportion.
+Kernel entry for customers A (34, £120) and B (52, £300)?	cos²(0.4560)·cos²(0.7069) = 0.8061 × 0.5782 = 0.4661.
+Three properties every valid kernel (Gram) matrix has?	Symmetric, ones on the diagonal for a fidelity kernel, positive semidefinite (eigenvalues ≥ 0).
+In a quantum-kernel SVM, what runs on the quantum device?	Only estimating kernel entries; the SVM optimisation is classical.
+How many distinct kernel entries for m training points?	m(m − 1)/2 off-diagonal entries (symmetry, diagonal = 1).
+What is a variational quantum classifier?	Encode x, apply a trainable circuit W(θ), measure ⟨Z⟩ = f(x; θ) ∈ [−1, 1], predict sign f.
+State the parameter-shift rule.	∂f/∂θ = [f(θ + π/2) − f(θ − π/2)]/2, exact for gates exp(−iθP/2) with P a Pauli product.
+Why is the parameter-shift rule exact?	For such gates f(θ) = a cos θ + b sin θ + c; the shifted difference equals 2(−a sin θ + b cos θ) = 2f'(θ).
+Why prefer parameter shift to finite differences on hardware?	Finite differences divide shot noise by 2h (tiny); parameter shift divides by 2. Simulated SD: 0.0099 vs 2.19 at h = 0.01.
+Circuits needed per gradient for p parameters with parameter shift?	2p circuits (two shifted runs per parameter), each for N shots.
+What is dequantization?	A classical algorithm, given matching input access, matches a quantum algorithm up to polynomial slowdown, removing an exponential speed-up.
+What did Ewin Tang dequantize, and with what tool?	Kerenidis-Prakash quantum recommendation systems, using ℓ2-norm sampling access and low rank (STOC 2019).
+What is ℓ2-norm sampling of a matrix row?	Pick row i with probability ‖A_i‖²/‖A‖_F², the classical twin of measuring an amplitude-encoded state.
+What does the Liu-Arunachalam-Temme result prove?	A rigorous end-to-end quantum kernel speed-up on a constructed dataset built from discrete logarithms.
+Where is the clearest proven exponential QML advantage?	Learning from quantum experiments with quantum memory (Huang et al., Science 2022): quantum data, not CSV rows.
+What is a barren plateau?	Gradients exponentially small in qubit number for most parameters (McClean et al. 2018), so training needs exponentially many shots.
+What is exponential concentration of quantum kernels?	Kernel values for different inputs crowd towards a fixed value exponentially in qubits (Thanasilp et al. 2024).
+Mean product angle-encoding kernel for d uniform features on [0, π]?	(1/2 + 2/π²)^d ≈ 0.7026^d: 0.0293 at d = 10, 2.2 × 10⁻⁸ at d = 50.
+Key finding of Bowles, Ahmed and Schuld (2024)?	Out-of-the-box classical models generally beat 12 QML models on 160 small datasets; removing entanglement often did as well.
+Is there a demonstrated quantum advantage for ML on classical tabular data?	No. Advantages are proven only for constructed problems or quantum data; heuristic models have not beaten tuned classical baselines.
+95% CI half-width for accuracy 0.84 on 100 test points?	1.96 × √(0.84 × 0.16/100) ≈ ±0.072.
+Four checks when reading a QML benchmark?	Tuned classical baseline, error bars and test size, simulator vs hardware with shots reported, no leakage in preprocessing or tuning.

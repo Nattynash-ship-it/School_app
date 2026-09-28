@@ -1,0 +1,34 @@
+List the five DiVincenzo criteria for quantum computation.	Scalable well-characterised qubits; initialisation; long coherence vs gate time; universal gate set; qubit-specific measurement.
+What are the two extra DiVincenzo criteria for communication?	Interconvert stationary and flying qubits; faithfully transmit flying qubits between locations.
+Define T1.	Energy-relaxation time: P(still in |1⟩) = e^(−t/T1).
+Define T2 and state its bound.	Phase-coherence time of a superposition; 1/T2 = 1/(2T1) + 1/Tφ, so T2 ≤ 2T1.
+How do you estimate circuit success from gate fidelities?	Multiply them (independent errors): F_circuit ≈ ∏F_i ≈ exp(−Σε_i).
+How many gates at fidelity F give 50% circuit success?	N = ln 0.5 / ln F ≈ 0.69/ε. For F = 0.999, N ≈ 693.
+What does quantum volume 2^m mean?	The device passed square random circuits of m qubits and m layers with heavy-output probability above 2/3 (about 2σ confidence).
+Why can a slow qubit be better for deep circuits?	Depth budget is T2/t_gate, a ratio: a slow gate with very long coherence can fit more gates than a fast gate with short coherence.
+What does a Josephson junction add to a superconducting circuit?	A non-linear inductance, making energy levels unequally spaced (anharmonic) so two levels can be addressed alone.
+Transmon qubit frequency formula	f01 ≈ √(8·E_J·E_C) − E_C, with energies in GHz (divided by h).
+Transmon anharmonicity	α = f12 − f01 ≈ −E_C, typically a few hundred MHz and negative.
+Why is E_J/E_C made large in a transmon?	Charge-noise sensitivity falls exponentially with √(8E_J/E_C); the cost is a smaller anharmonicity.
+How are superconducting qubits read out?	Dispersively: a coupled resonator shifts frequency with the qubit state; a probe tone is amplified and thresholded.
+What temperature do transmons need and why?	About 10-20 mK in a dilution refrigerator, so hf ≫ k_BT (thermal excitation ~10^-13 at 10 mK for 6 GHz).
+Willow (Google, Dec 2024): headline facts	105 qubits; mean T1 68 µs; CZ error 0.33%; surface-code logical error fell from distance 3 to 5 to 7 (below threshold).
+IBM Nighthawk (Nov 2025)	120 superconducting qubits, 218 tunable couplers; IBM quotes circuits of up to 5,000 two-qubit gates.
+What is a hyperfine clock-state qubit?	Two hyperfine ground levels (e.g. 171Yb+ F=0,mF=0 and F=1,mF=0 at ~12.6 GHz) whose splitting is first-order insensitive to magnetic field.
+What does the Mølmer-Sørensen gate do?	U = exp(−iθX⊗X/2); at θ = π/2 it maps |00⟩ to (|00⟩ − i|11⟩)/√2 using shared motional modes.
+Why do trapped ions have all-to-all connectivity?	All ions in a chain share collective vibrational modes, so any pair can be entangled through them.
+What is the QCCD architecture?	A trapped-ion chip with many zones; ions are shuttled between memory, gate and readout regions by electrode voltages.
+Trapped-ion main bottleneck	Slow gates (tens to hundreds of µs) plus laser/optics complexity and mode crowding in long chains.
+What is Rydberg blockade?	Within radius R_b, strong interactions stop two atoms both reaching the Rydberg state; this conditional phase gives a CZ gate.
+Why must tweezer arrays be rearranged?	Each tweezer loads an atom with only about 50% probability, so atoms are imaged and moved into a defect-free pattern.
+Neutral-atom strengths and bottlenecks	Strengths: thousands of atoms, movable atoms for parallel transversal gates. Bottlenecks: atom loss, slow cycles, leakage.
+Quantinuum Helios (Nov 2025)	98 barium-ion qubits, all-to-all; two-qubit fidelity 99.921%; 48 error-corrected logical qubits.
+What is dual-rail photonic encoding?	One photon in two modes: |0_L⟩ = photon in mode a, |1_L⟩ = photon in mode b; beam splitters and phase shifters give single-qubit gates.
+What is the dominant error in photonic qubits?	Photon loss; survival over n components is η^n.
+What is measurement-based (one-way) quantum computing?	Prepare a large entangled cluster state, then compute by single-qubit measurements with feed-forward of outcomes.
+Electron spin resonance frequency per tesla	f = gμ_B B/h ≈ 28 GHz per tesla for g ≈ 2.
+How do silicon spin qubits do two-qubit gates?	Via the exchange interaction J between neighbouring quantum dots, switched by gate voltages.
+NV centre key facts	Nitrogen next to a vacancy in diamond; spin-1, 2.87 GHz splitting; optical readout (637 nm); ms coherence at room temperature.
+What is a Majorana zero mode, in one line?	A predicted quasiparticle at the ends of a topological superconductor; pairs store fermion parity non-locally.
+What happened to the 2018 "Quantized Majorana conductance" paper?	Retracted from Nature in March 2021 after critics found selectively presented data.
+Status of topological qubits (Sep 2026)	Parity readout shown; topological protection and braiding not independently confirmed; Microsoft claims disputed.

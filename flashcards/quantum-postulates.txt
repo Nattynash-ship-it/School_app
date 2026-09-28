@@ -1,0 +1,40 @@
+State-space postulate: what is the state of an isolated quantum system?	A unit vector |ψ⟩ in a complex Hilbert space; for one qubit, α|0⟩ + β|1⟩ in ℂ² with |α|² + |β|² = 1.
+How do you normalise an unnormalised vector v?	Divide by its length: |ψ⟩ = v/‖v‖, with ‖v‖ = √(∑|vᵢ|²). Example: 3|0⟩ + 4i|1⟩ has length 5, giving 0.6|0⟩ + 0.8i|1⟩.
+State the Born rule.	P(x) = |⟨x|ψ⟩|²: the probability of outcome x is the squared modulus of the amplitude of |x⟩ in |ψ⟩.
+Amplitude versus probability: which one adds when two paths lead to the same outcome?	Amplitudes add (and can cancel); you square the modulus only at the end. Adding probabilities misses interference.
+What is |0.8i|²?	0.64. The squared modulus of a + ib is a² + b²; it is never negative.
+What is a global phase, and can it be measured?	An overall factor e^{iγ} on the whole state. It cancels in every Born-rule probability, so no experiment can detect it.
+What is a relative phase, and how do you reveal it?	A phase on one component, as in α|0⟩ + e^{iφ}β|1⟩. Invisible in the Z basis; a Hadamard makes it interfere, e.g. P(0) = cos²(φ/2) for equal weights.
+After H, what is P(0) for (|0⟩ + e^{iφ}|1⟩)/√2?	cos²(φ/2): 1 at φ = 0, 0.75 at π/3, 0.5 at π/2, 0 at π.
+Are (|0⟩ + i|1⟩)/√2 and (i|0⟩ − |1⟩)/√2 the same physical state?	Yes: the second is i times the first, a global phase.
+How does one Hadamard tell |+⟩ apart from a fair classical coin?	H|+⟩ = |0⟩, always reading 0; the coin gives |+⟩ or |−⟩ after H and still reads 50/50.
+Measurement postulate: probability and post-measurement state for operators {M_m}?	p(m) = ⟨ψ|M_m†M_m|ψ⟩; new state M_m|ψ⟩/√p(m). Completeness: ∑ M_m†M_m = I.
+What makes a measurement projective?	The operators are orthogonal projectors P_m (P_m P_m' = δ P_m) summing to I; for a basis, P_m = |m⟩⟨m|.
+What happens if you repeat a projective measurement immediately?	You get the same outcome with certainty, because the state has already collapsed onto that projector's subspace.
+How do you measure in the X (Hadamard) basis on hardware that only measures Z?	Apply H, then measure: reading 0 means |+⟩, reading 1 means |−⟩.
+How do you measure in the Y basis with Z-only hardware?	Apply S†, then H, then measure; 0 means |+i⟩ and 1 means |−i⟩.
+Expectation value of an observable A?	⟨A⟩ = ⟨ψ|A|ψ⟩ = ∑ a_m p(m), where a_m are the eigenvalues. For Z: ⟨Z⟩ = P(0) − P(1).
+For |ψ⟩ = (1/√3)|0⟩ + √(2/3)|1⟩, give P(0), P(+), ⟨Z⟩ and ⟨X⟩.	P(0) = 0.3333, P(+) = 0.9714, ⟨Z⟩ = −0.3333, ⟨X⟩ = 0.9428.
+How do you measure only qubit q0 of a two-qubit state?	Use P_m ⊗ I: p(m) = ⟨ψ|(P_m ⊗ I)|ψ⟩, then renormalise (P_m ⊗ I)|ψ⟩ by √p(m).
+Measure q0 of (|00⟩ + |01⟩ + |11⟩)/√3 and get 0. Probability and new state?	p = 2/3; the state becomes (|00⟩ + |01⟩)/√2 = |0⟩|+⟩ (big-endian |q0 q1⟩).
+Which bit is qubit 0 in a Qiskit bitstring such as '01'?	The rightmost: Qiskit is little-endian, so '01' means q0 = 1, q1 = 0.
+What is a POVM?	A set of positive semidefinite operators E_m with ∑E_m = I; p(m) = ⟨ψ|E_m|ψ⟩. The E_m need not be projectors.
+Standard error of ⟨Z⟩ estimated from N shots?	√(Var(Z)/N) with Var(Z) = 1 − ⟨Z⟩². For ⟨Z⟩ = −1/3 and N = 1000: 0.0298.
+Evolution postulate for a closed system?	|ψ(t₂)⟩ = U|ψ(t₁)⟩ with U unitary: U†U = I.
+Write the Schrödinger equation and its solution for time-independent Ĥ.	iħ d|ψ⟩/dt = Ĥ|ψ⟩, solved by U(t) = e^{−iĤt/ħ}.
+Why is e^{−iĤt/ħ} unitary?	Ĥ is Hermitian with real eigenvalues E_k, so U = ∑ e^{−iE_k t/ħ}|E_k⟩⟨E_k| has eigenvalues of modulus 1.
+Shortcut for e^{−iθP} when P² = I (any Pauli matrix)?	e^{−iθP} = cos θ·I − i sin θ·P.
+Qubit starts in |0⟩ under Ĥ = ħgX. State and P(1) at time t?	cos(gt)|0⟩ − i sin(gt)|1⟩, P(1) = sin²(gt): a Rabi oscillation. At gt = π/2, U = −iX.
+How is Qiskit's RX(θ) related to e^{−iθX}?	RX(θ) = e^{−iθX/2}, so e^{−iθX} = RX(2θ).
+What is a stationary state?	An eigenstate of Ĥ: it only gains a global phase e^{−iEt/ħ}, so all its measurement statistics are constant in time.
+Why can't Bob's local unitary signal to Alice through a shared entangled state?	Alice's probabilities are ⟨ψ|P ⊗ U†U|ψ⟩ = ⟨ψ|P ⊗ I|ψ⟩, because U†U = I; her statistics are unchanged.
+Which parts of quantum mechanics are irreversible?	Measurement and coupling to an environment. Closed-system evolution is unitary, with inverse U†.
+Bloch-sphere form of a pure qubit state?	cos(θ/2)|0⟩ + e^{iφ}sin(θ/2)|1⟩, 0 ≤ θ ≤ π, 0 ≤ φ < 2π, up to global phase.
+Bloch vector in terms of angles and in terms of Pauli expectations?	r = (sinθ cosφ, sinθ sinφ, cosθ) = (⟨X⟩, ⟨Y⟩, ⟨Z⟩).
+Bloch vectors of |0⟩, |1⟩, |+⟩, |−⟩, |+i⟩, |−i⟩?	(0,0,1), (0,0,−1), (1,0,0), (−1,0,0), (0,1,0), (0,−1,0).
+Where are orthogonal states on the Bloch sphere, and why?	At antipodes: the sphere angle θ is twice the state-space angle θ/2, so 90° in ℂ² becomes 180°.
+Overlap of two pure states from their Bloch vectors r and s?	|⟨φ|ψ⟩|² = (1 + r·s)/2.
+Bloch vector of 0.6|0⟩ + 0.8i|1⟩?	(0, 0.96, −0.28); θ = 106.26°, φ = 90°.
+What does a single-qubit unitary do on the Bloch sphere?	Rotates it: e^{−iα(n·σ)/2} turns every Bloch vector by angle α about the axis n.
+Single-qubit density matrix in Bloch form, and the purity test?	ρ = (I + r·σ)/2 with |r| ≤ 1; Tr(ρ²) = (1 + |r|²)/2, equal to 1 only for pure states (|r| = 1).
+Where does one qubit of a Bell pair sit in the Bloch ball?	At the centre, r = 0: its reduced state is the maximally mixed I/2.

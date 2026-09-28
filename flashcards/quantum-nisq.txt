@@ -1,0 +1,36 @@
+What does NISQ stand for, and who coined it?	Noisy Intermediate-Scale Quantum; John Preskill, Quantum 2, 79 (2018).
+State the Rayleigh-Ritz variational principle.	For any normalised state, ⟨ψ|H|ψ⟩ ≥ E0, the lowest eigenvalue of H; equality only for ground states.
+One-line proof of the variational principle?	Expand |ψ⟩ = ∑ c_k|E_k⟩: ⟨H⟩ = ∑|c_k|²E_k ≥ E0 ∑|c_k|² = E0.
+What is an ansatz in VQE?	A fixed circuit layout U(θ) with tunable angles θ, producing the trial family |ψ(θ)⟩ = U(θ)|0...0⟩.
+Formula for the Pauli coefficient c_P of an n-qubit Hamiltonian H	c_P = Tr(P H)/2^n, because Tr(PQ) = 2^n when P = Q and 0 otherwise.
+Decompose H with rows (1, 0.5) and (0.5, −1) into Paulis.	H = Z + 0.5 X (c_I = 0, c_Y = 0).
+For |ψ(θ)⟩ = Ry(θ)|0⟩, what are ⟨Z⟩ and ⟨X⟩?	⟨Z⟩ = cos θ and ⟨X⟩ = sin θ.
+Minimum of E(θ) = cos θ + 0.5 sin θ, and where?	E = −√1.25 = −1.1180 at θ = π + arctan(0.5) = 3.6052 rad.
+How do you measure ⟨X⟩ on hardware that measures only Z?	Apply H before measuring, then ⟨X⟩ = P(0) − P(1). For ⟨Y⟩ apply S† then H.
+Parameter-shift rule for a gate exp(−iθP/2)	dE/dθ = [E(θ + π/2) − E(θ − π/2)]/2, exact, from two extra energy estimates.
+Standard error of a Pauli expectation after N shots	√((1 − ⟨P⟩²)/N); halving the error costs four times the shots.
+Roughly what is chemical accuracy?	About 1.6 × 10^−3 hartree (1 kcal/mol).
+Can a VQE estimate come out below E0? Why?	Yes, through shot noise, readout error or mitigation bias; the exact expectation of a physical state cannot.
+Max-Cut cost Hamiltonian	C = ∑ over edges (1 − Z_i Z_j)/2; C|z⟩ = cut(z)|z⟩.
+The QAOA state with p layers	|γ,β⟩ = ∏ from k=1 to p of e^(−iβ_k ∑X) e^(−iγ_k C) applied to |+⟩^⊗n.
+Qiskit gates for one QAOA layer	RZZ(−γ) on every edge (global phase dropped), then RX(2β) on every qubit.
+QAOA p = 1 on the triangle: optimal angles and ⟨C⟩	γ* = arccos√(2/3) ≈ 0.6155, β* = γ*/2 ≈ 0.3077, ⟨C⟩ = 2 = maximum cut.
+QAOA p = 1 on the 4-cycle: best ⟨C⟩ and ratio	⟨C⟩ = 3 at γ = π/4, β = π/8; max cut 4, so ratio 0.75.
+Approximation ratio in QAOA	r = ⟨C⟩/C_max, using the expected cut, not the best sampled string.
+Guaranteed p = 1 QAOA ratio on 3-regular graphs vs Goemans-Williamson	QAOA p = 1: at least 0.6924 (Farhi et al. 2014). Goemans-Williamson: 0.878 on every graph, classically.
+Is a QAOA speed-up for Max-Cut proven?	No. Classical local algorithms match or beat low-depth QAOA in analysed cases; positive evidence is empirical scaling only.
+Error mitigation vs error correction in one line	Mitigation fixes averages at a shot cost, no extra qubits; correction fixes each run with many extra qubits.
+Readout-error mitigation formula	p_true ≈ A^−1 p_meas, where A_mt = P(read m | prepared t) is the confusion matrix.
+What is gate folding in ZNE?	Replace G by G G† G (λ = 3) or G G† G G† G (λ = 5): same ideal action, amplified noise.
+Linear zero-noise extrapolation from λ = 1 and 2	E0 ≈ 2E(1) − E(2).
+Richardson weights for λ = 1, 3, 5	1.875, −1.25, 0.375 (sum 1); variance grows by about 5.2.
+How does probabilistic error cancellation work?	Write the inverse noise as ∑q_i B_i with some q_i < 0, sample B_i with prob |q_i|/γ, reweight by γ·sign(q_i).
+PEC sampling overhead for N gates	γ^(2N) where γ = ∑|q_i|; about e^(4pN) for depolarising noise p, exponential in total noise.
+What does symmetry verification do, and miss?	Discards shots violating a known conservation law; misses errors that preserve the symmetry.
+Definition of a barren plateau	Gradient variance vanishing exponentially in qubit number, Var[∂E] ∈ O(b^−n), b > 1.
+Variance of ⟨Z1⟩ for a Haar-random n-qubit state	1/(2^n + 1), so about 2^n shots are needed to resolve a typical value.
+Do gradient-free optimisers escape barren plateaus?	No: they must still compare cost values that differ by exponentially small amounts.
+Noise-induced barren plateaus (Wang et al. 2021)	Under local Pauli noise, gradients vanish exponentially in n when depth grows linearly with n.
+MPS memory and the 1D brickwork bond-dimension bound	About n × 2 × χ² complex numbers; depth-d brickwork gives χ ≤ 4^(d/2) = 2^d.
+What happened to the 2023 IBM 127-qubit utility result?	Tensor-network and other classical methods reproduced its expectation values soon after (e.g. Tindall et al., PRX Quantum 2024).
+Six questions for any quantum advantage claim	What was computed; best classical baseline; scaling or one size; all costs counted; honest error bars; classical rebuttals.
