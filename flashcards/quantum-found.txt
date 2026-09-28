@@ -1,0 +1,38 @@
+What is the modulus squared |z|² of z = a + bi, written with the conjugate?	|z|² = z·z̄ = a² + b², always real and ≥ 0.
+How do you divide two complex numbers z/w by hand?	Multiply top and bottom by w̄: z/w = z·w̄ / |w|². The denominator becomes real.
+State Euler's formula.	e^(iθ) = cos θ + i sin θ; every e^(iθ) has modulus 1 (it lies on the unit circle).
+What happens to moduli and arguments when you multiply two complex numbers?	Moduli multiply and arguments add: (r₁e^(iθ₁))(r₂e^(iθ₂)) = r₁r₂e^(i(θ₁+θ₂)).
+What is e^(iπ/4) in Cartesian form?	(1 + i)/√2 ≈ 0.7071 + 0.7071i (the T-gate phase).
+Why can arctan(b/a) give the wrong argument?	It ignores the quadrant. For −1 − i it gives 45°, but arg = −135°. Use np.angle or arctan2(b, a).
+What are the N-th roots of unity and what do they sum to?	ω^k for k = 0..N−1 with ω = e^(2πi/N); for N ≥ 2 they sum to 0.
+Global phase vs relative phase: which one can a measurement detect?	Only relative phase. A common factor e^(iγ) on every amplitude changes no probability in any basis.
+Quick test: do two state vectors differ only by a global phase?	Divide entry by entry; if every non-zero ratio is the same unit-modulus number, the difference is global.
+What is the bra ⟨ψ| for |ψ⟩ = α|0⟩ + β|1⟩?	The conjugate-transposed row (ᾱ, β̄).
+Formula for the inner product ⟨φ|ψ⟩ of two vectors in ℂⁿ	⟨φ|ψ⟩ = ∑ φ̄ᵢψᵢ, conjugating the bra's entries.
+How is ⟨ψ|φ⟩ related to ⟨φ|ψ⟩?	It is the complex conjugate: swapping the order conjugates the inner product.
+State the Born rule for measuring |ψ⟩ in an orthonormal basis containing |φ⟩.	P(φ) = |⟨φ|ψ⟩|².
+What is the outer product |ψ⟩⟨φ|?	A matrix with (i, j) entry ψᵢφ̄ⱼ; it maps |χ⟩ to |ψ⟩⟨φ|χ⟩.
+State the completeness relation.	For any orthonormal basis {|eᵢ⟩}: ∑ᵢ |eᵢ⟩⟨eᵢ| = I.
+How do you find the coordinates of |ψ⟩ in a new orthonormal basis {|eᵢ⟩}?	cᵢ = ⟨eᵢ|ψ⟩, so |ψ⟩ = ∑ cᵢ|eᵢ⟩.
+One Gram-Schmidt step: how do you make v₂ orthogonal to unit vector e₁?	u₂ = v₂ − e₁⟨e₁|v₂⟩, then normalise: e₂ = u₂/‖u₂‖.
+numpy: which call gives ⟨φ|ψ⟩ correctly for complex vectors?	np.vdot(phi, psi), which conjugates its first argument. phi @ psi does not conjugate.
+Define the adjoint A† of a matrix.	The conjugate transpose Āᵀ. It satisfies (AB)† = B†A†.
+Define Hermitian, unitary and projector.	Hermitian: A† = A. Unitary: U†U = I. Projector: P² = P = P†.
+What are the possible eigenvalues of a Hermitian matrix, a unitary matrix and a projector?	Hermitian: real. Unitary: modulus 1 (phases). Projector: only 0 and 1.
+State the spectral theorem for a Hermitian (or normal) matrix A.	A = ∑ λᵢ|vᵢ⟩⟨vᵢ| with orthonormal eigenvectors |vᵢ⟩ and eigenvalues λᵢ.
+How do you compute f(A) for a normal matrix A?	Apply f to the eigenvalues: f(A) = ∑ f(λᵢ)|vᵢ⟩⟨vᵢ|.
+Formula for e^(−iθP/2) when P is a Pauli matrix	cos(θ/2) I − i sin(θ/2) P, using P² = I.
+What is the commutator [X, Y] of Pauli matrices?	[X, Y] = XY − YX = 2iZ (and cyclically [Y, Z] = 2iX, [Z, X] = 2iY).
+Two facts about the trace useful in exams	tr A equals the sum of the eigenvalues, and tr(AB) = tr(BA).
+Eigenvalues of A with rows (2, 1 − i), (1 + i, 3)?	1 and 4 (trace 5, determinant 4).
+2×2 shortcut: eigenvalues from trace and determinant	Solve λ² − (tr A)λ + det A = 0; eigenvalues add to tr A and multiply to det A.
+numpy: which eigen-solver should you use for Hermitian matrices?	np.linalg.eigh: real eigenvalues in ascending order and orthonormal eigenvectors.
+Tensor product of a = (a₀, a₁) and b = (b₀, b₁)	a⊗b = (a₀b₀, a₀b₁, a₁b₀, a₁b₁).
+How is the Kronecker product A⊗B built?	Block matrix whose (i, j) block is aᵢⱼB; an m×m times n×n gives mn×mn.
+State the mixed-product rule for tensor products.	(A⊗B)(C⊗D) = (AC)⊗(BD).
+How many amplitudes describe a general n-qubit state?	2ⁿ complex amplitudes (dimensions multiply under ⊗).
+Two-qubit product test for amplitudes (a, b, c, d) on |00⟩, |01⟩, |10⟩, |11⟩	Product state if and only if ad − bc = 0; otherwise entangled.
+Is (|00⟩ + |11⟩)/√2 a product state?	No. ad − bc = 1/2 ≠ 0, so it is entangled (Bell state Φ⁺).
+In Qiskit, qc.x(0) on 2 qubits prints which bitstring, and why?	'01': Qiskit is little-endian, qubit 0 is the rightmost bit. Textbook big-endian writes |10⟩.
+Which matrix applies H to qubit 0 only, in textbook big-endian order?	H⊗I. (Qiskit's Operator prints the same gate as I⊗H.)
+Memory for a 30-qubit state vector in complex128	2³⁰ × 16 bytes = 16 GiB (about 17.2 GB).

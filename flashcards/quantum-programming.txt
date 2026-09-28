@@ -1,0 +1,37 @@
+In Qiskit, which character of a bitstring belongs to qubit 0?	The rightmost. Qiskit is little-endian: '01' means qubit 0 = 1, qubit 1 = 0.
+Qiskit state-vector index of basis state with bits b0, b1, ..., b(n-1)?	index = sum of b_i · 2^i (qubit 0 is the least significant bit).
+Which Qiskit class gives exact amplitudes of an unmeasured circuit?	qiskit.quantum_info.Statevector (e.g. Statevector.from_instruction(qc) or Statevector(qc)).
+Which core-Qiskit primitive samples measured circuits shot by shot?	qiskit.primitives.StatevectorSampler; run([qc], shots=N).result()[0].data.<register>.get_counts().
+What does the Estimator primitive return?	Expectation values ⟨ψ|O|ψ⟩ of observables such as SparsePauliOp('ZZ') for circuits without measurements.
+What register name does measure_all() create?	'meas', so the counts are result[0].data.meas.get_counts().
+What is a pub in Qiskit primitives?	A Primitive Unified Bloc: one circuit plus its observables/parameter values/shots, submitted in a list to run().
+What happened to qiskit.execute()?	Deprecated in 0.46 and removed in Qiskit 1.0; use transpile plus primitives (or backend.run) instead.
+Why can't Statevector.from_instruction take a circuit with measure_all()?	Measurement is not unitary; Qiskit raises 'Cannot apply instruction with classical bits: measure'.
+Standard error of an outcome frequency with probability p and N shots?	√(p(1−p)/N); for p = 0.5 it is 0.0158 at N = 1,000 and 0.0079 at N = 4,000.
+Bell state expectation values ⟨ZZ⟩, ⟨ZI⟩, ⟨XX⟩?	1, 0 and 1 (StatevectorEstimator output [1. 0. 1.]).
+What four jobs does the transpiler do?	Layout, routing (insert SWAPs), translation to basis gates, and optimisation.
+What is an ISA circuit?	A circuit already written in a backend's native gates and obeying its coupling map, ready for hardware primitives.
+How many CX gates make one SWAP?	Three: CX(a→b) · CX(b→a) · CX(a→b).
+Hadamard in the {rz, sx, x, cx} basis?	RZ(π/2) · SX · RZ(π/2) with global phase π/4 (verified with Operator.equiv).
+What is a coupling map?	A graph of physical qubits whose edges are the pairs that support a two-qubit gate.
+Estimated success probability (ESP) of a circuit?	Product over gates and measurements of (1 − error rate). Crude, but good for ranking circuits.
+Define T1 and T2.	T1: relaxation time of |1⟩ to |0⟩. T2: dephasing time of superpositions. Physically T2 ≤ 2T1.
+Survival probability of |1⟩ after time t with relaxation time T1?	e^(−t/T1); e.g. 0.8187 for t = 20 μs, T1 = 100 μs.
+Why are RZ gates nearly free on superconducting chips?	They are done virtually by shifting the phase of later pulses, with no physical pulse of their own.
+Why fix seed_transpiler?	Layout and routing are randomised heuristics; a seed makes the transpiled circuit reproducible.
+Kraus operators of the single-qubit depolarizing channel with parameter p?	√(1−3p/4)·I, √(p/4)·X, √(p/4)·Y, √(p/4)·Z.
+What is GenericBackendV2 for?	A synthetic backend in core Qiskit with random but realistic calibration data, for testing transpilation. Not a real device.
+Where do you read a backend's gate errors and T1/T2 in Qiskit?	backend.target: target['cx'][(0, 1)].error, .duration, and target.qubit_properties[q].t1 / .t2.
+Why did a GHZ 'star' circuit need 10 CX on a line chip but the 'chain' only 4?	The star's CXs from qubit 0 to distant qubits force SWAPs; the chain matches the line's edges.
+IBM Open Plan free QPU time (checked 28 Sep 2026)?	Up to 10 minutes per 28-day rolling window, per IBM's plans overview.
+Bit order in Cirq and PennyLane state vectors?	Big-endian: the first qubit/wire is the most significant bit, the opposite of Qiskit.
+How do you reverse Qiskit's qubit order for comparison?	Statevector.reverse_qargs() or QuantumCircuit.reverse_bits().
+What does OpenQASM 3 add over OpenQASM 2?	Classical types, control flow on mid-circuit results, subroutines, and timing instructions.
+OpenQASM 3 syntax for measuring qubit 0 into bit 0?	c[0] = measure q[0];  (OpenQASM 2 wrote measure q[0] -> c[0];)
+Qiskit function that writes OpenQASM 3 text?	qiskit.qasm3.dumps(circuit). Reading it back needs the optional qiskit_qasm3_import package.
+What is Cirq's basic time-slice unit?	The Moment: a set of operations applied at the same time; a Circuit is a sequence of Moments.
+What is PennyLane designed for?	Differentiable quantum programming: QNodes whose gradients plug into PyTorch, JAX or TensorFlow.
+Parameter-shift rule for a Pauli-rotation angle θ?	∂⟨O⟩/∂θ = [⟨O⟩(θ + π/2) − ⟨O⟩(θ − π/2)]/2; two circuit runs per parameter.
+What is in Microsoft's Quantum Development Kit?	The Q# language and compiler (mostly Rust), a VS Code extension, Python package, and a resource estimator.
+Which clouds accept OpenQASM 3 or list multi-vendor QPUs (checked 28 Sep 2026)?	Amazon Braket accepts OpenQASM 3.0 programs; Azure Quantum lists IonQ, Pasqal, Quantinuum and Rigetti.
+Reproducibility checklist for a hardware run?	Pinned versions, seeds, shots, transpiled circuit (as QASM), backend name, calibration time, bit-order convention.

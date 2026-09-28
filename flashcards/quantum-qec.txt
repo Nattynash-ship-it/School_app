@@ -1,0 +1,35 @@
+What are the code words of the three-qubit bit-flip code?	|0_L⟩ = |000⟩ and |1_L⟩ = |111⟩; α|0⟩ + β|1⟩ is encoded as α|000⟩ + β|111⟩ (entangled, not three copies).
+Which operators are measured to find a bit flip in the three-qubit code?	The parities Z1Z2 and Z2Z3; each is +1 if the two qubits agree and −1 if they differ.
+Syndrome (Z1Z2, Z2Z3) = (−1, −1) in the bit-flip code means what?	An X error on the middle qubit (X2); apply X2 to correct it.
+Logical error rate of the 3-qubit repetition code with flip probability p?	p_L = 3p² − 2p³; it beats p only when p < 1/2 (e.g. p = 0.1 gives 0.028).
+Why does syndrome measurement not destroy the encoded superposition?	Every code state (and every state with the same error) is an eigenstate of the parity checks, so the outcome is certain and says nothing about α, β.
+What is the discretisation of errors?	Any single-qubit error is a combination of I, X, Y, Z; syndrome measurement collapses it onto one Pauli, so correcting X and Z suffices.
+What are the code words of the three-qubit phase-flip code and its checks?	|+++⟩ and |−−−⟩, with checks X1X2 and X2X3.
+Shor’s nine-qubit code: construction and size?	Concatenate the phase-flip code with the bit-flip code: 9 qubits, 8 checks, 1 logical qubit, corrects any single-qubit error (1995).
+When do two Pauli strings commute?	When the number of positions where both are non-identity and different is even.
+What is a stabilizer group?	An abelian subgroup of the n-qubit Pauli group not containing −I; the code space is the set of states fixed by all its elements.
+n qubits, r independent stabilizer generators: how many logical qubits?	k = n − r, and the code space has dimension 2^k.
+What does [[n, k, d]] mean?	A quantum code with n physical qubits, k logical qubits and distance d (minimum weight of a logical operator).
+How many errors does a distance-d code correct?	t = floor((d − 1)/2): d = 3 corrects 1, d = 5 corrects 2.
+Generators of the five-qubit code?	XZZXI, IXZZX, XIXZZ, ZXIXZ (cyclic shifts); logical X = XXXXX, Z = ZZZZZ.
+Why is the five-qubit code called perfect?	Its 15 single-qubit errors plus no-error use all 16 syndromes: 2(1 + 3·5) = 32 = 2^5.
+State the quantum Singleton bound.	n − k ≥ 2(d − 1); for k = 1, d = 3 it forces n ≥ 5.
+A trivial syndrome after errors means what?	The net error commutes with all checks: either a stabilizer (harmless) or a logical operator (an undetected logical error).
+What makes a code degenerate?	Different low-weight errors act identically on the code space (they differ by a stabilizer), e.g. Z1 and Z2 in Shor’s code.
+What is a CSS code?	A code built from classical codes C2 ⊂ C1: Z-type checks from one catch X errors, X-type checks catch Z errors; k = k1 − k2.
+Parity-check matrix of the [7,4,3] Hamming code?	Columns are 1 to 7 in binary: rows 0001111, 0110011, 1010101.
+Steane code parameters and stabilizers?	[[7,1,3]]; X-type and Z-type generators from each Hamming row: IIIXXXX, IXXIIXX, XIXIXIX and the same with Z.
+Steane syndrome of an X error on qubit j?	The Z-type checks read j in binary (column j of H); e.g. qubit 5 gives 101.
+Steane code |0_L⟩ in terms of classical code words?	Equal superposition of the 8 even-weight Hamming code words (each amplitude 1/√8).
+What is a transversal gate?	A logical gate built from physical gates that touch at most one qubit per block, so one fault cannot spread within a block.
+Which gates are transversal on the Steane code?	X, Z, H, CNOT and S (S⊗7 gives S†_L); T is not.
+State the Eastin–Knill theorem.	No code that detects arbitrary single-qubit errors has a universal set of transversal gates (PRL 2009).
+Physical qubits in a distance-d rotated surface code patch?	2d² − 1 (d² data plus d² − 1 measure qubits): 17, 49, 97 for d = 3, 5, 7.
+What is Λ in surface-code experiments?	The error suppression factor ε_d / ε_(d+2): how much the logical error per cycle falls when distance grows by 2.
+Surface-code logical error scaling law?	ε_d ≈ A (p/p_th)^((d+1)/2): exponential suppression in d when p < p_th.
+State the threshold theorem.	Below a constant physical error rate (with local, weakly correlated noise) arbitrary-length computation is reliable with polylog overhead.
+Output error of 15-to-1 magic-state distillation?	About 35p³ to leading order; p = 10⁻³ gives 3.5 × 10⁻⁸.
+What is a magic state used for?	|T⟩ = (|0⟩ + e^(iπ/4)|1⟩)/√2 is consumed by gate teleportation to perform a T gate fault-tolerantly.
+Google Willow 2024 below-threshold result?	Λ = 2.14 ± 0.02; distance-7 memory (101 qubits) at 0.143% error per cycle; 2.4× the best physical qubit lifetime (Nature, Dec 2024).
+Gidney 2025 estimate for breaking RSA-2048?	Under one million noisy qubits in under a week (arXiv 2505.15917), down from about 20 million in 2019.
+Why is ‘below threshold’ not the same as ‘useful’?	It only shows bigger codes help; useful algorithms need about 10⁻⁹ or lower logical error and fault-tolerant gates, not just memory.

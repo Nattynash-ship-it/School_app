@@ -1,0 +1,34 @@
+What are the four deliverables of a quantum-computing capstone project?	Implementation (versioned code), verification (theory vs statevector vs shots with SE), resource estimate (qubits, gates, depth, scaling), reproducible write-up.
+Success probability of Grover after k iterations?	P_k = sin²((2k + 1)θ) with sin θ = √(M/N).
+Optimal Grover iteration count for N items, M marked?	k = ⌊(π/4)√(N/M)⌋; one more iteration can lower the success probability.
+Grover on 3 qubits, one marked item: P after 1 and 2 iterations?	0.78125 after 1, 0.9453125 after 2 (θ = 0.3614 rad); 3 iterations overshoot to 0.3301.
+How do you verify a simulated algorithm properly?	Theory, exact statevector and shot estimate must agree: theory inside p̂ ± 1.96·SE with SE = √(p̂(1 − p̂)/shots).
+Grover crossover with a classical loop of c checks/s and t_iter per iteration?	√N× = 2c(π/4)t_iter; below it the classical loop is faster.
+Why does Grover parallelise badly?	P machines each searching N/P items finish only √P times sooner; classical search on P cores is P times faster.
+Physical qubits per surface-code logical qubit at distance d?	About 2d² (d² data plus about d² measurement qubits), before magic-state factories.
+Why did limited connectivity raise the Grover circuit's CX count from 24 to 45?	The router inserts SWAPs (3 CX each) so interacting qubits become neighbours.
+Published RSA-2048 estimate by Gidney (May 2025)?	Under a week with fewer than one million noisy qubits at 0.1% gate error and 1 μs cycles (arXiv:2505.15917).
+The five exam problem types?	Circuit-to-state, measurement probability, gate identity, algorithm analysis, error-correction syndrome.
+In a gate product, where does the first gate in time go?	Rightmost: H then X on a state is XH|ψ⟩.
+P(+) for α|0⟩ + β|1⟩ measured in the X basis?	P(+) = ½ + Re(α*β).
+What is (I⊗H) CNOT (I⊗H)?	CZ = diag(1, 1, 1, −1): H X H = Z on the target when the control is 1.
+What is (H⊗H) CNOT (H⊗H)?	CNOT with control and target swapped.
+S X S† equals?	Y (and S† X S = −Y).
+Syndromes of the bit-flip code (Z₁Z₂, Z₂Z₃) for X₁, X₂, X₃?	X₁: (−1, +1); X₂: (−1, −1); X₃: (+1, −1).
+How does the Steane code locate a single error?	Hamming check matrix with columns 1 to 7 in binary: the syndrome is the error position, e.g. 101 = qubit 5.
+Ten-second checks on a circuit answer?	Norm 1; probabilities sum to 1; unchanged by global phase; bit order stated; smallest case gives the known result.
+QPE with 3 counting qubits and eigenphase 0.3: most likely outcome?	Outcome 2 (0.250) with probability 0.5775; outcome 3 (0.375) has 0.2593.
+Grover with N = 1024 and M = 4?	θ = arcsin(1/16); k = 12; P = sin²(25θ) ≈ 0.99995.
+Three rows of each review sheet?	Key result; what it assumes; the most common mistake.
+Reduced state and entropy of one half of a Bell pair?	ρ = I/2, purity 0.5, S = 1 bit.
+CHSH value of a Bell pair at optimal angles, and the classical bound?	2√2 ≈ 2.8284 versus 2 for local hidden variables.
+Depolarized Bell pair (1 − p)|Φ⁺⟩⟨Φ⁺| + pI/4: when is CHSH violated?	S = (1 − p)·2√2 > 2, so for p < 1 − 1/√2 ≈ 0.2929.
+Mixture I/2 versus |+⟩: which measurement tells them apart?	The X basis: |+⟩ always gives +, I/2 gives 50/50. Z statistics are identical.
+Does Shor break AES?	No. Shor breaks RSA, DH and ECC; AES faces only Grover's quadratic speed-up, so use 256-bit keys.
+Deutsch-Jozsa speed-up: against which classical model?	Deterministic exact (2^(n−1) + 1 queries); randomized classical needs only a few queries for small error.
+Known inclusions for BQP?	BPP ⊆ BQP ⊆ PP ⊆ PSPACE; NP ⊆ BQP is not expected and not proven either way.
+What does HHL actually output, and what does it need?	A state |x⟩, not x; needs sparse, well-conditioned A, efficient loading of b, and only a few output numbers.
+Logical-error factor from d = 3 to d = 7 at p/p_th = 0.1?	(0.1)² / (0.1)⁴ = 100, since ε_d ∝ (p/p_th)^((d+1)/2).
+The most common meta-mistake across the degree?	Quoting a result without its assumption: oracle model, data loading, noise model, median vs best, classical baseline.
+Three chains that connect the chapters?	Algorithms (gates to QFT to Shor/Grover), noise (density matrices to QEC to hardware to NISQ), information (entanglement to protocols to QKD).
+What should a project write-up include beyond results?	Conventions and versions, seeds, the best classical baseline, cost assumptions with a sensitivity table, and limitations.
