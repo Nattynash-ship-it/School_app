@@ -1,0 +1,43 @@
+What is a thermodynamic system, and what are the surroundings?	The system is the chosen quantity of matter or region of space under study; everything outside it is the surroundings
+Define a closed system (control mass)	A fixed amount of mass; no mass crosses the boundary, but energy (heat and work) may
+Define an open system (control volume)	A chosen region of space through which mass may flow; energy may also cross its control surface
+Define an isolated system	A closed system that exchanges neither mass nor energy (no heat, no work) with its surroundings
+Can a closed system have a moving boundary?	Yes: gas in a piston-cylinder is closed (fixed mass) even though the boundary moves; volume change is not mass transfer
+Is an insulated rigid tank with a paddle wheel driven from outside an isolated system?	No: it is closed and adiabatic, but shaft work crosses the boundary, so energy is exchanged
+What does the halving test tell you about a property?	Split the system in two equal halves: an extensive property halves, an intensive property stays the same
+Name five extensive properties	Mass m, total volume V, total internal energy U, total enthalpy H, total entropy S (capital letters)
+Name five intensive properties	Pressure P, temperature T, density ρ, specific volume v, specific internal energy u (any per-kg quantity)
+How is a specific property formed and what is its unit style?	Extensive property divided by mass, e.g. v = V/m in m³/kg, u = U/m in kJ/kg; lower-case letters, intensive
+Relation between density and specific volume	ρ = m/V = 1/v; density in kg/m³, specific volume in m³/kg
+What is specific gravity and what is its unit?	SG = ρ/ρ_water with ρ_water = 1000 kg/m³; dimensionless (mercury SG = 13.6)
+State the continuum assumption	Matter is treated as continuous and homogeneous, with properties defined at a point, valid when the system is very large compared with the mean free path
+Approximate mean free path of air at 1 atm and 20 °C	About 66-68 nm (6.6 × 10⁻⁸ m); one cubic millimetre of air holds about 2.5 × 10¹⁶ molecules
+Define the Knudsen number and the continuum criterion	Kn = λ/L, mean free path over system length; the continuum holds when Kn ≪ 1
+What is thermodynamic equilibrium?	Simultaneous thermal (uniform T), mechanical (uniform P, no unbalanced force), phase (constant phase masses) and chemical (constant composition) equilibrium
+State the state postulate for a simple compressible system	The state is completely specified by two independent intensive properties
+General rule for the number of independent intensive properties	Number of relevant quasi-equilibrium work modes plus one (the plus one is the thermal mode)
+When are pressure and temperature NOT independent properties?	During a phase change (saturated mixture): P and T are linked by the saturation curve, so a second property such as v or quality x is needed
+Define a quasi-equilibrium (quasi-static) process	A process slow enough that the system stays infinitesimally close to equilibrium throughout, so every intermediate state can be drawn on a property diagram
+Define a thermodynamic cycle	A sequence of processes that returns the system to its initial state, so the net change of every property is zero (∮dV = 0)
+Point function vs path function	A point function (property) depends only on the state and has an exact differential; a path function (heat, work) depends on the route and has an inexact differential δ
+Why is ΔW wrong notation?	Work is a path function, not a property; a system does not possess work, so write W₁₂ or δW, never a change Δ
+What does the area under a process curve on a P-V diagram represent?	Quasi-equilibrium boundary work W_b = ∫P dV; the area enclosed by a cycle is the net work of the cycle
+Isothermal, isobaric, isochoric, isentropic, isenthalpic: what is constant?	Temperature, pressure, specific volume, entropy, enthalpy respectively
+Define a steady-flow process	Fluid flows through a control volume with properties varying in space but not in time at any point; mass and energy content of the CV are constant
+Boundary work for a constant-pressure quasi-equilibrium process	W = P(V₂ − V₁), in kJ with P in kPa and V in m³; negative for compression
+Boundary work for an isothermal ideal-gas process	W = P₁V₁ ln(V₂/V₁) = mRT ln(V₂/V₁)
+Define pressure and give its SI units	Normal force per unit area exerted by a fluid, P = F/A; 1 Pa = 1 N/m², 1 kPa = 10³ Pa, 1 bar = 100 kPa, 1 atm = 101.325 kPa
+Gauge pressure and vacuum pressure in terms of absolute pressure	P_gauge = P_abs − P_atm (above atmospheric); P_vac = P_atm − P_abs (below atmospheric)
+Which pressure goes into Pv = RT and property tables?	Absolute pressure, always; add the local atmospheric pressure to any gauge reading first
+Hydrostatic pressure at depth h in a liquid open to the atmosphere	P = P_atm + ρgh (Pa), with ρ in kg/m³, g = 9.81 m/s², h in m; gauge pressure is ρgh
+How do you walk through a multi-fluid manometer?	Start at a known pressure, add ρgh for each fluid you go down through, subtract ρgh for each you go up through, until you reach the other end
+How does a mercury barometer measure atmospheric pressure?	P_atm = ρ_Hg g h; with ρ_Hg = 13,595 kg/m³ and g = 9.807 m/s², 760 mm gives 101.3 kPa
+Pressure of a gas under a floating piston of mass m and area A	P_gas = P_atm + mg/A (+ spring force/A if a spring acts); mechanical equilibrium of the piston
+State the zeroth law of thermodynamics	If two bodies are each in thermal equilibrium with a third body, they are in thermal equilibrium with each other
+Why does the zeroth law make temperature a property?	Bodies in mutual thermal equilibrium share one value of a property (temperature), and a thermometer can serve as the third body to compare them
+Kelvin from Celsius, Rankine from Fahrenheit	T(K) = T(°C) + 273.15; T(R) = T(°F) + 459.67
+Rankine from Kelvin, Fahrenheit from Celsius	T(R) = 1.8 T(K); T(°F) = 1.8 T(°C) + 32
+Converting a temperature DIFFERENCE between scales	ΔT(K) = ΔT(°C); ΔT(R) = ΔT(°F) = 1.8 ΔT(K); no offset is added
+Constant-volume gas thermometer temperature formula	T = 273.16 K × (P/P_tp) in the low-pressure limit, P_tp being the gas pressure at the triple point of water
+Which formulas need absolute temperature and which do not?	Products and ratios (Pv = RT, σT⁴, 1 − T_L/T_H, ln(T₂/T₁)) need K or R; pure differences (m c ΔT) work in °C or K alike
+Value of the triple point of water and how the kelvin is defined since 2019	0.01 °C (273.16 K) and 0.6117 kPa; the kelvin is now defined by fixing k = 1.380649 × 10⁻²³ J/K

@@ -1,0 +1,35 @@
+What is a control volume?	A chosen region of space through which mass may flow; its boundary, the control surface, can be crossed by mass, heat and work
+Mass flow rate formula	ṁ = ρ·A·V = A·V/v (kg/s), with A the flow area and V the average velocity
+Volume flow rate formula	V̇ = A·V (m³/s); ṁ = V̇/v
+General mass balance for a control volume	dm_CV/dt = Σṁ_in − Σṁ_out
+Steady-flow mass balance for one inlet and one exit	ṁ₁ = ṁ₂, i.e. ρ₁A₁V₁ = ρ₂A₂V₂
+Which is conserved through a gas compressor: mass flow rate or volume flow rate?	Mass flow rate; volume flow rate falls because v falls
+Define flow work	w_flow = P·v (kJ/kg): work to push a unit mass across a control surface against the local absolute pressure
+Why do open-system balances use h instead of u?	Mass crossing a boundary carries u plus the flow work P·v; h = u + P·v combines them
+Total energy per unit mass of a flowing fluid	θ = h + V²/2 + g·z (divide V²/2 and gz by 1000 to get kJ/kg)
+Steady-flow energy equation (one inlet, one exit, per kg)	q − w = (h₂ − h₁) + (V₂² − V₁²)/2 + g(z₂ − z₁)
+Define steady flow	No property at any fixed point inside the control volume changes with time
+Energy balance for an adiabatic nozzle or diffuser	h₁ + V₁²/2 = h₂ + V₂²/2
+Nozzle exit velocity from the enthalpy drop	V₂ = √(V₁² + 2(h₁ − h₂)), with h in J/kg
+Adiabatic turbine work per kg, KE and PE neglected	w_out = h₁ − h₂
+Compressor work input with heat loss	w_in = (h₂ − h₁) + q_out
+What property is conserved across a throttling valve?	Enthalpy: h₂ = h₁ (isenthalpic)
+Throttling an ideal gas changes its temperature by how much?	Zero; h depends only on T for an ideal gas
+Why does a refrigerant cool sharply in a capillary tube?	It enters as a liquid; part flashes to vapour at the lower pressure and the latent heat comes from cooling the rest at constant h
+Quality after throttling into the dome	x₂ = (h₁ − h_f)/h_fg evaluated at the exit pressure
+Which Δh expression for a flowing ideal gas: cp·ΔT or cv·ΔT?	cp·ΔT; cv·ΔT is Δu
+Mixing chamber energy balance (two inlets, one exit)	ṁ₁h₁ + ṁ₂h₂ = (ṁ₁ + ṁ₂)h₃
+Flow ratio in a mixing chamber	ṁ_hot/ṁ_cold = (h₃ − h_cold)/(h_hot − h₃)
+Heat exchanger: Q̇ with the boundary around the whole insulated unit	Q̇ = 0; hot-stream enthalpy loss equals cold-stream gain
+Heat exchanger: Q̇ with the boundary around one stream	Q̇ = ṁ(h_out − h_in) for that stream
+Enthalpy of a compressed liquid when no compressed-liquid table is given	h ≈ h_f at the same temperature
+Ideal pump work for an incompressible liquid	w_pump,in = v(P₂ − P₁), with v = v_f in m³/kg and P in kPa
+How is an electric heater in a duct counted?	As electrical work input Ẇ_e,in, because the energy crosses the boundary as current
+Define the uniform-flow process	Unsteady CV process with a uniform state inside at each instant and a fixed state at each inlet and exit
+Uniform-flow energy balance, KE and PE neglected	Q − W + Σm_in·h_in − Σm_out·h_out = m₂u₂ − m₁u₁
+Evacuated insulated rigid tank filled from a line: key result	u₂ = h_line
+Ideal gas: final temperature in an evacuated insulated tank filled from a line	T₂ = k·T_line (kelvin); 420 K for air from a 300 K line
+Heat lost if an evacuated tank is filled and ends at the line temperature (ideal gas)	Q_out = m(h_line − u₂) = m·R·T = P·V
+Pressure cooker venting at constant pressure: exit enthalpy	h_out = h_g at the cooker pressure, constant during the process
+Temperature of gas left in an insulated tank after slow discharge	T₂ = T₁(P₂/P₁)^((k−1)/k): it cools
+Mass inside vs mass crossing: which property for each?	Inside the control volume: u. Crossing the control surface: h

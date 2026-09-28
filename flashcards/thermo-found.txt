@@ -1,0 +1,40 @@
+Relation between absolute, gauge and atmospheric pressure	P_abs = P_gauge + P_atm; below atmospheric, P_abs = P_atm − P_vac
+Why 1 kPa·m³ equals 1 kJ	1 kPa = 1 kN/m², so kPa × m³ = kN·m = kJ; the reason thermodynamics works in kPa and kJ
+Convert °C to K and °F to R	T(K) = T(°C) + 273.15; T(R) = T(°F) + 459.67; T(R) = 1.8 T(K)
+Which temperature scales may appear in a ratio such as T₂/T₁?	Only absolute scales: kelvin or Rankine. A ΔT may stay in °C, a T may not
+Standard pressure conversions: bar, atm, psi	1 bar = 100 kPa; 1 atm = 101.325 kPa = 14.696 psi; 1 psi = 6.8948 kPa
+Universal gas constant and how the per-kg R is found	R_u = 8.314 kJ/(kmol·K); R = R_u/M, e.g. air 8.314/28.97 = 0.287 kJ/(kg·K)
+R, c_v, c_p and k for air (constant specific heats)	R = 0.287, c_v = 0.718, c_p = 1.005 kJ/(kg·K), k = c_p/c_v = 1.4
+Definition of a specific property	An extensive property divided by mass, lower case: v = V/m (m³/kg), u = U/m, h = H/m, s = S/m (kJ/kg or kJ/(kg·K))
+Relation between density and specific volume	v = 1/ρ; liquid water ≈ 0.001 m³/kg, room air ≈ 0.83 m³/kg (ρ ≈ 1.2 kg/m³)
+Energy versus power, with the kWh	Energy is the stock (kJ), power the flow (kW = kJ/s); 1 kWh = 3600 kJ
+Everyday power anchors for sanity checks	Person at rest ≈ 100 W; kettle 1.5-3 kW; car engine ≈ 100 kW; large power station ≈ 1 GW
+Sig-fig rule for thermodynamics answers	Carry all digits through the working; round only the final answer to 3-4 significant figures with a unit
+English-unit energy and power equivalents	1 Btu = 1.0551 kJ; 1 hp = 0.7457 kW; 1 lbf = 4.4482 N; 1 lbm = 0.45359 kg
+Meaning of d, Δ and ∂	d: infinitesimal change along a path; Δ: finite change between two states; ∂: rate of change with one variable, another held fixed
+State function versus path function	A state function (P, T, u, h, s) depends only on the state; a path function (Q, W) depends on the route between states
+Test for an exact differential dz = M dx + N dy	Exact if and only if (∂M/∂y)_x = (∂N/∂x)_y
+Is δq = c_v dT + (RT/v) dv exact for an ideal gas?	No: ∂c_v/∂v = 0 but ∂(RT/v)/∂T = R/v ≠ 0, so heat is not a property
+Is δq/T exact for a reversible ideal-gas process?	Yes: (c_v/T) dT + (R/v) dv passes the cross-derivative test; the property it defines is entropy s
+Correct notation for heat and work amounts and increments	Q₁₂, W₁₂ (or Q, W) for amounts; δQ, δW for increments; never ΔQ or ΔW
+The cyclic relation for three properties x, y, z	(∂x/∂y)_z (∂y/∂z)_x (∂z/∂x)_y = −1
+Reciprocity relation for partial derivatives	(∂x/∂y)_z = 1 / (∂y/∂x)_z
+Boundary work definition and P-V meaning	W_b = ∫₁² P dV, the area under the process path on a P-V diagram; path-dependent
+Boundary work of an isobaric process	W_b = P (V₂ − V₁); for an ideal gas also m R (T₂ − T₁)
+Boundary work of an isothermal ideal-gas process	W_b = P₁V₁ ln(V₂/V₁) = m R T ln(V₂/V₁) = m R T ln(P₁/P₂)
+Boundary work of a polytropic process PV^n = C (n ≠ 1)	W_b = (P₂V₂ − P₁V₁)/(1 − n) = m R (T₂ − T₁)/(1 − n) for an ideal gas
+Polytropic exponent n for the common processes	n = 0 isobaric; n = 1 isothermal (ideal gas); n = k isentropic; n → ∞ isochoric
+Slope of an isotherm and of an isentrope on a P-v diagram	Isotherm: (∂P/∂v)_T = −P/v; isentrope: −kP/v, so the isentrope is k times steeper
+Sign of boundary work in a compression	Negative under the convention W positive out: work is done on the gas
+Boundary work in a rigid tank	Zero, because dV = 0 at every step; all heat goes into internal energy
+The seven moves of the problem-solving method	Sketch and boundary; knowns and unknowns with units; assumptions; balance in words then symbols; properties; solve and check signs; check magnitude, units, box
+Closed-system energy balance, general form	Q − W = ΔU + ΔKE + ΔPE, with Q positive in and W positive out
+Heat added in a constant-pressure closed process	Q = ΔH = m c_p ΔT for an ideal gas, because W_b = P ΔV is absorbed into h = u + Pv
+Heat added in a constant-volume process	Q = ΔU = m c_v ΔT for an ideal gas; no boundary work
+Relation between c_p, c_v and R for an ideal gas	c_p − c_v = R; for air 1.005 − 0.718 = 0.287 kJ/(kg·K)
+How many properties fix the state of a simple compressible substance?	Two independent intensive properties, e.g. P and T, or T and v (not P and T inside the wet region)
+Closed system versus open system	Closed: fixed mass, energy crosses as heat and work; open (control volume): mass also crosses through inlets and exits
+Four results that the obviously-wrong checklist rejects	Negative absolute T or P; efficiency above Carnot; quality outside 0-1; negative entropy generation
+Why a ΔT is the same in K and in °C	Both scales have the same degree size; only the zero differs, and it cancels in a difference
+Fraction of heat that becomes work in isobaric heating of air	W_b/Q = R/c_p = 0.287/1.005 = 0.286, independent of the temperatures
+Where the state table's columns come from	State, P, T, v, u, h, s, x: one row per state, two known entries per row, the process relation links rows

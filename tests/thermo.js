@@ -32,7 +32,7 @@ ok('every worked example actually works numbers', noNums.length === 0, noNums.sl
 const unsureBad = lessonKeys.filter(k => { const b = L[k].body; let i = 0, bad = false; while ((i = b.indexOf('❓ NOT VERIFIED', i)) >= 0) { if (!/confirm/i.test(b.slice(i, i + 3000))) bad = true; i += 10; } return bad; });
 ok('anything not verified says so and tells her to confirm it', unsureBad.length === 0, unsureBad);
 const figs = lessonKeys.filter(k => /data-figure="hand"/.test(L[k].body)).length;
-ok('the course is illustrated: at least forty drawn figures', figs >= 40, { figs });
+ok('the course is illustrated: at least fifty-five drawn figures', figs >= 55, { figs });
 // quizzes
 const noQuiz = lessonKeys.filter(k => !(Q[k] && Q[k].length >= 6));
 ok('every lesson ends in a quiz of at least six questions', noQuiz.length === 0, noQuiz.slice(0, 5));
@@ -92,8 +92,8 @@ ok('the decks are listed for offline holding', decks.every(f => idx.includes("'/
     const url = '/content-THERMO.json?v=' + encodeURIComponent(man.fv.THERMO);
     const r = await fetch(url); const pk = await r.json();
     const stayed = !!(typeof view === 'object' && view && view.courseId === 'THERMO');
-    const inApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => { const [c, ch, sc] = k.split('/'); try { const g = getQuestions(c, ch, sc); return !(g && g.length >= 6); } catch (e) { return true; } });
-    const lessonInApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => { try { const v = SAMPLE_LESSON[k]; return !(v && (v.body || v).length > 2000); } catch (e) { return true; } });
+    const inApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => !/_sim\//.test(k)).filter(k => { const [c, ch, sc] = k.split('/'); try { const g = getQuestions(c, ch, sc); return !(g && g.length >= 6); } catch (e) { return true; } });
+    const lessonInApp = Object.keys(JSON.parse(pk.l)).filter(k => !/_sim\//.test(k)).filter(k => !/_sim\//.test(k)).filter(k => { try { const v = SAMPLE_LESSON[k]; return !(v && (v.body || v).length > 2000); } catch (e) { return true; } });
     return { status: r.status, stayed, inApp, lessonInApp, title: (document.body.innerText.match(/Survival[^\n]*/) || [''])[0] };
   });
   ok('opening the course stays on the course (no lock redirect) and serves the stamped pack', load.status === 200 && load.stayed, load);

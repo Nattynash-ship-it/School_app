@@ -1,0 +1,41 @@
+List the four air-standard assumptions	Air as an ideal gas in a closed loop; all processes internally reversible; combustion replaced by external heat addition; exhaust replaced by heat rejection to the initial state
+What does the cold-air-standard add to the air-standard assumptions?	Constant specific heats at 25 °C values: cp = 1.005 kJ/kg·K, cv = 0.718 kJ/kg·K, k = 1.4
+Define the compression ratio r of a piston engine	r = V_max/V_min = V_BDC/V_TDC, a ratio of volumes (not pressures)
+Clearance volume from displacement and compression ratio	V_c = V_d/(r − 1), because r = (V_d + V_c)/V_c
+What is the mean effective pressure (MEP)?	The constant pressure that acting over the whole stroke would give the same net work: W_net = MEP × (V_max − V_min)
+Engine power from work per cycle	Ẇ = W_cycle × n_cyl × N/n_R, with N in rev/s and n_R = 2 for four-stroke, 1 for two-stroke
+Why is the Carnot cycle not used for real gas engines?	Isothermal heat transfer is too slow, it needs very large pressure and volume ratios, and its MEP is low
+Which two averages control the efficiency of any cycle?	Average temperature of heat addition (raise it) and average temperature of heat rejection (lower it)
+SI versus CI engine	Spark ignition: mixture lit by a spark plug (Otto cycle). Compression ignition: air compressed until fuel injected into it self-ignites (Diesel cycle)
+The four processes of the ideal Otto cycle	1→2 isentropic compression; 2→3 constant-volume heat addition; 3→4 isentropic expansion; 4→1 constant-volume heat rejection
+Cold-air-standard Otto efficiency	η = 1 − 1/r^(k−1); depends only on compression ratio r and k
+Isentropic temperature and pressure ratios for a compression ratio r	T₂/T₁ = r^(k−1); P₂/P₁ = r^k
+What limits the compression ratio of spark-ignition engines?	Autoignition of the compressed air-fuel mixture, heard as engine knock
+How does the ideal Diesel cycle differ from the Otto cycle?	Heat is added at constant pressure (2→3) instead of constant volume; q_in = c_p(T₃ − T₂)
+Define the cutoff ratio	r_c = v₃/v₂, cylinder volume after combustion over volume before it (Diesel cycle)
+Cold-air-standard Diesel efficiency	η = 1 − (1/r^(k−1))·(r_c^k − 1)/(k(r_c − 1))
+Otto or Diesel: which is more efficient at the same compression ratio?	Otto; the Diesel bracket is above 1. Diesels win in practice by running much higher compression ratios
+What is the dual cycle?	Heat added partly at constant volume (pressure ratio r_p) and partly at constant pressure (cutoff ratio r_c); Otto and Diesel are its limits
+Ideal Otto, r = 8, cold air: efficiency?	1 − 1/8^0.4 = 56.5%
+The four processes of the ideal Brayton cycle	1→2 isentropic compression; 2→3 constant-pressure heat addition; 3→4 isentropic expansion; 4→1 constant-pressure heat rejection
+Cold-air-standard Brayton efficiency	η = 1 − 1/r_p^((k−1)/k), with r_p the compressor pressure ratio
+Define the back-work ratio	bwr = w_comp,in/w_turb,out, the fraction of turbine work used to drive the compressor
+Pressure ratio for maximum Brayton net work	r_p = (T₃/T₁)^(k/(2(k−1))); then T₂ = T₄ = √(T₁T₃) and w_max = c_p(√T₃ − √T₁)²
+Actual compressor and turbine exit temperatures from isentropic efficiencies	T₂a = T₁ + (T₂s − T₁)/η_C; T₄a = T₃ − η_T(T₃ − T₄s)
+Regenerator effectiveness	ε = (T₅ − T₂)/(T₄ − T₂): actual preheat over the maximum possible (up to turbine exhaust temperature)
+When does regeneration help a gas turbine?	Only when the turbine exhaust is hotter than the compressor exit (T₄ > T₂): low pressure ratio, high turbine inlet temperature
+Ideal Brayton efficiency with ideal regeneration	η = 1 − (T₁/T₃)·r_p^((k−1)/k); it falls as r_p rises
+Best stage pressure ratio for two-stage compression with perfect intercooling	√r_p for each stage, which splits the work equally
+Effect of intercooling and reheating without regeneration	Net work up, back-work ratio down, thermal efficiency usually down
+Five components of a turbojet, in flow order	Diffuser, compressor, combustor, turbine, nozzle
+In an ideal turbojet, what sets the turbine work?	It equals the compressor work (plus small accessories); the useful output is the jet kinetic energy
+Thrust of a jet engine (exit at ambient pressure)	F = ṁ(V_exit − V_inlet)
+Propulsive power	Ẇ_P = F·V_aircraft = ṁ(V_exit − V_inlet)V_aircraft
+Propulsive efficiency as defined by Cengel & Boles	η_P = Ẇ_P/Q̇_in, propulsive power over rate of fuel energy input (many propulsion texts call this the overall efficiency)
+Froude propulsive efficiency	η = 2/(1 + V_exit/V): highest when the jet is only a little faster than the aircraft
+Ram temperature rise in an ideal diffuser	ΔT = V²/(2c_p) with c_p in J/kg·K
+Bypass ratio of a turbofan	Mass flow of air bypassing the core divided by mass flow through the combustor
+What does an afterburner do?	Burns extra fuel between turbine and nozzle to raise the nozzle inlet temperature, jet velocity and thrust, at high fuel cost
+Why can a ramjet not take off on its own?	Its only compression is ram compression in the diffuser, which needs high flight speed
+Processes of the Stirling cycle	Isothermal expansion at T_H, constant-volume regeneration, isothermal compression at T_L, constant-volume regeneration
+Why do Stirling and Ericsson cycles reach Carnot efficiency?	All external heat transfer is isothermal at T_H and T_L; the rest is exchanged internally by a perfect regenerator

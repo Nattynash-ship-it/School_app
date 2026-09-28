@@ -1,0 +1,43 @@
+Why is a Carnot vapour cycle impractical (three reasons)?	Heat addition capped at T_crit (373.95 °C); wet turbine expansion erodes blades; compressing a two-phase mixture to exactly saturated liquid is not feasible
+Name the four processes of the ideal Rankine cycle	1-2 isentropic pump; 2-3 constant-pressure heat addition in boiler; 3-4 isentropic turbine expansion; 4-1 constant-pressure heat rejection in condenser
+Pump work formula for the ideal Rankine cycle	w_pump = v_1 (P_2 − P_1), with v_1 = v_f at the condenser pressure in m³/kg and P in kPa, giving kJ/kg
+Rankine heat input and heat rejection per kilogram	q_in = h_3 − h_2 (boiler); q_out = h_4 − h_1 (condenser)
+Rankine thermal efficiency in terms of heats	η_th = w_net/q_in = 1 − q_out/q_in, with w_net = w_turb − w_pump = q_in − q_out
+Typical back work ratio of a steam Rankine plant	Under 1% (about 0.4% in the 3 MPa/75 kPa example), versus 40-80% for a Brayton gas turbine
+Why is Rankine pump work so much smaller than Brayton compressor work?	Steady-flow work is ∫v dP; liquid water has v ≈ 0.001 m³/kg, about a thousand times smaller than the gas in a compressor
+How to find the turbine exit state in an ideal Rankine cycle	Set s_4 = s_3 at the condenser pressure; if s_f < s_4 < s_g then x_4 = (s_4 − s_f)/s_fg and h_4 = h_f + x_4 h_fg
+Efficiency of the 3 MPa, 350 °C, 75 kPa ideal Rankine example	26.0% (q_in = 2728.6 kJ/kg, q_out = 2018.6 kJ/kg, x_4 = 0.886), Cengel & Boles tables
+Rankine efficiency in terms of average temperatures	η_th = 1 − T_L,avg / T_H,avg, both entropy-averaged absolute temperatures in kelvin
+Effect of lowering the condenser pressure	Raises efficiency (lower T_L,avg) but lowers turbine exit quality and needs a bigger condenser; floor set by cooling-water temperature
+Effect of superheating the steam	Raises T_H,avg and raises exit quality; limited by turbine metallurgy to about 620 °C
+Effect of raising the boiler pressure at fixed inlet temperature	Raises T_H,avg and efficiency but lowers exit quality (more moisture); modern plants reach 30 MPa supercritical
+Practical limit on turbine exhaust moisture	About 10% moisture (quality 0.90 or higher) to protect the blades from droplet erosion
+What does reheat do and why is it used?	Expand in an HP turbine, reheat at constant pressure in the boiler, expand again; used mainly to keep the exhaust dry at high boiler pressure, with about a 4-5% efficiency gain in modern plants
+Heat input and turbine work in the ideal reheat cycle	q_in = (h_3 − h_2) + (h_5 − h_4); w_turb = (h_3 − h_4) + (h_5 − h_6); q_out = h_6 − h_1
+Typical optimum reheat pressure	About one-quarter of the boiler pressure (4 MPa for a 15 MPa boiler)
+Result of the 15 MPa/600 °C reheat-at-4 MPa example	η_th = 45.0%, exit quality 0.896 (10.4% moisture), q_in = 3896.1 kJ/kg, versus 43.0% and 19.6% moisture without reheat
+Water saturation properties at 10 kPa (Cengel & Boles A-5)	T_sat = 45.81 °C, v_f = 0.001010 m³/kg, h_f = 191.81, h_fg = 2392.1 kJ/kg, s_f = 0.6492, s_fg = 7.4996 kJ/kg·K
+Why does regeneration raise Rankine efficiency?	Extracted steam does the low-temperature feedwater heating instead of fuel, so the average temperature of external heat addition rises
+Define an open feedwater heater	A direct-contact mixing chamber where extracted steam and pumped condensate mix and leave as saturated liquid at the extraction pressure; needs a pump downstream
+Define a closed feedwater heater	A shell-and-tube exchanger: extracted steam condenses on tubes carrying feedwater at boiler pressure; the drain is pumped forward or throttled back
+Extraction fraction for one open feedwater heater	y = (h_3 − h_2)/(h_6 − h_2): heater exit minus incoming feedwater, over extracted steam minus incoming feedwater
+Extraction fraction for a closed feedwater heater	y = (h_fw,out − h_fw,in)/(h_ext − h_drain), with h_drain = h_f at the extraction pressure
+Which quantities are weighted by (1 − y) in a one-heater regenerative cycle?	Condenser heat (h_7 − h_1), LP turbine work (h_6 − h_7) and pump I work; boiler heat, HP turbine work and pump II use the full kilogram
+Result of the 15 MPa/600 °C open-FWH-at-1.2 MPa example	y = 0.227, q_in = 2769.1 kJ/kg, q_out = 1486.9 kJ/kg, η_th = 46.3% (versus 43.0% without regeneration)
+Trade-off of regeneration	Higher efficiency but lower net work per kilogram of boiler steam, so a larger steam flow is needed for the same power
+Open versus closed feedwater heaters	Open: simple, cheap, effective, deaerates, but one pump per heater. Closed: no extra pump, one HP feedwater line, but costlier and less effective
+What happens to a closed-heater drain in a trap?	Throttling: constant enthalpy, pressure falls, a small fraction flashes to vapour, entropy rises
+Isentropic efficiency of a turbine	η_T = w_actual / w_isentropic = (h_3 − h_4a)/(h_3 − h_4s); actual work is smaller, so multiply the ideal work by η_T
+Isentropic efficiency of a pump	η_P = w_isentropic / w_actual = (h_2s − h_1)/(h_2a − h_1); actual work is larger, so divide the ideal work by η_P
+Typical isentropic efficiencies of large steam turbines and feed pumps	Turbines 0.85-0.92; feed pumps 0.75-0.85
+Three ways a real Rankine cycle departs from the ideal	Pressure drops from friction in boiler, condenser and piping; heat loss to surroundings; irreversible (non-isentropic) turbine and pump
+Effect of turbine irreversibility on the exhaust state	Higher entropy and enthalpy at the same condenser pressure, so the exhaust is drier than the isentropic case
+Result of the 8 MPa/500 °C, 10 kPa actual-cycle example (η_T 0.85, η_P 0.80)	w_turb = 1078.8 kJ/kg, w_pump = 10.09 kJ/kg, w_net = 1068.7 kJ/kg, η_th = 33.4% versus 39.4% ideal
+Define the utilisation factor of a cogeneration plant	ε_u = (W_net + Q_process)/Q_in = 1 − Q_condenser/Q_in; it counts both electricity and process heat as useful
+What is cogeneration?	Producing electricity and process heat from the same fuel by expanding steam through a turbine and then using it (extracted or exhausted) for heating
+Combined-cycle efficiency with perfect heat recovery	η_cc = η_gas + η_steam − η_gas × η_steam (e.g. 0.38 + 0.30 − 0.114 = 0.566)
+Why is a combined gas-vapour cycle so efficient?	Heat is added at gas-turbine temperatures (1400-1600 °C) and rejected at steam-condenser temperatures (30-45 °C); best plants reach about 60%
+What is an HRSG?	Heat recovery steam generator: the boiler of a combined cycle, heated by gas-turbine exhaust instead of a flame
+Key energy balance of an HRSG	m_gas × c_p × (T_exhaust,in − T_stack) = m_steam × (h_steam,out − h_feedwater,in), which fixes the steam-to-gas flow ratio
+What is a binary vapour cycle?	Two Rankine cycles with different fluids coupled by a heat exchanger: a high-critical-temperature topping fluid (historically mercury) condenses by boiling water in the bottoming cycle
+Why is water a poor topping-cycle fluid?	Its critical temperature is only 373.95 °C, so adding heat at high temperature requires very high pressures

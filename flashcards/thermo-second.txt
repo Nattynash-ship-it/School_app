@@ -1,0 +1,41 @@
+What is a thermal energy reservoir?	A body with heat capacity so large it can supply or absorb finite heat with no measurable change in temperature (a source supplies, a sink absorbs)
+Four defining features of a heat engine	Receives heat from a high-T source, converts part to work, rejects the rest to a low-T sink, operates on a cycle
+Thermal efficiency of a heat engine (two forms)	η_th = W_net,out / Q_H = 1 − Q_L / Q_H
+Net work of a cyclic heat engine in terms of the heat flows	W_net,out = Q_H − Q_L (all three as positive magnitudes)
+Kelvin-Planck statement of the second law	No device operating on a cycle can receive heat from a single reservoir and produce a net amount of work
+Why can the condenser of a steam plant not be removed?	Compressing the turbine exhaust vapour back to boiler pressure would consume nearly all the turbine work; condensing first makes the return cheap
+Is work-to-heat conversion limited by the second law?	No; work converts to heat completely. It is heat-to-work that needs a heat engine and is limited
+Steam plant: 280 MW in, 165 MW rejected. Net power and efficiency?	W = 115 MW; η = 115/280 = 41.1%
+Coefficient of performance of a refrigerator	COP_R = Q_L / W_net,in = Q_L / (Q_H − Q_L)
+Coefficient of performance of a heat pump	COP_HP = Q_H / W_net,in = Q_H / (Q_H − Q_L)
+Relation between COP_HP and COP_R for the same machine	COP_HP = COP_R + 1
+Why can a heat pump deliver more heat than the electricity it uses?	Q_H = Q_L + W: it moves heat from the cold outdoor reservoir and adds the compressor work; nothing is created
+Lowest possible COP of a heat pump in principle	1, the resistance-heater floor: all the work becomes heat even if no heat is lifted from outside
+Clausius statement of the second law	No cyclic device can produce no effect other than the transfer of heat from a lower-temperature body to a higher-temperature body
+How is the equivalence of the Kelvin-Planck and Clausius statements shown?	Pair a device violating one with an ordinary engine or refrigerator; the combination violates the other, so each implies the other
+Perpetual-motion machine of the first kind (PMM1)	A device that violates the first law by producing energy from nothing (energy out exceeds energy in)
+Perpetual-motion machine of the second kind (PMM2)	A device that conserves energy but violates the second law, e.g. an engine with a single reservoir or a work-free refrigerator
+Refrigerator removing 360 kJ/min with a 2 kW compressor: COP_R and Q_H?	Q_L = 6 kW, COP_R = 3.0, Q_H = 8 kW
+What is a reversible process?	One that can be reversed leaving no trace on the surroundings: system and surroundings both return to their initial states
+Name four irreversibilities	Friction, unrestrained expansion, heat transfer across a finite temperature difference, mixing (also electric resistance, inelastic deformation, chemical reaction)
+Internally versus externally reversible	Internally: no irreversibilities inside the system boundary (quasi-equilibrium). Externally: none outside, i.e. heat transfer across zero temperature difference
+When is heat transfer reversible?	Only in the limit of an infinitesimal temperature difference between the bodies
+Four processes of the Carnot cycle	1-2 reversible isothermal expansion at T_H (Q_H in); 2-3 isentropic expansion; 3-4 reversible isothermal compression at T_L (Q_L out); 4-1 isentropic compression
+Shape of the Carnot cycle on a T-s diagram	A rectangle: horizontal isotherms at T_H and T_L, vertical isentropic legs; enclosed area = net work, area under the top edge = q_H
+Heat added on the isothermal leg of an ideal-gas Carnot cycle	q_H = R T_H ln(v₂/v₁) (Δu = 0, so heat in equals work out)
+Volume ratio across an isentropic leg of an ideal gas	v₃/v₂ = (T_H/T_L)^(1/(k−1)); for air with k = 1.4 the exponent is 2.5
+First Carnot principle	An irreversible heat engine is always less efficient than a reversible one operating between the same two reservoirs
+Second Carnot principle	All reversible heat engines operating between the same two reservoirs have the same efficiency
+Why do the adiabatic legs of an ideal-gas Carnot cycle contribute no net work?	The expansion leg does +c_v(T_H − T_L) and the compression leg −c_v(T_H − T_L); they cancel exactly
+Definition of the thermodynamic temperature scale	(Q_H/Q_L)_rev = T_H/T_L for a reversible engine between the reservoirs; the unit fixed by the triple point of water at 273.16 K
+Carnot efficiency	η_th,rev = 1 − T_L/T_H with both temperatures in kelvin
+Carnot COP of a refrigerator	COP_R,rev = T_L/(T_H − T_L) = 1/(T_H/T_L − 1)
+Carnot COP of a heat pump	COP_HP,rev = T_H/(T_H − T_L) = 1/(1 − T_L/T_H)
+Carnot engine between 652 °C and 30 °C: efficiency?	1 − 303.15/925.15 = 0.672 (67.2%); using Celsius would wrongly give 0.954
+Max COP of a heat pump keeping 21 °C with outdoor air at −5 °C	294.15/26 = 11.3
+How do you judge a claimed engine efficiency or COP?	Compute the Carnot ceiling from the kelvin temperatures: above it is impossible, equal means reversible, below is a real machine
+What does 'quality of energy' mean?	The same quantity of heat yields more work when available at a higher temperature; work is the highest-quality form
+Work obtainable from 100 kJ of heat at 1000 K vs 400 K with a 300 K sink	70 kJ at 1000 K (η = 0.70) versus 25 kJ at 400 K (η = 0.25)
+How does the Carnot efficiency change with T_H and T_L?	Rises as T_H increases, rises as T_L decreases; only the ratio T_L/T_H matters
+How do Carnot COPs change as the temperature lift widens?	Both COP_R,rev and COP_HP,rev fall as T_H − T_L grows; the smallest lift gives the highest ceiling
+Why is electric resistance heating thermodynamically wasteful?	It degrades high-quality work into low-temperature heat that a heat pump could deliver for a fraction of the electricity

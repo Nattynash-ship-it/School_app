@@ -1,0 +1,36 @@
+What is the Clausius inequality?	∮ δQ/T ≤ 0 for any cycle, with T the absolute boundary temperature where heat crosses; equality holds only for an internally reversible cycle.
+How is entropy defined from reversible heat transfer?	dS = (δQ/T)_int rev; entropy is a property because this integral is the same for every reversible path between two states.
+State the increase-of-entropy principle.	For an isolated system ΔS_isolated = S_gen ≥ 0: its entropy can increase or stay constant but never decrease.
+What does entropy generation S_gen measure?	The entropy created by irreversibilities; S_gen > 0 irreversible, S_gen = 0 reversible, S_gen < 0 impossible.
+Why is heat transfer across a finite temperature difference irreversible?	Q/T_cold exceeds Q/T_hot, so the cold body gains more entropy than the hot one loses and S_gen = Q(1/T_L − 1/T_H) > 0.
+What is entropy physically, in statistical terms?	A measure of molecular disorder: S = k ln W, where W is the number of microstates consistent with the macrostate.
+Can a system's entropy decrease?	Yes, if it rejects heat; only the total entropy of the system plus its surroundings (an isolated system) cannot decrease.
+Is the entropy change of a system different for reversible and irreversible paths between the same two states?	No. ΔS is a property difference; the irreversible path differs in the entropy transferred and generated, not in ΔS.
+Give the two Gibbs (Tds) equations per unit mass.	T ds = du + P dv and T ds = dh − v dP; they relate properties only, so they hold for any process.
+Entropy change of an incompressible solid or liquid	s₂ − s₁ = c_avg ln(T₂/T₁), with T in kelvin; no pressure term.
+Ideal-gas entropy change with constant specific heats (pressure form)	s₂ − s₁ = c_p ln(T₂/T₁) − R ln(P₂/P₁)
+Ideal-gas entropy change with variable specific heats	s₂ − s₁ = s°₂ − s°₁ − R ln(P₂/P₁), with s° read from the ideal-gas table at each temperature.
+Isentropic relations for an ideal gas with constant k	T₂/T₁ = (P₂/P₁)^((k−1)/k) = (v₁/v₂)^(k−1), and P v^k = constant.
+What are relative pressure P_r and relative volume v_r used for?	Isentropic processes with variable specific heats: P₂/P₁ = P_r2/P_r1 and v₂/v₁ = v_r2/v_r1.
+What does the area under a process curve on a T-s diagram represent?	The heat transfer for an internally reversible process, since δQ_rev = T dS.
+How do you find the quality after steam expands isentropically into the dome?	x₂ = (s₁ − s_f)/s_fg at the exit pressure, then h₂ = h_f + x₂ h_fg.
+What does an isentropic process of an incompressible substance imply about its temperature?	It is also isothermal, because Δs = c ln(T₂/T₁) = 0 forces T₂ = T₁.
+Why is the Mollier (h-s) diagram convenient for turbines and compressors?	Adiabatic work equals Δh, so the vertical distance between states, including the isentropic drop, is read directly.
+Reversible steady-flow work per unit mass	w_rev,in = ∫v dP + Δke + Δpe; for a liquid pump w = v(P₂ − P₁).
+Why does pumping a liquid take so much less work than compressing a gas?	Steady-flow work is ∫v dP, and a liquid's specific volume is hundreds of times smaller than a gas's.
+Rank isothermal, polytropic and isentropic compression by work input	Isothermal needs the least, polytropic (1 < n < k) is in between, isentropic (n = k) needs the most.
+Optimum intermediate pressure for two-stage compression with perfect intercooling	P_x = √(P₁P₂), giving equal pressure ratios and equal work in both stages.
+Isentropic efficiency of a turbine	η_T = (h₁ − h₂a)/(h₁ − h₂s): actual work over isentropic work.
+Isentropic efficiency of a compressor or pump	η_C = (h₂s − h₁)/(h₂a − h₁): isentropic work over actual work; for a pump w_s = v(P₂ − P₁).
+Isentropic efficiency of a nozzle	η_N = V₂a²/V₂s² ≈ (h₁ − h₂a)/(h₁ − h₂s); the actual velocity is V₂s √η_N.
+Which efficiency benchmarks a deliberately cooled compressor?	Isothermal efficiency, w_isothermal/w_actual; the adiabatic isentropic benchmark does not fit a cooled machine.
+How do you fix the actual exit state of a turbine with known η_T?	Find h₂s at P₂ with s₂s = s₁, then h₂a = h₁ − η_T(h₁ − h₂s); the state is fixed by h₂a and P₂, not by s.
+Compared with the isentropic exit, where does a real turbine's exit lie on the h-s diagram?	On the same exit isobar but higher and to the right: more enthalpy, more entropy, higher quality.
+General entropy balance for any system	S_in − S_out + S_gen = ΔS_system
+How can entropy cross a system boundary?	Only with heat (Q/T_b) and with mass (m·s). Work carries no entropy.
+Steady-flow entropy balance for a single-stream device	Ṡ_gen = ṁ(s_e − s_i) − ΣQ̇_k/T_k; for an adiabatic device s_e ≥ s_i.
+Closed-system entropy balance	S₂ − S₁ = ΣQ_k/T_k + S_gen, with Q_k positive into the system and T_k the boundary temperature in kelvin.
+What is the enlarged system in an entropy balance?	A boundary drawn out to where the surroundings are at T₀, so S_gen also includes the irreversibility of heat transfer to the surroundings.
+How is entropy generation linked to lost work?	X_destroyed = T₀ S_gen: the work potential destroyed equals the dead-state temperature times the entropy generated.
+Is a throttling valve isentropic?	No. It is isenthalpic (h_e = h_i), but the unrestrained pressure drop makes s_e > s_i.
+What does a negative S_gen from an entropy balance tell you?	The process as described is impossible, or there is an error such as a sign, a Celsius temperature or a wrong boundary temperature.

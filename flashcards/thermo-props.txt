@@ -1,0 +1,40 @@
+What makes a substance a pure substance?	A fixed chemical composition throughout; water as ice, liquid and steam together is pure, liquid-plus-vapour air is not
+Name the five states met when heating liquid water at constant pressure	Compressed liquid, saturated liquid, saturated liquid-vapour mixture, saturated vapour, superheated vapour
+What does 'saturated' mean for a liquid or a vapour?	On the edge of the vapour dome: about to boil (saturated liquid) or about to condense (saturated vapour)
+What stays constant while a pure substance boils at fixed pressure?	Temperature, at T_sat for that pressure; all added heat goes into the phase change (h_fg)
+Water: T_sat at 101.325 kPa and P_sat at 100 °C	99.97 °C and 101.42 kPa
+Water: T_sat at 10 kPa, 100 kPa, 1 MPa and 5 MPa	45.81 °C, 99.61 °C, 179.88 °C and 263.94 °C
+Critical point of water	22.06 MPa, 373.95 °C (647.1 K), v_cr = 0.003106 m³/kg; h_fg = 0 there
+Triple point of water	0.01 °C and 0.6117 kPa, where solid, liquid and vapour coexist
+What is sublimation and when does water do it?	Direct solid-to-vapour change; for water at pressures below the triple point, 0.6117 kPa
+Why can a P-T diagram not show a saturated mixture's quality?	All mixture states at one pressure share the same T_sat, so they collapse to one point on the vaporisation line
+What happens when water is heated above its critical pressure?	No boiling: the fluid changes continuously from liquid-like to vapour-like with no plateau and no latent heat
+Which way does water's fusion line lean on a P-T diagram, and why?	Slightly to the left (higher P, lower melting point), because water expands on freezing
+h_fg of water at 100 °C	2256.4 kJ/kg
+Define quality x	Mass of vapour divided by total mass of a saturated mixture; 0 for saturated liquid, 1 for saturated vapour
+Mixture rule for any property y of a saturated mixture	y = y_f + x·y_fg = (1 − x)·y_f + x·y_g, for y = v, u, h or s
+How do you find x from a known specific volume?	x = (v − v_f)/(v_g − v_f), using v_f and v_g at the mixture's T or P
+Phase test when T or P plus v (or u, h, s) is known	y < y_f: compressed liquid; y_f ≤ y ≤ y_g: mixture; y > y_g: superheated
+Phase test when T and P are both known	T < T_sat(P): compressed liquid; T > T_sat(P): superheated; T = T_sat: a mixture, state not fixed without another property
+What does a computed quality above 1 or below 0 tell you?	The state is outside the dome: superheated if x > 1, compressed liquid if x < 0; switch tables
+Saturated-liquid approximation for a compressed liquid	v ≈ v_f(T), u ≈ u_f(T), s ≈ s_f(T), h ≈ h_f(T), or better h ≈ h_f(T) + v_f(T)·(P − P_sat(T))
+Linear interpolation formula for a table	y = y₁ + (x − x₁)/(x₂ − x₁)·(y₂ − y₁); use the same fraction for every other column
+Reference state of the water tables	u_f = 0 and s_f = 0 for saturated liquid at the triple point, 0.01 °C
+Reference state of the usual R-134a tables	h_f = 0 and s_f = 0 for saturated liquid at −40 °C
+Why can you not mix enthalpies from two property sources?	Each source may use a different reference state; only differences within one reference are meaningful
+Water tables in Cengel & Boles numbering	A-4 saturated by temperature, A-5 saturated by pressure, A-6 superheated, A-7 compressed liquid
+R-134a tables in Cengel & Boles numbering	A-11 saturated by temperature, A-12 saturated by pressure, A-13 superheated
+Ideal-gas equation in its four common forms	Pv = RT, PV = mRT, PV = N·R_u·T, P = ρRT (absolute P and T)
+Relation between R_u and a gas's R	R = R_u/M with R_u = 8.314 kJ/kmol-K and M in kg/kmol; air R = 0.287 kJ/kg-K
+Gas constant R of water vapour	0.4615 kJ/kg-K (8.314/18.015)
+Define the compressibility factor Z	Z = Pv/(RT) = v_actual/v_ideal; Z = 1 for an ideal gas
+What does Z < 1 indicate?	The gas is denser than ideal: intermolecular attraction dominates
+Define reduced temperature and pressure	T_R = T/T_cr and P_R = P/P_cr, both absolute
+State the principle of corresponding states	Gases at the same T_R and P_R have nearly the same Z, so one generalised chart fits many gases
+Define the pseudo-reduced specific volume	v_R = v/(R·T_cr/P_cr); used on the chart when T is unknown
+When does any gas behave as an ideal gas?	When P_R is very small, or T_R is above about 2 unless P_R is large
+When can water vapour be treated as an ideal gas?	Below about 10 kPa at any temperature (humid air); not in boilers near saturation at MPa pressures
+Van der Waals equation and meaning of a and b	(P + a/v²)(v − b) = RT; a/v² for intermolecular attraction, b for the molecules' own volume
+Van der Waals constants from the critical point	a = 27R²T_cr²/(64P_cr), b = RT_cr/(8P_cr)
+Critical compressibility predicted by van der Waals	Z_cr = 3/8 = 0.375, higher than real gases (water about 0.23)
+Three more accurate equations of state than van der Waals	Beattie-Bridgeman (5 constants), Benedict-Webb-Rubin (8 constants) and the virial equation

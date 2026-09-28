@@ -1,0 +1,39 @@
+What is exergy?	The maximum useful work obtainable from a system as it comes reversibly to the dead state, exchanging heat only with the environment at T0
+What is the dead state?	The system in full equilibrium with the environment: at T0 and P0, at rest, at the reference elevation, no chemical potential to react or mix; exergy = 0
+Default dead-state values used in this course	T0 = 25 °C = 298.15 K and P0 = 100 kPa (some texts use 101.325 kPa); always use the problem's values
+Is exergy a property of the system alone?	No: it depends on the system state and on the environment (T0, P0); the same system has different exergy in different environments
+Can exergy be negative?	No; it is zero at the dead state and positive elsewhere. Exergy is not conserved: real processes destroy it
+Exergy of kinetic energy per unit mass	x_ke = V²/2 (J/kg), fully available; V in m/s relative to the environment
+Exergy of potential energy per unit mass	x_pe = g·z (J/kg), fully available; z measured from the environment reference level
+Surroundings work formula	W_surr = P0·(V2 − V1): work exchanged with the atmosphere; negative during a compression (the atmosphere helps)
+Useful work formula	W_u = W − W_surr = W − P0·(V2 − V1); equals W for rigid tanks, control volumes and cyclic devices
+Define reversible work W_rev	The maximum useful work output (or minimum input) between two given states with heat exchanged only with the environment; equals exergy if state 2 is the dead state
+Irreversibility I for a work-producing device	I = W_rev,out − W_u,out ≥ 0
+Irreversibility I for a work-consuming device	I = W_u,in − W_rev,in ≥ 0
+Reversible work of a heat engine fed Q_H at T_H, rejecting to T0	W_rev = (1 − T0/T_H)·Q_H, temperatures in kelvin
+Non-flow (closed-system) exergy φ	φ = (u − u0) + P0·(v − v0) − T0·(s − s0) + V²/2 + g·z
+Flow exergy ψ	ψ = (h − h0) − T0·(s − s0) + V²/2 + g·z
+Relation between flow and non-flow exergy	ψ = φ + (P − P0)·v: the stream carries extra work potential in its flow work
+Why does φ contain P0·(v − v0)?	A fixed mass expanding to the dead state must push the atmosphere aside; the P0·(v − v0) term (negative when v < v0) subtracts that non-useful work
+Exergy of a quantity of heat Q crossing at temperature T	X_heat = (1 − T0/T)·Q: the Carnot work between T and T0; zero at T = T0, negative factor for T < T0
+Exergy carried by work	Equal to the work itself (minus surroundings work for closed-system boundary work); work is pure exergy
+Exergy carried by mass flow	X_mass = m·ψ, or rate ṁ·ψ, with ψ the flow exergy
+General definition of second-law efficiency	η_II = exergy recovered / exergy supplied = 1 − exergy destroyed / exergy supplied; between 0 and 1
+Second-law efficiency of a heat engine	η_II = η_th / η_th,rev = W_u / W_rev, with η_th,rev = 1 − T_L/T_H
+Second-law efficiency of a refrigerator or heat pump	η_II = COP / COP_rev, with COP_R,rev = T_L/(T_H − T_L) and COP_HP,rev = T_H/(T_H − T_L)
+Second-law efficiency of a compressor or pump	η_II = W_rev,in / W_u,in (reversible input over actual input)
+Second-law efficiency of a heat exchanger	Exergy gained by the cold stream divided by exergy given up by the hot stream
+Second-law efficiency of a mixing chamber	Exergy of the outlet stream divided by the total exergy of the inlet streams
+Exergy balance in words	Exergy in − exergy out − exergy destroyed = change in exergy of the system
+Exergy destroyed in terms of entropy generation	X_destroyed = I = T0·S_gen, with T0 the environment temperature (never the system temperature)
+Decrease of exergy principle	Exergy destroyed is never negative: X_destroyed > 0 for irreversible, = 0 for reversible, < 0 impossible
+Steady-flow exergy balance per unit mass (one inlet, one exit)	(1 − T0/T_k)·q_k − w + (ψ1 − ψ2) − x_destroyed = 0
+Reversible work of an adiabatic steady-flow device	w_rev = ψ1 − ψ2 = (h1 − h2) − T0·(s1 − s2) + ΔKE + ΔPE
+Closed-system exergy balance, states 1 to 2	X2 − X1 = Σ(1 − T0/T_k)·Q_k − [W − P0·(V2 − V1)] − T0·S_gen
+Where is most exergy destroyed in a steam power plant?	In the boiler (combustion and heat transfer across a large temperature gap), not the condenser, which rejects heat near T0
+Why does the condenser destroy little exergy despite rejecting most of the energy?	Its heat leaves a few kelvin above T0, so the Carnot factor (1 − T0/T) is tiny; energy leaves, work potential barely does
+Exergy destroyed by heat Q conducted from T_high to T_low	X_destroyed = T0·Q·(1/T_low − 1/T_high)
+Flow exergy of steam at 3 MPa, 400 °C (T0 = 25 °C, P0 = 100 kPa), negligible velocity	About 1172 kJ/kg: (3231.7 − 104.83) − 298.15 × (6.9235 − 0.3672)
+Non-flow exergy of air at T0 and P = 10·P0 (T0 = 300 K)	About 121 kJ/kg: R·T0·ln(10) − P0·(v0 − v) = 198.3 − 77.5; energy relative to the dead state is zero but exergy is not
+Does an adiabatic device destroy exergy?	Yes if it is irreversible: entropy of the fluid rises, s_gen = s2 − s1 > 0, and x_destroyed = T0·s_gen
+Difference between isentropic efficiency and second-law efficiency	Isentropic efficiency compares with an ideal device reaching a different exit state; second-law efficiency compares actual work with reversible work between the actual states

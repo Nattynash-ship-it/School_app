@@ -1,0 +1,40 @@
+What is the criterion for chemical equilibrium at fixed T and P?	The total Gibbs function G = H − TS of the mixture is a minimum: (dG)_T,P = 0
+Why is Gibbs function, not entropy, the criterion at fixed T and P?	The system exchanges heat with its surroundings, so it is not isolated; combining the first and second laws at constant T and P gives dG ≤ 0
+Define KP for the ideal-gas reaction νA A + νB B ⇌ νC C + νD D in terms of partial pressures	KP = (P_C^νC · P_D^νD)/(P_A^νA · P_B^νB), all partial pressures in atm
+How is KP related to the standard-state Gibbs function change ΔG*(T)?	KP = exp[−ΔG*(T)/(R_u T)], with ΔG* = Σ ν_P ḡ*_P − Σ ν_R ḡ*_R at 1 atm and temperature T
+Write KP in terms of mole numbers, total pressure and total moles	KP = (N_C^νC N_D^νD)/(N_A^νA N_B^νB) × (P/N_total)^Δν, Δν = νC + νD − νA − νB, P in atm
+What does KP depend on?	Temperature only; not pressure, not inert gases, not initial amounts
+KP for a reaction written in reverse?	1/KP of the forward reaction (ln KP changes sign)
+KP when all stoichiometric coefficients are doubled?	KP squared (ln KP doubles)
+Which pressure unit must be used in KP calculations, and why?	Atmospheres, because the tabulated KP uses a 1 atm standard state in ḡ_i = ḡ_i* + R_u T ln P_i
+What does N_total include in the (P/N_total)^Δν factor?	Every kmol present at equilibrium: products, unconverted reactants and inert gases such as N2
+Effect of raising temperature on a dissociation reaction?	KP increases (endothermic, hR > 0), so more dissociation
+Effect of raising pressure on an equilibrium with Δν > 0?	Shifts toward fewer moles: less dissociation; KP itself is unchanged
+Effect of pressure on ½N2 + ½O2 ⇌ NO?	None: Δν = 0, so (P/N_total)^0 = 1
+Effect of adding an inert gas at constant total pressure on a Δν > 0 reaction?	More dissociation: N_total rises, which acts like lowering the pressure
+How many KP relations are needed for simultaneous reactions?	Number of species minus number of elements; the element balances supply the rest
+Rule of thumb: when is a reaction essentially complete or essentially absent?	ln KP above about +7 (KP > 1,000): complete; ln KP below about −7 (KP < 0.001): does not occur
+ln KP for H2O ⇌ H2 + ½O2 at 2,000 K (Cengel Table A-28)?	−8.145 (KP ≈ 2.9 × 10⁻⁴)
+ln KP for CO2 ⇌ CO + ½O2 at 2,600 K (Cengel Table A-28)?	−2.801, so KP = 0.0608 and KP for CO + ½O2 ⇌ CO2 is 16.46
+Van't Hoff equation, differential form	d(ln KP)/dT = hR(T)/(R_u T²)
+Van't Hoff equation, integrated form	ln(KP2/KP1) ≈ (hR/R_u)(1/T1 − 1/T2), hR taken constant over the interval
+What is hR, the enthalpy of reaction?	Enthalpy of products minus reactants at the same temperature, per kmol of reaction as written; positive for dissociation, negative for combustion
+Sign rule from van't Hoff: KP rises with T means?	hR > 0, the reaction is endothermic
+Enthalpy of reaction for H2 + ½O2 → H2O near 2,000 K from KP at 1,800 and 2,200 K?	About −251,700 kJ/kmol (tables give −251,663 kJ/kmol)
+Define the degree of dissociation α	Fraction of the original kmol of a compound that has split at equilibrium; from 1 kmol of X2: (1 − α) X2, 2α X, N_total = 1 + α
+KP for X2 ⇌ 2X from 1 kmol X2 with degree of dissociation α at P atm	KP = (2α)²/(1 − α) × P/(1 + α)
+Temperature at which 10% of H2 dissociates at 10 atm?	About 3,535 K (KP = 0.404, ln KP = −0.906, interpolated between 3,400 and 3,600 K)
+Why is the real adiabatic flame temperature below the complete-combustion value?	Dissociation of products is endothermic and absorbs part of the released energy; the fragments keep chemical energy until they recombine
+How does combustor pressure affect dissociation and flame temperature?	Higher pressure suppresses dissociation (Δν > 0), so the flame temperature is higher
+Condition for two phases of a pure substance to be in equilibrium	Equal specific Gibbs functions: g_f = g_g (equivalently h_fg = T s_fg)
+Gibbs phase rule	IV = C − PH + 2: independent intensive variables = components − phases + 2
+Degrees of freedom of a pure substance in one, two and three phases	2, 1 and 0: a region (T and P free), a curve (P_sat follows from T) and a point (triple point)
+Is quality counted as a degree of freedom in the phase rule?	No: it is a ratio of phase amounts, not an intensive property of a phase
+Raoult's law	y_i P = x_i P_sat,i(T): vapour partial pressure of i equals its liquid mole fraction times its pure saturation pressure
+Henry's law	P_i,gas = H · y_i,liquid, with H (bar) the Henry's constant; y_i,liquid = P_i,gas/H
+What does a large Henry's constant mean?	Low solubility: O2 in water has H = 45,000 bar at 300 K, CO2 only 1,710 bar
+How does Henry's constant for gases in water change with temperature?	It rises, so solubility falls: warm water holds less O2 and CO2
+Before using Henry's law at a free water surface, what correction is needed?	Subtract the water vapour pressure: use the partial pressure of the dry gas, not the total pressure
+Mole fraction of air dissolved in lake water at 17 °C under 92 kPa (H = 62,000 bar)?	P_dry air = 92 − 1.94 = 90.06 kPa = 0.9006 bar; y = 0.9006/62,000 = 1.45 × 10⁻⁵
+Vapour over a 60% NH3 / 40% H2O liquid at 30 °C by Raoult's law?	About 99.8% NH3 at roughly 702 kPa (P_sat NH3 ≈ 1,167 kPa, P_sat H2O = 4.25 kPa)
+For which two-component cases do Raoult's and Henry's laws apply?	Raoult: volatile ideal liquid solutions; Henry: a sparingly soluble gas dilute in a liquid

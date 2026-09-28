@@ -1,0 +1,40 @@
+Define the COP of a refrigerator	COP_R = Q_L / W_net,in: heat removed from the cold space per unit of work input
+Define the COP of a heat pump	COP_HP = Q_H / W_net,in: heat delivered to the warm space per unit of work input
+How are COP_HP and COP_R of the same machine related?	COP_HP = COP_R + 1, because Q_H = Q_L + W_net,in for any cycle
+One ton of refrigeration in SI units	211 kJ/min = 3.517 kW (12,000 Btu/h); the rate that freezes 1 short ton of water at 0 °C in 24 h
+Reversed Carnot refrigerator COP	COP_R,Carnot = T_L / (T_H − T_L), temperatures in kelvin
+Reversed Carnot heat pump COP	COP_HP,Carnot = T_H / (T_H − T_L), temperatures in kelvin
+Two reasons the reversed Carnot cycle is not built	Compressing a wet liquid-vapour mixture damages compressors; a turbine expanding mostly liquid recovers little work for its cost
+Four processes of the ideal vapour-compression cycle	1-2 isentropic compression; 2-3 constant-pressure heat rejection (condenser); 3-4 throttling; 4-1 constant-pressure heat absorption (evaporator)
+State 1 of the ideal vapour-compression cycle	Saturated vapour at the evaporator pressure: h1 = h_g, s1 = s_g
+State 3 of the ideal vapour-compression cycle	Saturated liquid at the condenser pressure: h3 = h_f
+How is h4 found after the throttling valve?	h4 = h3 (isenthalpic throttling); state 4 is a wet mixture at the evaporator pressure
+Refrigeration effect per kilogram	q_L = h1 − h4 (kJ/kg)
+Compressor work per kilogram in the vapour-compression cycle	w_in = h2 − h1, with h2 from the superheated table at the condenser pressure and s2 = s1
+Condenser heat rejection per kilogram	q_H = h2 − h3 = q_L + w_in
+Why is the 'ideal' vapour-compression cycle internally irreversible?	The throttling process 3-4 is irreversible, so its COP is below the reversed Carnot COP between the same saturation temperatures
+Which process is a vertical line on a P-h diagram?	The throttling 3-4 (constant enthalpy); the condenser and evaporator are horizontal lines
+Isentropic efficiency of a compressor	η_C = (h2s − h1) / (h2a − h1): isentropic work over actual work; actual work = isentropic work / η_C
+Effect of subcooling the liquid before the valve	Lowers h3 and h4, so q_L = h1 − h4 rises at no cost in compressor work; COP increases
+Effect of superheating the vapour before the compressor	Protects the compressor from liquid but raises the specific volume, so work per kg rises and COP falls slightly
+How to find the enthalpy of subcooled liquid refrigerant	Use h_f at the liquid's temperature (not its pressure): h3 ≈ h_f@T3
+Why keep the evaporator pressure above atmospheric?	So air and moisture cannot leak in; moisture freezes in the valve and air is non-condensable in the condenser
+Why must the condensing temperature be well below the critical temperature?	Above the critical point there is no latent heat to reject; CO2 (Tc = 31.0 °C) must run transcritical in warm surroundings
+Montreal Protocol (1987) vs Kigali Amendment (2016)	Montreal phased out ozone-depleting CFCs and HCFCs; Kigali phases down high-GWP HFCs such as R-134a and R-410A
+ASHRAE safety class of ammonia (R-717)	B2L: higher toxicity, mildly flammable; used in industrial plants, not homes
+Normal boiling point of R-134a	About −26.1 °C at 1 atm; ammonia boils at about −33.3 °C
+Why does an air-source heat pump's COP fall in cold weather?	T_H − T_L grows, so the ideal COP T_H/(T_H − T_L) falls, and the outdoor coil frosts and needs defrosting
+Advantage of a ground-source heat pump	The ground stays near the yearly mean temperature, so the temperature lift is smaller in both seasons and the COP is higher; cost is the buried loop
+What does the reversing valve in a heat pump do?	Swaps the roles of the indoor and outdoor coils so the same unit heats in winter and cools in summer
+Energy balance on the cascade heat exchanger	ṁ_A (h5 − h8) = ṁ_B (h2 − h3): heat absorbed by the upper loop equals heat rejected by the lower loop
+Why does a cascade system beat a single stage for a large temperature span?	Smaller pressure ratio per compressor, cooler discharge, less flash loss in throttling, and each loop can use its own refrigerant
+Role of the flash chamber in multistage compression	Liquid is throttled to an intermediate pressure; the flashed vapour goes to the high-pressure compressor, only the liquid continues to the evaporator
+Quality after throttling into a flash chamber at intermediate pressure P_i	x = (h_condenser exit − h_f@P_i) / h_fg@P_i
+Components that replace the compressor in an absorption system	Absorber, solution pump, generator (with rectifier) and regenerator
+Classic refrigerant-absorbent pairs in absorption refrigeration	Ammonia in water (below 0 °C duty) and water in lithium bromide solution (air-conditioning)
+COP of an absorption refrigeration system	COP_abs = Q_L / Q_gen (pump work negligible); actual values are usually below 1
+Maximum COP of an absorption system	COP_abs,max = (1 − T0/Ts) × T_L/(T0 − T_L): Carnot engine efficiency times Carnot refrigerator COP
+COP of the ideal gas (reversed Brayton) refrigeration cycle	COP = 1 / (r_p^((k−1)/k) − 1); depends on the pressure ratio only
+Why are gas refrigeration cycles used on aircraft?	Light, simple, open cycle on engine bleed air with no refrigerant; the cold turbine exit air goes straight to the cabin
+Seebeck effect vs Peltier effect	Seebeck: a temperature difference across two dissimilar-conductor junctions produces a voltage. Peltier: a current through them pumps heat from one junction to the other
+Refrigeration effect in the reversed Brayton cycle	q_L = c_p (T1 − T4), where T4 = T3 / r_p^((k−1)/k) is the turbine exit temperature

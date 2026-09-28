@@ -1,0 +1,42 @@
+What are the three components of the total energy E of a simple compressible closed system?	E = U + KE + PE: internal (microscopic), kinetic (m·V²/2) and potential (m·g·z) energy
+Define internal energy.	The sum of all microscopic forms of energy of a system: sensible, latent, chemical and nuclear; symbol U (kJ), u = U/m (kJ/kg)
+Why do most closed-system problems set ΔKE and ΔPE to zero?	The system is stationary (a tank or piston contents), so its bulk velocity and elevation do not change
+Define heat in thermodynamics.	Energy transferred across a boundary solely because of a temperature difference; it exists only in transit and is not a property
+What does adiabatic mean, and is it the same as isothermal?	Q = 0 (insulated boundary or no ΔT). No: isothermal means constant T; a gas can heat up a lot in an adiabatic compression
+State the classical sign convention for Q and W.	Heat into the system is positive; work done by the system is positive. Work done on the system and heat lost are negative
+Write Fourier's law for conduction through a plane wall.	Q̇ = k·A·ΔT/L, with k in W/m·K, A in m², L in m
+Write Newton's law of cooling for convection.	Q̇ = h·A·(Ts − T∞), h in W/m²·K
+Write the radiation rate law for a surface facing large surroundings.	Q̇ = ε·σ·A·(Ts⁴ − Tsurr⁴), σ = 5.670 × 10⁻⁸ W/m²·K⁴, temperatures in kelvin
+Which heat transfer mode crosses a vacuum?	Radiation only; conduction and convection need a material medium
+Convert 100 km/h to m/s.	100 × 1000/3600 = 27.78 m/s (divide km/h by 3.6)
+What is the general expression for boundary work?	Wb = ∫ P dV from state 1 to 2, the area under the process curve on a P-V diagram (kPa·m³ = kJ)
+Boundary work for a constant-pressure process?	Wb = P0·(V2 − V1), which equals m·R·(T2 − T1) for an ideal gas
+Boundary work for an isothermal ideal-gas process?	Wb = P1·V1·ln(V2/V1) = m·R·T·ln(V2/V1) = m·R·T·ln(P1/P2)
+Boundary work for a polytropic process P·Vⁿ = C with n ≠ 1?	Wb = (P2·V2 − P1·V1)/(1 − n) = m·R·(T2 − T1)/(1 − n)
+What are the polytropic exponents for constant pressure, isothermal ideal gas, reversible adiabatic and constant volume?	n = 0, n = 1, n = k (1.4 for air), n → ∞
+Why is work a path function?	Different process curves between the same two states enclose different areas under P-V, so W depends on the path, not just the end states
+Shaft power from torque and rotational speed?	Ẇ = 2π·ṅ·T with ṅ in revolutions per second (rpm/60) and T in N·m
+Electrical work from a voltage and current?	We = V·I·Δt (J); power = V·I (W). A resistor inside the system receives work, not heat
+Work stored in a linear spring?	W = ½·k·(x2² − x1²), k in kN/m and x in m gives kJ
+Which pressure goes into ∫P dV, gauge or absolute?	Absolute pressure, always
+Does a rigid tank rule out all work?	No: only boundary work is zero; shaft (paddle) and electrical work can still cross the boundary
+State the general energy balance.	E_in − E_out = ΔE_system; net transfer by heat, work and mass equals the change in U + KE + PE
+Write the first law for a closed system.	Q − W = ΔU + ΔKE + ΔPE; for a stationary system Q − W = ΔU
+First-law result for a cycle?	ΔE = 0 around the loop, so Q_net = W_net (ΣQ = ΣW)
+Define enthalpy.	H = U + P·V, or h = u + P·v (kJ/kg with P in kPa, v in m³/kg); a property
+When does Q = ΔH hold for a closed system?	Quasi-equilibrium constant-pressure process with only boundary work; with other work, Q − W_other = ΔH
+Heat transfer in a constant-volume process with no other work?	Q = ΔU = m·(u2 − u1), so use cv, not cp, for an ideal gas
+What is the work in a free expansion into a vacuum?	Zero: there is no resisting pressure, so no boundary work even though the volume changes
+Define cv and cp.	cv = (∂u/∂T)_v and cp = (∂h/∂T)_p, both in kJ/kg·K; properties defined by derivatives, not by processes
+Why can Δu = cv·ΔT be used on any process of an ideal gas?	For an ideal gas u = u(T) only (Joule's experiment), so du = cv dT regardless of the path; likewise dh = cp dT
+Relation between cp, cv and R for an ideal gas?	cp − cv = R (kJ/kg·K), from h = u + R·T; on a molar basis c̄p − c̄v = Ru
+Express cv and cp in terms of k and R.	cv = R/(k − 1), cp = k·R/(k − 1), with k = cp/cv
+Specific heats and k of air at 300 K?	cp = 1.005, cv = 0.718 kJ/kg·K, R = 0.287 kJ/kg·K, k = 1.4
+Specific heat ratio of a monatomic ideal gas such as helium or argon?	k = 5/3 = 1.667, with cv = 3R/2 and cp = 5R/2, independent of temperature
+Three routes to Δu of an ideal gas, most to least accurate?	Ideal-gas tables (u2 − u1); average cv at (T1 + T2)/2 times ΔT; constant room-temperature cv times ΔT
+Δu and Δh of air from 300 K to 600 K by the ideal-gas table?	Δu = 434.78 − 214.07 = 220.7 kJ/kg; Δh = 607.02 − 300.19 = 306.8 kJ/kg
+Specific heats of an incompressible substance?	cp = cv = c; Δu = c_avg·ΔT
+Enthalpy change of an incompressible liquid?	Δh = c_avg·ΔT + v·ΔP; for pumping at constant T, Δh = v·ΔP (kJ/kg with v in m³/kg, P in kPa)
+Enthalpy rise of water pumped from 100 kPa to 5 MPa at v = 0.001 m³/kg?	Δh = 0.001 × 4900 = 4.9 kJ/kg, the pump work per kg
+How do you convert a molar specific heat to a mass basis?	Divide by the molar mass: cp = c̄p/M, e.g. air 29.1 kJ/kmol·K / 28.97 kg/kmol = 1.005 kJ/kg·K
+Is a temperature difference the same in °C and in K?	Yes: ΔT = 200 °C = 200 K; only absolute temperatures need the 273.15 shift
