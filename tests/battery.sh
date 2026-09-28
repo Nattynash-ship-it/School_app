@@ -152,6 +152,7 @@ run contentstamp contentstamp.js 1
 run d286rat d286rat.js 1
 run choose2 choose2.js 1
 run survive survive.js 1
+run thermo thermo.js 1
 run notekeep notekeep.js 1
 run storagefull storagefull.js 1
 run inktier inktier.js 1

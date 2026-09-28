@@ -1,0 +1,40 @@
+What is theoretical (stoichiometric) air?	The minimum air for complete combustion: all C to CO2, all H to H2O, no free O2 in the products
+How many kmol of N2 accompany 1 kmol of O2 in air, and how many kmol of air is that?	3.76 kmol N2; 1 + 3.76 = 4.76 kmol of air (air 21% O2, 79% N2 by mole)
+Formula for the theoretical O2 requirement of a hydrocarbon CnHm	a_th = n + m/4 kmol O2 per kmol fuel (subtract p/2 if the fuel is CnHmOp)
+Stoichiometric equation for octane in air	C8H18 + 12.5 (O2 + 3.76 N2) → 8 CO2 + 9 H2O + 47 N2
+Stoichiometric equation for methane in air	CH4 + 2 (O2 + 3.76 N2) → CO2 + 2 H2O + 7.52 N2
+How is the mass air-fuel ratio found from a balanced equation?	AF = (N_air × 28.97) / (N_fuel × M_fuel), N in kmol, M in kg/kmol
+Stoichiometric AF ratio of octane and of methane (mass basis)	Octane about 15.1 kg air/kg fuel; methane about 17.2 kg air/kg fuel
+150% theoretical air equals what percent excess air?	50% excess air (excess = theoretical − 100%)
+Define the equivalence ratio φ and state what φ > 1 means	φ = AF_stoich / AF_actual = FA_actual / FA_stoich; φ > 1 is a rich mixture (air deficiency), φ < 1 is lean
+Molar mass of air used in combustion calculations	28.97 kg/kmol
+What does a dry (Orsat) product analysis report?	Mole fractions of CO2, O2, CO, N2 with the water vapour removed; the H2O is recovered from a hydrogen balance
+Which balance gives the amount of air used from a dry product analysis?	The nitrogen balance: all N2 comes from the air, so O2 supplied a = N_N2/3.76 kmol and air supplied = 4.76 a kmol
+How is the dew point of combustion products found?	Pv = (N_H2O / N_products,wet) × P_products; T_dp = T_sat at Pv from the steam tables
+What is the standard reference state for enthalpy of formation?	25 °C (298.15 K) and 1 atm
+Define enthalpy of formation	Enthalpy change when 1 kmol of a compound forms from its elements in their stable forms, all at 25 °C and 1 atm; elements themselves have h̄f° = 0
+h̄f° of CO2, H2O(g), H2O(l) in kJ/kmol	CO2 −393,520; H2O(g) −241,820; H2O(l) −285,830
+h̄f° of CH4, C3H8 and liquid C8H18 in kJ/kmol	CH4 −74,850; C3H8 −103,850; C8H18(l) −249,950
+Enthalpy of a species at temperature T in a reacting system	h̄ = h̄f° + (h̄_T − h̄_298), sensible part from the ideal-gas tables
+Why must h̄_298 be subtracted from the ideal-gas table value?	The tables count enthalpy from 0 K; the formation enthalpy already covers the state at 298 K
+Define enthalpy of combustion	h_C = H_products − H_reactants for complete combustion at a given T and P (usually 25 °C, 1 atm); negative for fuels
+Difference between higher and lower heating value	HHV counts product water as liquid, LHV as vapour; HHV − LHV = (kmol H2O per kmol fuel) × 44,010 kJ/kmol
+Heating values of methane per kg (from h̄f° tables)	HHV about 55,500 kJ/kg; LHV about 50,010 kJ/kg
+First law for a steady-flow combustion chamber (per kmol fuel)	Q_in − W_out = Σ N_p (h̄f° + h̄_T − h̄_298)_p − Σ N_r (h̄f° + h̄_T − h̄_298)_r
+How does the first law change for a closed-system reaction?	Use ū = h̄ − Pv̄: subtract Pv̄ = Ru T for each ideal-gas species (negligible for liquids and solids)
+Effect of preheating the combustion air on heat output and flame temperature	Both increase: H_R rises by the sensible enthalpy of the air while the products are unchanged
+Define adiabatic flame temperature	Product temperature when fuel burns in a steady-flow chamber with Q = 0, W = 0 and negligible KE and PE change; H_P = H_R
+Procedure for finding T_ad	Balance; put known terms on one side; trial T values from the ideal-gas tables until the product sum brackets the target; interpolate
+First guess for T_ad	Treat all products as N2: h̄_N2(T) ≈ (right-hand side) / (total product kmol); the true T_ad is a little lower
+Three things that lower the flame temperature below the ideal value	Excess air (dilution), incomplete combustion (CO instead of CO2) and dissociation (endothermic breakup of CO2, H2O); plus heat loss
+T_ad of liquid octane with theoretical air at 25 °C (no dissociation)	About 2395 K; with 400% theoretical air about 962 K
+Adiabatic flame temperature of stoichiometric methane-air: complete products vs equilibrium	About 2326 K assuming complete combustion, 2224 K at equilibrium with dissociation (NASA CEA): dissociation costs about 100 K
+State the third law of thermodynamics	The entropy of a pure crystalline substance at absolute zero is zero, so absolute entropies exist
+Entropy of an ideal-gas component in a mixture	s̄_i = s̄_i°(T) − Ru ln(y_i P_m / P0), P0 = 1 atm, Ru = 8.314 kJ/kmol·K
+Absolute entropies at 25 °C, 1 atm for O2, N2, CO2 (kJ/kmol·K)	O2 205.04; N2 191.61; CO2 213.80 (C graphite 5.74)
+Entropy generation for a combustion process with heat rejected to surroundings	S_gen = S_P − S_R + Q_out / T_surr
+Exergy destroyed in a reaction and its relation to reversible work	X_destroyed = T0 S_gen; with no actual work, W_rev = X_destroyed
+Reversible work of a reaction with everything at T0 and P0	W_rev = −ΔG = Σ N_r ḡf°_r − Σ N_p ḡf°_p (Gibbs functions of formation)
+Why is combustion so irreversible?	Uncontrolled reaction across a huge chemical-potential difference, heating of products across thousands of kelvin, and mixing
+Which device avoids the combustion irreversibility in principle?	A fuel cell, which converts chemical energy along a controlled electrochemical path without a flame
+Maximum (reversible) work of CH4 + 2 O2 → CO2 + 2 H2O(l) at 25 °C, 1 atm	817,930 kJ/kmol CH4 from Gibbs functions of formation, about 92% of the 890,330 kJ/kmol HHV

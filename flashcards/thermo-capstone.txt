@@ -1,0 +1,35 @@
+What are the six steps of a thermodynamic design project?	Pick system and boundaries; gather states; first law; second law (S_gen, X_d = T0·S_gen); propose and quantify one improvement; present ranked results
+Exergy destruction of a component in terms of entropy generation	X_d = T0·S_gen, with T0 the dead-state temperature in kelvin
+In the capstone steam plant, which component destroyed the most exergy, and why?	The boiler (about 79%): heat passes from 1500 K gas to steam boiling near 295 °C, a large finite temperature difference
+What is the exergy closure check for a power plant?	Exergy supplied − net work − total exergy destroyed = 0; a non-zero residual means a missing component or a sign error
+Why draw the boiler boundary on the flue-gas side in an exergy audit?	So heat crosses at T_H and the finite-ΔT irreversibility is counted inside the boiler instead of disappearing
+Second-law efficiency of a heat engine in terms of its thermal efficiency	η_II = η_th/η_Carnot = W_net/X_in, where X_in = Q_in(1 − T0/T_H)
+How should a design change be judged when one component's absolute X_d rises?	Per unit of heat or exergy supplied, or by the whole-plant η_II, not by one component's absolute destruction
+Three presentation tools a data analyst brings to an exergy audit	A Pareto table of X_d by component, a sensitivity sweep of one design variable, and a closure line under every table
+How is the exit state of a real (non-isentropic) turbine fixed?	By P4 and h4 = h3 − η_t(h3 − h4s), never by s4 = s3
+Name the eight recurring exam archetypes	Closed system; steady-flow device; unsteady flow; engine or refrigerator vs Carnot; entropy generation and isentropic efficiency; whole cycle; psychrometrics; combustion
+The three-pass time plan for an exam paper	Pass 1 (40%): one-equation items; pass 2 (40%): cycles and state tables; pass 3 (20%): checks and skipped questions
+Given water at P and T, how do you choose the property table?	Compare T with T_sat at P: below is compressed liquid, equal is a mixture (need x), above is superheated vapour
+What do the words 'insulated' and 'rigid' each set to zero?	Insulated: Q = 0. Rigid: boundary work W_b = 0.
+1 kPa·m³ equals how many kJ?	1 kJ (so 1 MPa·m³ = 1000 kJ)
+What does a negative S_gen tell you in an exam answer?	A sign or arithmetic error, or that the claimed device is impossible; it is never an acceptable result
+The five items of the 30-second answer check	Direction; bounds (η below Carnot, 0 ≤ x ≤ 1, S_gen ≥ 0); magnitude; units; whether you answered the quantity asked
+The commonest way to lose an FE thermodynamics mark after a correct calculation	Choosing the intermediate quantity: isentropic instead of actual exit T, turbine instead of net work, COP_HP instead of COP_R
+One ton of refrigeration in kW	211 kJ/min = 3.517 kW
+What is an equation's assumption set?	The conditions under which it follows from the general balances: the substance model, the process type and what was neglected
+The four balances that every chapter of the course specialises	Mass, energy, entropy (with S_gen ≥ 0) and exergy (X_destroyed = T0·S_gen)
+Assumptions behind Δu = c_v ΔT	Ideal gas (or incompressible substance) with constant c_v; valid for any process, not only constant volume
+Assumptions behind the Clausius-Clapeyron equation	v_g ≫ v_f, the vapour is an ideal gas, h_fg is constant over the interval; poor near the critical point
+Why can the isentropic P0/P relation not be used across a normal shock?	The shock is irreversible: T0 stays constant but entropy rises and the stagnation pressure falls
+Speed of sound in an ideal gas, and its unit trap	c = √(kRT) with R in J/kg·K (287 for air) and T in K; R in kJ/kg·K gives c about 31.6 times too small
+Net radiation from a small grey surface to large surroundings, and its trap	Q = εσA(Ts⁴ − Tsurr⁴) with T in kelvin; never Celsius and never (Ts − Tsurr)⁴
+Cold-air-standard efficiencies of the Otto and Brayton cycles	η_Otto = 1 − r^(1−k) with r = V_max/V_min; η_Brayton = 1 − rp^((1−k)/k) with rp = P_max/P_min
+Humidity ratio formula and the basis of every psychrometric balance	ω = 0.622 Pv/(P − Pv) in kg vapour per kg dry air; balances are written per kg of dry air
+The Gibbs phase rule	IV = C − PH + 2: independent intensive variables = components − phases + 2
+Equilibrium constant of an ideal-gas reaction from the Gibbs function	ln K_P = −ΔG*(T)/(R_u T), with partial pressures in atm relative to the 1 atm standard state
+Theoretical air for complete combustion of C_xH_y	a_th = x + y/4 kmol of (O₂ + 3.76 N₂) per kmol of fuel
+Why can a compressor's second-law efficiency exceed its isentropic efficiency?	η_c compares with an isentropic machine; η_II also credits the extra exergy of the hotter exit air as useful
+Equipartition specific heats of ideal gases near room temperature	c_v = (3/2)R for monatomic and (5/2)R for diatomic gases, because vibration is frozen out
+What question does heat transfer answer that thermodynamics does not?	How fast: the rate of energy transfer, and so how long a process takes
+Four directions for study after this thermodynamics course	Advanced thermodynamics, fluid mechanics, heat and mass transfer, energy systems
+Rankine pump work formula and its unit trap	w_p = v1(P2 − P1) with liquid v ≈ 0.001 m³/kg and P in kPa; using vapour v or MPa gives nonsense

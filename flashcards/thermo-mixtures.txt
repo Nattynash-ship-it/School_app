@@ -1,0 +1,31 @@
+How do you convert a mixture's mass fractions to mole fractions?	N_i = m_i/M_i for each component, then y_i = N_i/Σ N_i; equivalently y_i = (mf_i/M_i)/Σ(mf_j/M_j)
+What is the apparent molar mass of a gas mixture?	M_m = m_m/N_m = Σ y_i M_i (kg/kmol); the gas constant is R_m = R_u/M_m
+State Dalton's law of additive pressures	The mixture pressure equals the sum of the pressures each component would exert alone at the mixture temperature and volume: P_m = Σ P_i(T_m, V_m)
+State Amagat's law of additive volumes	The mixture volume equals the sum of the volumes each component would occupy alone at the mixture T and P: V_m = Σ V_i(T_m, P_m)
+For an ideal-gas mixture, how are partial pressure, component volume and mole fraction related?	P_i/P_m = V_i/V_m = y_i, so a gas analysis by volume is a mole-fraction analysis
+How is cp of a gas mixture found on a mass basis?	cp,m = Σ mf_i cp,i (kJ/kg·K), weighted by mass fractions; molar c̄p,m = Σ y_i c̄p,i
+At what pressure is the entropy of a component in an ideal-gas mixture evaluated?	At the mixture temperature and its own partial pressure P_i = y_i P_m
+Entropy generated when ideal gases at the same T and P mix	S_gen = −R_u Σ N_i ln y_i (kJ/K), always positive, depending only on the final mole fractions
+What is Kay's rule?	Treat a real-gas mixture as a pure gas with pseudo-critical T'cr = Σ y_i Tcr,i and P'cr = Σ y_i Pcr,i, then read Z from the generalized chart
+Why does separating air into O2 and N2 require work?	It reverses the entropy of mixing; the minimum work equals T0 times the entropy of mixing of the stream
+Define specific humidity ω	Mass of water vapour per mass of dry air: ω = m_v/m_a = 0.622 P_v/(P − P_v), kg H2O/kg dry air
+Define relative humidity φ	φ = P_v/P_g, vapour partial pressure over the saturation pressure at the dry-bulb temperature
+Convert specific humidity to relative humidity	φ = ωP/[(0.622 + ω)P_g]
+Where does the 0.622 in ω = 0.622 P_v/P_a come from?	The ratio of gas constants R_a/R_v = M_v/M_a = 18.015/28.97
+Enthalpy of moist air per kg of dry air	h = 1.005 T + ω h_g ≈ 1.005 T + ω(2500.9 + 1.82 T), T in °C, kJ/kg dry air
+Why can vapour enthalpy in air be taken as h_g at the air temperature?	At low partial pressure the vapour is an ideal gas, so h depends only on T and equals h_g(T)
+Define the dew-point temperature	The temperature at which condensation starts when air is cooled at constant pressure: T_dp = T_sat at P_v
+What is the adiabatic saturation temperature?	The exit temperature of air saturated by evaporating water in an insulated channel with make-up water at that same temperature
+Specific humidity from the adiabatic saturation (wet-bulb) temperature T2	ω1 = [cp(T2 − T1) + ω2 h_fg2]/(h_g1 − h_f2), with ω2 = 0.622 P_g2/(P − P_g2)
+Order of dew-point, wet-bulb and dry-bulb temperatures for unsaturated air	T_dp < T_wb < T_db; all three are equal for saturated air
+On the psychrometric chart, which lines are nearly parallel to constant-enthalpy lines?	Constant wet-bulb temperature lines
+Three balances used in every air-conditioning process	Dry air mass, water mass (ṁ_a ω plus any liquid or steam streams) and energy (ṁ_a h plus Q, W and water enthalpy)
+How is the dry-air mass flow found from a volume flow?	ṁ_a = V̇/v, where v = R_a T/P_a is the specific volume per kg of dry air using the dry-air partial pressure
+What happens to ω and φ in simple heating?	ω stays constant; φ falls because P_g rises with temperature
+Condition for a cooling coil to dehumidify	The air must be cooled below its dew-point temperature so vapour condenses
+Cooling load of a dehumidifying coil	Q_out = ṁ_a(h1 − h2) − ṁ_w h_w, with ṁ_w = ṁ_a(ω1 − ω2) and h_w ≈ h_f at the exit temperature
+Why is air reheated after a dehumidifying coil?	The coil leaves it cold and near saturation; reheat at constant ω raises T and lowers φ to comfort values
+Along what line does evaporative cooling proceed on the psychrometric chart?	A line of constant wet-bulb temperature (almost constant enthalpy); the limit is the wet-bulb temperature
+Lever rule for adiabatic mixing of two air streams	ṁ_a1/ṁ_a2 = (ω2 − ω3)/(ω3 − ω1) = (h2 − h3)/(h3 − h1); state 3 lies on the line 1-2, nearer the larger flow
+Make-up water for a wet cooling tower	ṁ_makeup = ṁ_a(ω_out − ω_in), the water evaporated into the air
+Lowest temperature a wet cooling tower can cool water to	The wet-bulb temperature of the entering air

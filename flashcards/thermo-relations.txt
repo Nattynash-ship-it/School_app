@@ -1,0 +1,38 @@
+Why do u, h and s have to be calculated rather than measured?	No instrument reads them directly; they are computed from measured P-v-T data and specific heats through exact property relations
+Total differential of z = z(x, y)	dz = (∂z/∂x)y dx + (∂z/∂y)x dy = M dx + N dy
+Test for an exact differential dz = M dx + N dy	(∂M/∂y)x = (∂N/∂x)y, since both equal the mixed second derivative of z
+Reciprocity relation	(∂x/∂y)z = 1 / (∂y/∂x)z, the same variable held constant on both sides
+Cyclic relation for three variables linked by one equation	(∂x/∂y)z (∂y/∂z)x (∂z/∂x)y = −1 (not +1)
+Definition of the specific Helmholtz function	a = u − Ts (kJ/kg); T in kelvin
+Definition of the specific Gibbs function	g = h − Ts = u + Pv − Ts (kJ/kg)
+The four Gibbs equations	du = T ds − P dv; dh = T ds + v dP; da = −s dT − P dv; dg = −s dT + v dP
+Natural variables of u, h, a and g	u(s, v), h(s, P), a(T, v), g(T, P)
+Maxwell relation from du = T ds − P dv	(∂T/∂v)s = −(∂P/∂s)v
+Maxwell relation from dh = T ds + v dP	(∂T/∂P)s = (∂v/∂s)P
+Maxwell relation from da = −s dT − P dv	(∂s/∂v)T = (∂P/∂T)v
+Maxwell relation from dg = −s dT + v dP	(∂s/∂P)T = −(∂v/∂T)P
+Four steps to derive any Maxwell relation	Write the Gibbs equation, identify M and N, apply the exactness test, rearrange
+Which property is equal in the liquid and vapour phases at saturation?	The Gibbs function: gf = gg at the same T and P
+Clapeyron equation	(dP/dT)sat = hfg / (T vfg), T in K; units kPa/K when hfg is in kJ/kg and vfg in m³/kg
+Why is (∂P/∂T)v equal to the saturation slope inside the dome?	In the two-phase region P depends on T only, so at fixed T it is the same at every v between vf and vg
+Clausius-Clapeyron equation and its two assumptions	ln(P2/P1) = (hfg/R)(1/T1 − 1/T2); assumes vfg ≈ vg with an ideal-gas vapour, and constant hfg
+Link between hfg and sfg at a phase change	hfg = T sfg, from dh = T ds + v dP with dP = 0
+Why does water's melting line have a negative slope on a P-T diagram?	Ice is less dense than liquid water, so vif < 0 while hif > 0, and Clapeyron gives dP/dT < 0
+General relation for du in terms of T and v	du = cv dT + [T(∂P/∂T)v − P] dv
+General relation for dh in terms of T and P	dh = cp dT + [v − T(∂v/∂T)P] dP
+General relations for ds	ds = (cv/T) dT + (∂P/∂T)v dv = (cp/T) dT − (∂v/∂T)P dP
+(∂u/∂v)T for a van der Waals gas	a/v², so u rises on isothermal expansion (it is 0 for an ideal gas)
+Volume expansivity β and isothermal compressibility α	β = (1/v)(∂v/∂T)P in 1/K; α = −(1/v)(∂v/∂P)T in 1/kPa or 1/Pa
+cp − cv for any substance	cp − cv = v T β²/α ≥ 0, so cp ≥ cv always
+Mayer relation and where it comes from	cp − cv = R for an ideal gas, from v T β²/α with β = 1/T and α = 1/P
+When is cp equal to cv exactly for a real substance?	When β = 0, for example liquid water at its density maximum near 4 °C
+Definition of the Joule-Thomson coefficient	μJT = (∂T/∂P)h, the slope of a constant-enthalpy line on a T-P diagram
+General expression for μJT	μJT = (1/cp)[T(∂v/∂T)P − v]; zero for an ideal gas
+Sign of μJT and what happens on throttling	μJT > 0: gas cools; μJT < 0: gas warms; μJT = 0: no temperature change (ideal gas)
+What is the inversion line?	The locus of states where μJT = 0; its zero-pressure end is the maximum inversion temperature
+Low-pressure μJT and inversion temperature of a van der Waals gas	μJT ≈ (2a/RT − b)/cp; Tinv = 2a/(Rb) = (27/4) Tcr
+Why must helium and hydrogen be pre-cooled before Joule-Thomson liquefaction?	Their inversion temperatures are below room temperature, so at 300 K they warm on throttling
+Enthalpy departure factor Zh	Zh = (h̄* − h̄)/(Ru Tcr), usually positive, so h̄ = h̄* − Ru Tcr Zh
+Entropy departure factor Zs	Zs = (s̄* − s̄)/Ru, so s̄ = s̄* − Ru Zs
+Enthalpy change between two real-gas states with departure charts	h̄2 − h̄1 = (h̄2 − h̄1)ideal − Ru Tcr (Zh2 − Zh1), in kJ/kmol; divide by M for kJ/kg
+Reduced temperature and reduced pressure	TR = T/Tcr (both in K), PR = P/Pcr (both absolute, same unit)

@@ -1,0 +1,44 @@
+What is a microstate of a gas?	One complete specification of every molecule's position and momentum (or quantum state)
+What is a macrostate?	The state described by a few measurable properties (U, V, N or P, T, composition); it contains an enormous number of microstates
+What does the multiplicity W (or Ω) count?	The number of microstates that belong to one macrostate; a dimensionless count of at least 1
+Boltzmann entropy formula	S = k ln W, with k = 1.380649 × 10⁻²³ J/K and W the multiplicity
+Why does S = k ln W use a logarithm?	Multiplicities of independent systems multiply (W_A × W_B) while entropies must add; ln turns a product into a sum
+Entropy change between two macrostates of one system	ΔS = k ln(W₂/W₁): only the ratio of multiplicities is needed
+Number of ways to place N distinguishable particles into groups n₁, n₂, ... n_m	W = N! / (n₁! · n₂! · ... · n_m!)
+Stirling's approximation	ln N! ≈ N ln N − N; relative error falls with N (0.9 % at N = 100, 0.07 % at N = 1000)
+Multiplicity ratio when an ideal gas doubles its volume at constant T	W₂/W₁ = 2ᴺ, so ΔS = N k ln 2 = n R_u ln 2 (5.76 kJ/K per kmol)
+Relation between k, R_u and N_A	R_u = N_A k: 8.314 kJ/kmol·K = (6.02214 × 10²⁶ kmol⁻¹)(1.380649 × 10⁻²³ J/K)
+Probability that 100 molecules all sit in one half of a box	1/2¹⁰⁰ ≈ 7.9 × 10⁻³¹ (the evenly split macrostate has 1.0 × 10²⁹ microstates)
+Statistical reason entropy increases	An isolated system wanders through equally likely microstates and spends nearly all its time in the macrostate with the most of them
+Relative size of fluctuations in a macroscopic property	About 1/√N; for 10²⁵ molecules roughly 3 × 10⁻¹³, so gauges read steady values
+Statistical definition of temperature	1/T = (∂S/∂U) at constant V and N; equal for two bodies in thermal equilibrium
+Third law in statistical terms	A perfect crystal at 0 K has one microstate, W = 1, so S = k ln 1 = 0
+Boltzmann factor	exp(−ε_i/kT): the relative probability of a state of energy ε_i at temperature T
+Population ratio of two energy levels	n_i/n_j = (g_i/g_j) exp[−(ε_i − ε_j)/kT]; at positive T a higher level is never more populated
+Partition function definition	Z = Σ g_i exp(−ε_i/kT), the sum of Boltzmann factors over all states; p_i = g_i exp(−ε_i/kT)/Z
+Internal energy from the partition function	U = N k T² (∂ ln Z/∂T)_V
+Entropy and Helmholtz function from Z (distinguishable particles)	S = U/T + N k ln Z and F = U − TS = −N k T ln Z
+Value of kT at 300 K	4.14 × 10⁻²¹ J = 0.02585 eV per molecule (k = 8.617 × 10⁻⁵ eV/K)
+Two-level system, ε = 0.020 eV, T = 300 K: population ratio	n₁/n₀ = exp(−0.020/0.02585) = exp(−0.774) = 0.461; Z = 1.461; fraction excited p₁ = 0.316
+Equipartition theorem	Each quadratic energy term (degree of freedom) holds ½kT per molecule on average when fully excited: U = (f/2) N k T
+Equipartition cv, cp and k for a monatomic gas	f = 3: cv = 3/2 R, cp = 5/2 R, k = 5/3 = 1.667 (He, Ar, Ne)
+Equipartition cv, cp and k for a diatomic gas at room temperature	f = 5 (3 translation + 2 rotation): cv = 5/2 R, cp = 7/2 R, k = 7/5 = 1.4
+Why does a diatomic molecule have only 2 rotational degrees of freedom?	Rotation about the bond axis has negligible moment of inertia, so it stores no thermal energy
+Molar cv and cp of a monatomic ideal gas	cv = 12.47 kJ/kmol·K, cp = 20.79 kJ/kmol·K (3/2 and 5/2 of R_u = 8.314)
+cv of argon from equipartition	(3/2)(8.314)/39.948 = 0.312 kJ/kg·K; cp = 0.520 kJ/kg·K, matching Table A-2
+Characteristic vibrational temperature θ_vib	θ_vib = hcω/k; for N₂ about 3393 K (ω = 2358.6 cm⁻¹), for O₂ about 2274 K
+Why cv of a diatomic gas rises with temperature	Vibration is frozen when kT ≪ level spacing; as T approaches θ_vib it switches on, lifting cv from 5/2 R toward 7/2 R
+Vibrational heat-capacity contribution (harmonic oscillator)	cv,vib/R = (θ/T)² e^(θ/T) / (e^(θ/T) − 1)²; for N₂ at 1000 K it is 0.414
+Kinetic-theory pressure formula	P = (1/3) n m ⟨v²⟩ = (1/3)(N/V) m v_rms², from momentum transfer 2mvₓ per wall collision
+Average translational kinetic energy per molecule	½ m v_rms² = (3/2) k T; temperature measures average translational kinetic energy
+Root-mean-square speed	v_rms = √(3kT/m) = √(3R_uT/M) with R_u = 8314 J/kmol·K, M in kg/kmol; N₂ at 300 K: 517 m/s
+Mean and most probable speeds	v_mean = √(8RT/πM), v_mp = √(2RT/M); v_mp : v_mean : v_rms = 1 : 1.128 : 1.225
+Maxwell-Boltzmann speed distribution	f(v) = 4π (m/2πkT)^(3/2) v² exp(−mv²/2kT); the v² factor gives the hump, the exponential the tail
+Mean free path formula	λ = kT/(√2 π d² P) = 1/(√2 π d² n); N₂ at 300 K and 1 atm with d = 3.64 × 10⁻¹⁰ m: 69 nm
+Collision frequency of one molecule	z = v_mean/λ; for N₂ at 300 K and 1 atm about 6.9 × 10⁹ s⁻¹ (one collision every 0.15 ns)
+How the ideal-gas law follows from kinetic theory	PV = (1/3)Nm v_rms² combined with ½m v_rms² = (3/2)kT gives PV = NkT = nR_uT = mRT
+Four assumptions behind the ideal-gas derivation	Negligible molecular volume, no intermolecular forces, elastic random collisions with λ ≪ container, classical statistics
+Which van der Waals term fixes which failure?	(v − b) corrects for finite molecular volume (real P higher); −a/v² corrects for attractions (real P lower)
+Compressibility factor of N₂ at 300 K by van der Waals	Z ≈ 0.9993 at 1 atm, 0.994 at 10 atm, 0.963 at 100 atm
+Knudsen number and its meaning	Kn = λ/L; when it approaches or exceeds 1 the gas is free-molecular and local pressure and temperature lose meaning
+Number density of an ideal gas at 300 K and 1 atm	n = P/kT = 101 325/(1.380649 × 10⁻²³ × 300) = 2.45 × 10²⁵ m⁻³

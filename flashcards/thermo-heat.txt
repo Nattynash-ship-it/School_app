@@ -1,0 +1,40 @@
+Fourier's law of heat conduction (statement and formula)	Heat rate through a layer is proportional to area and temperature gradient, opposite in sign: Q̇ = −kA dT/dx; k in W/m·K
+Units and meaning of thermal conductivity k	W/m·K: heat rate through a 1 m thick, 1 m² slab with 1 K across it. Copper ≈ 401, brick ≈ 0.72, still air ≈ 0.026
+Thermal resistance of a plane wall	R = L/(kA) in K/W; Q̇ = ΔT/R
+Thermal resistance of a cylindrical shell	R = ln(r₂/r₁)/(2πkL): the log appears because the area 2πrL grows with radius
+Thermal resistance of a spherical shell	R = (r₂ − r₁)/(4πk r₁r₂)
+Convection resistance of a surface film	R_conv = 1/(hA); h in W/m²·K
+How to find the temperature at any node of a series thermal circuit	T_node = T_∞,1 − Q̇ × (sum of resistances from the first fluid up to that node)
+Definition of the overall heat transfer coefficient U	Q̇ = U A ΔT, with U A = 1/ΣR; for a thin wall 1/U = 1/h_i + t/k + 1/h_o (+ fouling resistances)
+Critical radius of insulation, cylinder and sphere	r_cr = k/h for a cylinder, 2k/h for a sphere; below it, adding insulation raises the heat loss
+Why insulating a thin wire can increase its heat loss	Extra insulation enlarges the outer area, lowering the 1/(hA) film resistance faster than the added conduction resistance until r = k/h
+What is thermal contact resistance?	Extra resistance 1/(h_c A) at a solid-solid joint because faces touch only at asperities and the gaps hold air; reduced by grease or soft foil
+Fin efficiency versus fin effectiveness	Efficiency: actual heat rate / rate if the whole fin were at base temperature. Effectiveness: heat rate with the fin / rate from the bare base area
+Which side of a gas-liquid heat exchanger gets the fins, and why?	The gas side: its h is 10-100 times lower, so its 1/(hA) resistance controls U and needs the extra area
+Newton's law of cooling	Q̇_conv = h A_s (T_s − T_∞); h depends on fluid, velocity, geometry and flow regime, not on the fluid alone
+Typical h ranges: free convection gas / forced convection gas / forced liquid / boiling-condensation	2-25 / 25-250 / 50-20,000 / 2,500-100,000 W/m²·K
+Definition of the Reynolds number and the regime thresholds	Re = V L_c/ν; flat plate transition ≈ 5 × 10⁵, pipe laminar below 2,300 and fully turbulent above ≈ 10,000
+Definition and meaning of the Prandtl number	Pr = ν/α = μc_p/k, momentum diffusivity over thermal diffusivity; gases ≈ 0.7, water 2-7, oils 100+
+Definition of the Nusselt number	Nu = h L_c/k_fluid: convection relative to pure conduction across the same layer; the output of a correlation
+Grashof and Rayleigh numbers	Gr = gβ(T_s − T_∞)L³/ν² (buoyancy/viscous); Ra = Gr·Pr governs natural convection; β = 1/T_f for an ideal gas
+Film temperature and what to evaluate at it	T_f = (T_s + T_∞)/2; all fluid properties (k, ν, Pr) in an external-flow correlation are taken at T_f
+Average laminar flat-plate correlation	Nu = 0.664 Re_L^(1/2) Pr^(1/3) for Re_L < 5 × 10⁵, Pr > 0.6; local value uses 0.332
+Dittus-Boelter correlation and its validity	Nu = 0.023 Re^0.8 Pr^n, n = 0.4 heating / 0.3 cooling; turbulent pipe flow with Re > 10,000 and 0.7 ≤ Pr ≤ 160
+Nu for fully developed laminar pipe flow	3.66 for constant wall temperature, 4.36 for constant heat flux, independent of Re
+Log mean temperature difference	ΔT_lm = (ΔT₁ − ΔT₂)/ln(ΔT₁/ΔT₂), where ΔT₁, ΔT₂ are hot-minus-cold differences at the two ends; Q̇ = U A ΔT_lm
+End temperature differences for counterflow	ΔT₁ = T_h,in − T_c,out and ΔT₂ = T_h,out − T_c,in (inlets at opposite ends)
+Why counterflow needs less area than parallel flow for the same duty	Its ΔT_lm is larger because the driving difference stays more uniform along the length; it also allows T_c,out > T_h,out
+Effectiveness and NTU definitions	ε = Q̇/Q̇_max with Q̇_max = C_min(T_h,in − T_c,in); NTU = U A/C_min; ε = f(NTU, C_min/C_max) for each arrangement
+When to use ε-NTU instead of LMTD	When the exchanger (U, A) and inlets are known and the outlets are wanted; LMTD would need iteration
+Stefan-Boltzmann law	E_b = σT⁴ with σ = 5.670 × 10⁻⁸ W/m²·K⁴ and T in kelvin; a real surface emits E = εσT⁴
+Wien's displacement law and two reference peaks	λ_max T = 2897.8 μm·K; Sun (5772 K) peaks at 0.50 μm, a 300 K surface at 9.7 μm
+Kirchhoff's law of radiation	For a surface in equilibrium, ε_λ = α_λ at each wavelength; for a gray surface ε = α. Good emitters are good absorbers
+Net radiation from a small gray object in a large enclosure	Q̇ = εσA_s(T_s⁴ − T_surr⁴); the enclosure emissivity does not appear
+Net flux between two large parallel gray plates	q̇ = σ(T₁⁴ − T₂⁴)/(1/ε₁ + 1/ε₂ − 1); each shield adds (1/ε₃ + 1/ε₃ − 1) to the denominator
+Radiation heat transfer coefficient	h_rad = εσ(T_s + T_surr)(T_s² + T_surr²), so radiation can be added to convection as h_conv + h_rad
+Definition of a view factor and the reciprocity rule	F₁₂ = fraction of radiation leaving surface 1 that strikes surface 2 directly; A₁F₁₂ = A₂F₂₁
+Summation rule for view factors	For an enclosure, the view factors from any surface to all surfaces (including itself if concave) sum to 1
+Why is the clear night sky 'cold' for a roof?	In the 8-13 μm atmospheric window the sky radiates like a body at roughly 230-285 K, so a roof can cool below the air temperature and frost
+Why does a parked car heat up (greenhouse effect)?	Glass transmits short-wave sunlight (< 3 μm) but absorbs the long-wave infrared (≈ 10 μm) re-emitted inside, and suppresses convective loss
+Earth's effective radiating temperature from an energy balance	σT_e⁴ = S(1 − albedo)/4 with S = 1361 W/m², albedo 0.30: T_e ≈ 255 K, about 33 K below the real surface mean
+The most common radiation-calculation error	Using Celsius in T⁴; convert to kelvin first, and never write (T_s − T_surr)⁴ for T_s⁴ − T_surr⁴
