@@ -1,4 +1,4 @@
-// SECTION: Lessons
+// SECTION: Quizzes & content
 // The WGU lessons were trimmed of repeated text (a definitions-at-a-glance table,
 // then the prose, then a definition box saying it again; three common-mistake
 // boxes making one point). Trimming deleted blocks - it never reworded what it
