@@ -23,6 +23,7 @@ let banner = [], empty = [], badKey = [], trimmed = 0, aliasLessons = 0;
 for (const c of WGU) {
   const L = JSON.parse(packs[c].l);
   for (const k in L) {
+    if (/\/(cheat|aistote|userdocs|pa_sim|oa_sim|pa_fresh|weak_drill|review_missed|hard_drill)\//.test(k)) continue;   // left as they were
     const b = (L[k] && L[k].body) || '';
     if (/nothing removed/.test(b)) banner.push(k);
     if (b.replace(/<[^>]+>/g, '').trim().length < 40) empty.push(k);

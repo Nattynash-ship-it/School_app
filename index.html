@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="app-build" content="18.644">
+<meta name="app-build" content="18.645">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#dfe6fb">
@@ -20250,6 +20250,9 @@ function lessonFlowDecide(body) {
  // the figures, by caption
  const figs = [];
  for (const r of vl) {
+ // A figure the lesson already seats under its topic (trimmed lessons keep the
+ // placement their full text earned) is not re-decided.
+ if (/data-(flowed|fixed)="1"/.test(body.slice(r[0], r[0] + 120))) continue;
  const t = body.slice(r[0], r[0] + 400).replace(/<[^>]+>/g, ' ');
  const mm = /📊 FIGURE\s*[—-]\s*([^\n]{3,120}?)(?:\s{2,}|$)/.exec(t);
  if (mm) figs.push({ start: r[0], end: r[1], title: mm[1].trim() });
