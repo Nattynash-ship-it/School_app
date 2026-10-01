@@ -32156,18 +32156,33 @@ function gannoMakeTextAnchor(s) {
 
 // Translate a stroke so its first point sits at the same spot inside its
 // paragraph as when it was drawn. Returns null when the paragraph is gone.
+// INK_ALIAS_V1: the paragraph a removed one was merged into, for the open lesson.
+function gannoInkAlias(sig) {
+ try {
+ var m = window.__inkAlias;
+ if (!m || !sig || typeof view !== 'object' || !view || !view.courseId) return null;
+ var a = m[view.courseId + '/' + view.chId + '/' + view.secId];
+ return (a && a[sig]) || null;
+ } catch (e) { return null; }
+}
+
 function gannoTextReanchor(s) {
  var ta = s && s.tanchor;
  if (!ta || !ta.sig) return null;
  var idx = gannoTaIndex();
- if (!idx || !idx.has(ta.sig)) return null;
- var list = idx.get(ta.sig);
- var el = list[Math.min(ta.n || 0, list.length - 1)];
+ if (!idx) return null;
+ var sig = ta.sig, moved = false;
+ if (!idx.has(sig)) { sig = gannoInkAlias(ta.sig); moved = true; if (!sig || !idx.has(sig)) return null; }
+ var list = idx.get(sig);
+ var el = list[moved ? 0 : Math.min(ta.n || 0, list.length - 1)];
  var b = gannoTaBoxCached(idx, el);
  var pt = gannoTaFirstPoint(s);
  if (!b || !pt) return null;
- var tx = (b.x + ta.dx) - pt.x;
- var ty = (b.y + ta.dy) - pt.y;
+ // On a paragraph it moved to, keep the ink inside that paragraph's box.
+ var ox = moved ? Math.max(0, Math.min(ta.dx, b.w - 4)) : ta.dx;
+ var oy = moved ? Math.max(0, Math.min(ta.dy, b.h - 4)) : ta.dy;
+ var tx = (b.x + ox) - pt.x;
+ var ty = (b.y + oy) - pt.y;
  if (Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5) return s;   // already right
  var t = Object.assign({}, s);
  if (s.points) t.points = s.points.map(function (q) { return { x: q.x + tx, y: q.y + ty, p: q.p }; });
@@ -41721,6 +41736,10 @@ function getQuestions(courseId, chId, secId) {
     if (!s) return s;
     if (s.blockText && window.__gannoBlockIndex && window.__gannoBlockIndex.length){
       var blk = window.__gannoFindBlockByText(s.blockText, s.blockIdx, window.__gannoBlockIndex);
+      if (!blk && typeof gannoInkAlias === 'function') {   // INK_ALIAS_V1
+        var _alB = gannoInkAlias('#b|' + s.blockText);
+        if (_alB) blk = window.__gannoFindBlockByText(_alB, 0, window.__gannoBlockIndex);
+      }
       if (blk){
         var refX0 = (s.points && s.points.length) ? s.points[0].x : (s.start ? s.start.x : undefined);
         var refY0 = (s.points && s.points.length) ? s.points[0].y : (s.start ? s.start.y : undefined);
@@ -61903,6 +61922,9 @@ function courseAbsorb(cid, p){
   if (!SRCC[cid]) SRCC[cid] = {};
   if (SRCC[cid].l === undefined) SRCC[cid].l = p.l;
   if (SRCC[cid].q === undefined) SRCC[cid].q = p.q;
+  // INK_ALIAS_V1: a lesson trimmed of repeated text ships, for every paragraph it
+  // removed, the paragraph that says the same thing - her ink follows it there.
+  try { if (typeof p.ia === 'string' && p.ia) { var _ia = JSON.parse(p.ia); window.__inkAlias = window.__inkAlias || {}; for (var _k in _ia) window.__inkAlias[_k] = _ia[_k]; } } catch (eIa) {}
   // Restored courses carry their chapter structure in the file (the inline
   // structure for some regressed to stubs when the old builder modules were
   // cut - Korean ch23-30 said "Coming soon" while the real chapters sat in
