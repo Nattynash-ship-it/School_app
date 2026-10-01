@@ -41,14 +41,17 @@ const ROUTES = [['home', { name: 'home' }], ['today', { name: 'today' }], ['clas
         for (const el of all) { if (!vis(el)) continue; const cs = getComputedStyle(el); if ((cs.overflowX === 'hidden' || cs.overflow === 'hidden') && el.scrollWidth > el.clientWidth + 3 && cs.textOverflow !== 'ellipsis' && (el.innerText || '').trim() && el.children.length <= 3 && !/pre|code/i.test(el.tagName)) { clipped.push(desc(el) + ' +' + (el.scrollWidth - el.clientWidth) + 'px'); if (clipped.length > 4) break; } }
         const leaves = all.filter(el => vis(el) && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 1));
         const inFlow = el => { for (let e = el; e && e !== document.body; e = e.parentElement) { if (getComputedStyle(e).position === 'fixed') return false; } return true; };
-        const boxes = leaves.map(el => ({ el, r: el.getBoundingClientRect(), fixed: !inFlow(el) }));
+        // An inline phrase that wraps onto a second line has a bounding box spanning both lines, which "covers"
+        // every other word on them; compare its line boxes instead, which is what is actually painted.
+        const boxes = leaves.map(el => { const rs = [...el.getClientRects()].filter(q => q.width > 1 && q.height > 1); return { el, r: el.getBoundingClientRect(), rs: rs.length > 1 ? rs : [el.getBoundingClientRect()], fixed: !inFlow(el) }; });
         const pairs = [];
         for (let i = 0; i < boxes.length && pairs.length < 6; i++) for (let j = i + 1; j < boxes.length && pairs.length < 6; j++) {
           const A = boxes[i], B = boxes[j];
           if (A.fixed || B.fixed || A.el.contains(B.el) || B.el.contains(A.el)) continue;
-          const ix = Math.min(A.r.right, B.r.right) - Math.max(A.r.left, B.r.left), iy = Math.min(A.r.bottom, B.r.bottom) - Math.max(A.r.top, B.r.top);
-          if (ix <= 2 || iy <= 2) continue;
-          const inter = ix * iy, small = Math.min(A.r.width * A.r.height, B.r.width * B.r.height);
+          let inter = 0;
+          for (const a of A.rs) for (const b of B.rs) { const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top); if (ix > 2 && iy > 2) inter += ix * iy; }
+          if (!inter) continue;
+          const area = rs => rs.reduce((t, q) => t + q.width * q.height, 0), small = Math.min(area(A.rs), area(B.rs));
           if (inter / small < 0.25 || small < 400) continue;
           pairs.push(desc(A.el) + ' x ' + desc(B.el) + ' ' + Math.round(100 * inter / small) + '%');
         }
